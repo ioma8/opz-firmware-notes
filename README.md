@@ -109,3 +109,10 @@ On the **live content disk**, at both paths the import function tries:
 macOS `._*` AppleDouble files removed since the device scans that FAT). **Ejecting the disk makes the
 unit import it** (`how_to_import.txt`); only after that should plug 13 be given
 `samples: "redmountKicks.aif"` (rule 1).
+
+### Pull tooling
+
+`toolkit/opzpull.py` and `toolkit/opzble.py` implement the read-only USB and BLE-MIDI file pulls;
+`toolkit/test_pull_paths.py` checks their framing and file assembly without a device. They currently
+use the clean-room reference package at `~/.opz-decode/refs/op-z-sysex` (plus `mido` for USB and
+`bleak` for BLE). Run the self-check with `python toolkit/test_pull_paths.py`.
