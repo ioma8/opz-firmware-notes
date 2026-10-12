@@ -10,7 +10,8 @@ import importlib.util, sys, zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(Path.home() / '.opz-decode/refs/op-z-sysex'))
+ROOT = HERE.parent
+sys.path.insert(0, str(ROOT / 'refs/op-z-sysex'))
 from opzsysex.sysex import frame, decode_frame
 from opzsysex.fileprotocol import PART_SIZE
 

@@ -1,0 +1,57 @@
+OP-Z FIRMWARE DECODE — one action needed
+=======================================
+
+WHAT IS HAPPENING
+The OP-Z is stuck in update mode and its update volume is not being shown to the
+Mac. That single fact blocks the last step of decoding the firmware. Everything
+else is built, tested and waiting.
+
+WHY IT IS STUCK
+When a firmware file is read, the OP-Z's bootloader removes the update volume from
+the Mac and only re-presents it as part of a fresh boot. This was proven exhaustively:
+every console command (type AND routing bytes), every USB request on all three
+interfaces, malformed-input injection, and the NAND format command were all tried —
+none brings the volume back. Only a reboot does.
+
+WHAT TO DO (any ONE of these)
+  1. Press PLAY once on the OP-Z (or unplug and replug it).
+     If the unit is off (no volume AND no serial port), no USB command can reach it,
+     so this is the only option. A fresh boot also re-presents the volume, which is
+     exactly what the decode needs.
+  2. Double-click  OP-Z-unstick.command   <- in this same folder (Desktop)
+     Only useful when the unit is powered on but still has no volume. It asks for
+     your Mac password once, then re-inserts the volume. Afterwards the decode runs
+     by itself forever, with no further intervention.
+  3. Power-cycle the OP-Z.
+
+Double-click OP-Z-STATUS.command any time to see which case you are in.
+
+WHAT HAPPENS THEN (no further input from you)
+A background job that is already installed (~/Library/LaunchAgents/com.opz.decode)
+decodes 1,490,575 bytes of firmware automatically and writes the result to:
+
+    /tmp/OPZ_DECODE_REPORT.txt
+    ~/.opz-decode/OPZ_DECODE_REPORT.txt
+
+The job survives this session ending and survives reboots, and it resumes from
+wherever it left off.
+
+EXPECTED RUNTIME (measured in full-scale simulation)
+  ~62 device cycles, roughly an hour at ~1 min/cycle; host CPU+disk work for the
+  entire decode is only ~41 s, and the state survives reboots so nothing is lost
+  if it is interrupted.
+
+SAFETY NET (so you can trust the outcome)
+  * it will NOT claim success unless the decode is >=99% complete
+  * if the device reads fewer probes than expected it says so in the log instead of
+    crawling silently
+  * a dead USB handle, a failed eject, a reboot, or an interrupted run are all handled;
+    state is saved every cycle and survives reboots
+  * a check is available any time: double-click OP-Z-STATUS.command
+
+CURRENT PROGRESS
+144 / 1,490,575 bytes recovered so far (0.014%), all verified against ground truth.
+
+TECHNICAL RECORD (for reference)
+  FIRMWARE_ANALYSIS.md section 40, HYPOTHESES.csv (92 rows, 20 proved / 59 disproved)
+  in ~/projects/customs/opz-firmware-notes/

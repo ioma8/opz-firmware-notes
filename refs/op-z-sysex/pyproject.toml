@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opzsysex"
+version = "0.1.0"
+description = "Unofficial cross-platform OP-Z SysEx documentation and Python tooling"
+requires-python = ">=3.9"
+license = "MIT"
+keywords = ["teenage-engineering", "op-z", "sysex", "midi", "reverse-engineering"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: MIDI",
+]
+
+[project.optional-dependencies]
+device = ["mido", "python-rtmidi"]
+
+[tool.setuptools]
+packages = ["opzsysex"]

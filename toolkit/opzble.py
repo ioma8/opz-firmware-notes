@@ -16,14 +16,15 @@ from __future__ import annotations
 import asyncio, sys, time, zlib
 from pathlib import Path
 
-sys.path.insert(0, str(Path.home() / '.opz-decode/refs/op-z-sysex'))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'refs/op-z-sysex'))
 from opzsysex.sysex import frame, decode_frame          # noqa: E402
 from opzsysex.fileprotocol import download_file_id       # noqa: E402
 
 SVC = '03b80e5a-ede8-4b33-a751-6ce34ec4c700'
 CHR = '7772e5db-3868-4112-a1a9-f2669d106bf3'
 SERVER_ID = 0x4242
-OUT = Path.home() / '.opz-decode/pulled'
+OUT = ROOT / 'pulled'
 
 
 def server_heartbeat() -> bytes:

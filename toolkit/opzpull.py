@@ -7,13 +7,14 @@ File id = crc32(lowercase(path)); reserved 0/1/2 = settings/slotConfiguration.js
 """
 import sys, time, zlib, argparse, hashlib
 from pathlib import Path
-sys.path.insert(0, str(Path.home() / '.opz-decode/refs/op-z-sysex'))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'refs/op-z-sysex'))
 from opzsysex.device import Device                       # noqa: E402
 from opzsysex.sysex import frame, decode_frame, state_sync_client_hello, ProtocolError  # noqa: E402
 from opzsysex.fileprotocol import download_file_id       # noqa: E402
 
 SERVER_ID = 0x4242
-OUT = Path.home() / '.opz-decode/pulled'
+OUT = ROOT / 'pulled'
 
 
 def open_session(dev, timeout=240.0):

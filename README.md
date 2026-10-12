@@ -110,9 +110,14 @@ macOS `._*` AppleDouble files removed since the device scans that FAT). **Ejecti
 unit import it** (`how_to_import.txt`); only after that should plug 13 be given
 `samples: "redmountKicks.aif"` (rule 1).
 
-### Pull tooling
+### Toolkit
 
-`toolkit/opzpull.py` and `toolkit/opzble.py` implement the read-only USB and BLE-MIDI file pulls;
-`toolkit/test_pull_paths.py` checks their framing and file assembly without a device. They currently
-use the clean-room reference package at `~/.opz-decode/refs/op-z-sysex` (plus `mido` for USB and
-`bleak` for BLE). Run the self-check with `python toolkit/test_pull_paths.py`.
+The research toolkit is included: scripts and tests live at the root and in `toolkit/`, with the
+clean-room SysEx reference implementation under `refs/op-z-sysex/`. Recent USB/BLE pull tools are
+`toolkit/opzpull.py` and `toolkit/opzble.py`; run their device-free self-check with
+`python toolkit/test_pull_paths.py` (`mido` is needed for USB, `bleak` for BLE).
+
+The bulky local artifacts are omitted: firmware/app binaries, device dumps and backups, most logs,
+samples, wordlists, and the virtual environment. Older experiment scripts may still expect those files
+and the original `~/.opz-decode/` paths; provide suitable input files before running them.
+`opz-sudo-install.sh` installs a passwordless sudo rule—review it and the associated scripts before use.
