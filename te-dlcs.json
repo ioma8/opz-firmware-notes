@@ -1,0 +1,6090 @@
+[
+ {
+  "id": "e079ac24-68ea-43ac-9383-e62d98df8d01",
+  "store_id": "com.teenageengineering.te012.plug.electric",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "electric",
+  "description": "complex and transforming",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 12,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 98,
+    "engine": "electric.engine",
+    "name": "electric",
+    "version": 0,
+    "samples": "",
+    "trackmask": 240,
+    "flags": 0,
+    "parameter_names": [
+     "tone",
+     "digital"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "bias",
+      "values": [
+       58,
+       2,
+       0,
+       80,
+       84,
+       58,
+       8,
+       87,
+       60,
+       89,
+       137,
+       100,
+       0,
+       26,
+       178,
+       175,
+       190,
+       255
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "charge",
+      "values": [
+       135,
+       10,
+       32,
+       83,
+       151,
+       28,
+       4,
+       109,
+       110,
+       0,
+       137,
+       155,
+       0,
+       125,
+       178,
+       175,
+       190,
+       255
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "circuit",
+      "values": [
+       84,
+       49,
+       0,
+       0,
+       156,
+       44,
+       0,
+       229,
+       72,
+       91,
+       129,
+       142,
+       0,
+       58,
+       178,
+       166,
+       190,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "discharge",
+      "values": [
+       60,
+       2,
+       0,
+       21,
+       46,
+       18,
+       19,
+       118,
+       55,
+       177,
+       137,
+       128,
+       0,
+       72,
+       35,
+       39,
+       239,
+       255
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       0,
+       0,
+       117,
+       83,
+       225,
+       13,
+       42,
+       43,
+       49,
+       65,
+       127,
+       96,
+       0,
+       9,
+       41,
+       95,
+       248,
+       255
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 1,
+      "default_octave": -1,
+      "name": "",
+      "values": [
+       27,
+       255,
+       4,
+       22,
+       14,
+       13,
+       0,
+       64,
+       172,
+       116,
+       127,
+       123,
+       0,
+       127,
+       0,
+       0,
+       0,
+       132
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 1,
+      "default_octave": 1,
+      "name": "",
+      "values": [
+       43,
+       255,
+       4,
+       22,
+       14,
+       13,
+       4,
+       14,
+       198,
+       74,
+       127,
+       109,
+       0,
+       127,
+       0,
+       0,
+       0,
+       132
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 1,
+      "default_octave": 1,
+      "name": "",
+      "values": [
+       69,
+       220,
+       0,
+       15,
+       109,
+       0,
+       5,
+       159,
+       180,
+       178,
+       127,
+       61,
+       0,
+       141,
+       126,
+       0,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 2,
+      "default_octave": -1,
+      "name": "",
+      "values": [
+       27,
+       255,
+       4,
+       22,
+       14,
+       13,
+       15,
+       64,
+       172,
+       116,
+       127,
+       89,
+       0,
+       127,
+       0,
+       0,
+       0,
+       132
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       52,
+       141,
+       65,
+       83,
+       225,
+       13,
+       216,
+       212,
+       69,
+       228,
+       127,
+       89,
+       0,
+       127,
+       135,
+       0,
+       188,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 2,
+      "default_octave": 1,
+      "name": "",
+      "values": [
+       43,
+       255,
+       4,
+       22,
+       14,
+       13,
+       79,
+       14,
+       198,
+       74,
+       127,
+       80,
+       0,
+       127,
+       0,
+       0,
+       0,
+       132
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 2,
+      "default_octave": -1,
+      "name": "",
+      "values": [
+       255,
+       0,
+       0,
+       84,
+       174,
+       8,
+       0,
+       55,
+       151,
+       70,
+       127,
+       100,
+       0,
+       127,
+       0,
+       0,
+       0,
+       132
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       0,
+       0,
+       102,
+       138,
+       105,
+       127,
+       45,
+       69,
+       189,
+       0,
+       127,
+       128,
+       0,
+       107,
+       115,
+       0,
+       255,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "electric.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/e079ac24-68ea-43ac-9383-e62d98df8d01/files/b4adaa53-fc9d-490c-aefa-eeec5e40eac9",
+    "version": 7
+   }
+  ],
+  "engines": [
+   {
+    "name": "electric.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/11ac6ed0-4b71-4ca4-a4a1-de25e85c7349",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 77
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "51f9c9c5-bcf1-42d9-bab9-4c7e239611f3",
+  "store_id": "com.teenageengineering.te012.plug.reverb",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "rymd",
+  "description": "basic digital reverb",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 10,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 35,
+    "engine": "reverb.engine",
+    "name": "rymd",
+    "version": 0,
+    "samples": "",
+    "trackmask": 768,
+    "flags": 0,
+    "parameter_names": [
+     "size",
+     "tone"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       179,
+       0,
+       0,
+       127,
+       127,
+       255,
+       0,
+       0,
+       127,
+       0,
+       127,
+       128,
+       0,
+       0,
+       127,
+       255,
+       255,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "rymd.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/51f9c9c5-bcf1-42d9-bab9-4c7e239611f3/files/257800aa-2e56-4919-a293-480cd0dc6298",
+    "version": 7
+   }
+  ],
+  "engines": [
+   {
+    "name": "reverb.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/f8cddf0c-f057-4a21-987c-7af4b1e3676b",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 66
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "422b750f-9e95-4141-a7d0-fc435438d53e",
+  "store_id": "com.teenageengineering.te012.plug.leaddigital",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "digital",
+  "description": "sharp and binary",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 13,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 25,
+    "engine": "digital.engine",
+    "name": "digital",
+    "version": 0,
+    "samples": "",
+    "trackmask": 240,
+    "flags": 0,
+    "parameter_names": [
+     "offset",
+     "space"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       32,
+       73,
+       0,
+       35,
+       21,
+       9,
+       0,
+       85,
+       96,
+       66,
+       137,
+       128,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       0,
+       182,
+       0,
+       20,
+       0,
+       7,
+       0,
+       41,
+       96,
+       66,
+       137,
+       128,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       55,
+       182,
+       0,
+       51,
+       6,
+       7,
+       0,
+       51,
+       99,
+       67,
+       137,
+       128,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       13,
+       182,
+       0,
+       61,
+       0,
+       6,
+       0,
+       61,
+       99,
+       67,
+       137,
+       128,
+       0,
+       31,
+       50,
+       12,
+       235,
+       0
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       0,
+       0,
+       14,
+       84,
+       12,
+       0,
+       0,
+       12,
+       156,
+       171,
+       127,
+       123,
+       0,
+       210,
+       125,
+       203,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "dust",
+      "values": [
+       0,
+       255,
+       14,
+       84,
+       30,
+       17,
+       2,
+       0,
+       156,
+       163,
+       127,
+       123,
+       0,
+       210,
+       125,
+       203,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "digital",
+      "values": [
+       31,
+       111,
+       43,
+       10,
+       94,
+       67,
+       80,
+       191,
+       92,
+       22,
+       127,
+       128,
+       0,
+       0,
+       250,
+       183,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "where are y",
+      "values": [
+       0,
+       0,
+       0,
+       238,
+       239,
+       75,
+       30,
+       98,
+       89,
+       50,
+       127,
+       71,
+       0,
+       10,
+       120,
+       255,
+       147,
+       255
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       0,
+       88,
+       0,
+       20,
+       0,
+       3,
+       0,
+       21,
+       128,
+       0,
+       127,
+       128,
+       0,
+       127,
+       0,
+       0,
+       0,
+       128
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 2,
+      "default_octave": -1,
+      "name": "",
+      "values": [
+       19,
+       234,
+       0,
+       26,
+       0,
+       6,
+       23,
+       0,
+       128,
+       0,
+       127,
+       128,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 2,
+      "default_octave": 1,
+      "name": "",
+      "values": [
+       11,
+       0,
+       0,
+       26,
+       0,
+       6,
+       0,
+       104,
+       193,
+       104,
+       127,
+       100,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 2,
+      "default_octave": -1,
+      "name": "",
+      "values": [
+       0,
+       110,
+       0,
+       0,
+       255,
+       6,
+       64,
+       0,
+       68,
+       50,
+       127,
+       100,
+       74,
+       127,
+       135,
+       0,
+       188,
+       255
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       43,
+       53,
+       148,
+       168,
+       180,
+       131,
+       0,
+       77,
+       100,
+       0,
+       127,
+       113,
+       0,
+       41,
+       31,
+       48,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       0,
+       109,
+       0,
+       129,
+       180,
+       131,
+       0,
+       77,
+       143,
+       9,
+       127,
+       100,
+       0,
+       33,
+       125,
+       255,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 3,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       20,
+       62,
+       40,
+       129,
+       180,
+       131,
+       6,
+       89,
+       69,
+       88,
+       127,
+       89,
+       0,
+       8,
+       36,
+       119,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       35,
+       0,
+       0,
+       84,
+       255,
+       0,
+       97,
+       0,
+       117,
+       0,
+       127,
+       80,
+       0,
+       22,
+       80,
+       0,
+       177,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "digital.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/422b750f-9e95-4141-a7d0-fc435438d53e/files/1c22e0ed-0357-43e2-8f48-5b232daa9b58",
+    "version": 7
+   }
+  ],
+  "engines": [
+   {
+    "name": "digital.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/991c2328-789e-4285-a5f9-b6aa03ad5172",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 62
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "6f5833b4-33ff-48dc-876b-77f7eb967f5f",
+  "store_id": "com.teenageengineering.te012.plug.cluster",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "cluster",
+  "description": "airy and moody",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 19,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 11,
+    "engine": "cluster.engine",
+    "name": "cluster",
+    "version": 0,
+    "samples": "",
+    "trackmask": 240,
+    "flags": 0,
+    "parameter_names": [
+     "noise",
+     "shape"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       0,
+       255,
+       7,
+       20,
+       93,
+       18,
+       0,
+       0,
+       65,
+       159,
+       137,
+       128,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       241,
+       0,
+       7,
+       20,
+       93,
+       18,
+       0,
+       16,
+       123,
+       129,
+       137,
+       128,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 1,
+      "default_octave": 1,
+      "name": "",
+      "values": [
+       255,
+       255,
+       0,
+       64,
+       255,
+       11,
+       30,
+       220,
+       130,
+       33,
+       127,
+       100,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       0,
+       230,
+       0,
+       14,
+       109,
+       18,
+       21,
+       180,
+       122,
+       162,
+       129,
+       128,
+       52,
+       18,
+       0,
+       0,
+       0,
+       255
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 1,
+      "default_octave": 1,
+      "name": "dank",
+      "values": [
+       0,
+       24,
+       0,
+       53,
+       37,
+       59,
+       0,
+       56,
+       122,
+       83,
+       127,
+       128,
+       0,
+       175,
+       116,
+       202,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 1,
+      "default_octave": 2,
+      "name": "puffer",
+      "values": [
+       45,
+       161,
+       9,
+       230,
+       27,
+       10,
+       2,
+       191,
+       194,
+       54,
+       129,
+       128,
+       0,
+       127,
+       0,
+       255,
+       0,
+       96
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "snap",
+      "values": [
+       202,
+       28,
+       0,
+       64,
+       255,
+       36,
+       56,
+       255,
+       130,
+       33,
+       127,
+       113,
+       0,
+       127,
+       0,
+       0,
+       0,
+       96
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 2,
+      "default_octave": 1,
+      "name": "puffer",
+      "values": [
+       255,
+       255,
+       0,
+       64,
+       255,
+       11,
+       69,
+       220,
+       130,
+       33,
+       127,
+       100,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 2,
+      "default_octave": 2,
+      "name": "dank",
+      "values": [
+       255,
+       255,
+       9,
+       71,
+       102,
+       70,
+       56,
+       255,
+       194,
+       59,
+       127,
+       113,
+       0,
+       127,
+       0,
+       0,
+       0,
+       96
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 2,
+      "default_octave": 1,
+      "name": "",
+      "values": [
+       89,
+       109,
+       161,
+       187,
+       109,
+       70,
+       56,
+       255,
+       192,
+       38,
+       127,
+       128,
+       0,
+       127,
+       135,
+       0,
+       188,
+       255
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "abra",
+      "values": [
+       40,
+       35,
+       121,
+       79,
+       255,
+       182,
+       11,
+       184,
+       146,
+       0,
+       129,
+       128,
+       0,
+       43,
+       183,
+       222,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "cadabra",
+      "values": [
+       46,
+       204,
+       140,
+       79,
+       241,
+       182,
+       11,
+       255,
+       123,
+       0,
+       129,
+       113,
+       0,
+       8,
+       153,
+       0,
+       253,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 3,
+      "default_octave": 2,
+      "name": "pop",
+      "values": [
+       77,
+       255,
+       0,
+       186,
+       45,
+       106,
+       0,
+       112,
+       189,
+       123,
+       127,
+       100,
+       0,
+       76,
+       130,
+       203,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 3,
+      "default_octave": 2,
+      "name": "corn",
+      "values": [
+       13,
+       251,
+       0,
+       186,
+       22,
+       0,
+       31,
+       112,
+       152,
+       123,
+       127,
+       113,
+       0,
+       47,
+       93,
+       117,
+       255,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "cluster.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/6f5833b4-33ff-48dc-876b-77f7eb967f5f/files/ea476bb3-5e8c-4cfa-88af-cbfbb83b6c75",
+    "version": 7
+   }
+  ],
+  "engines": [
+   {
+    "name": "cluster.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/2d1d444e-d6f2-4d2b-a7c6-240fa45def96",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 83
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "d4df0df6-f8b5-4cbc-a672-4d812f09810a",
+  "store_id": "com.teenageengineering.te012.plug.shade",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "shade",
+  "description": "smooth piano",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 8,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 31,
+    "engine": "chord.engine",
+    "name": "shade",
+    "version": 0,
+    "samples": "",
+    "trackmask": 240,
+    "flags": 0,
+    "parameter_names": [
+     "phase",
+     "shape"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "smooth",
+      "values": [
+       64,
+       255,
+       0,
+       75,
+       53,
+       24,
+       0,
+       179,
+       58,
+       84,
+       136,
+       128,
+       0,
+       0,
+       145,
+       185,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 0,
+      "default_octave": -2,
+      "name": " ",
+      "values": [
+       235,
+       100,
+       70,
+       75,
+       53,
+       47,
+       0,
+       17,
+       36,
+       85,
+       137,
+       128,
+       0,
+       0,
+       145,
+       185,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "sinus",
+      "values": [
+       0,
+       255,
+       13,
+       23,
+       255,
+       3,
+       0,
+       0,
+       204,
+       84,
+       127,
+       128,
+       0,
+       0,
+       231,
+       112,
+       179,
+       100
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "tweet",
+      "values": [
+       197,
+       162,
+       13,
+       23,
+       255,
+       3,
+       0,
+       65,
+       211,
+       83,
+       127,
+       128,
+       127,
+       19,
+       231,
+       112,
+       179,
+       0
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 2,
+      "default_octave": -1,
+      "name": "",
+      "values": [
+       0,
+       0,
+       0,
+       28,
+       255,
+       8,
+       10,
+       0,
+       162,
+       0,
+       127,
+       128,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 2,
+      "default_octave": -1,
+      "name": "",
+      "values": [
+       14,
+       0,
+       13,
+       33,
+       17,
+       65,
+       0,
+       53,
+       162,
+       0,
+       127,
+       128,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "clean",
+      "values": [
+       0,
+       0,
+       0,
+       75,
+       47,
+       137,
+       0,
+       0,
+       127,
+       0,
+       127,
+       128,
+       0,
+       78,
+       145,
+       185,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "drive",
+      "values": [
+       117,
+       65,
+       0,
+       75,
+       47,
+       137,
+       0,
+       72,
+       125,
+       25,
+       127,
+       128,
+       0,
+       173,
+       185,
+       179,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 3,
+      "default_octave": 1,
+      "name": "bright",
+      "values": [
+       0,
+       0,
+       0,
+       75,
+       47,
+       137,
+       0,
+       0,
+       127,
+       0,
+       127,
+       128,
+       0,
+       118,
+       123,
+       255,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "vibrato",
+      "values": [
+       0,
+       0,
+       0,
+       75,
+       47,
+       137,
+       0,
+       0,
+       38,
+       68,
+       127,
+       142,
+       0,
+       106,
+       126,
+       106,
+       255,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "shade.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/d4df0df6-f8b5-4cbc-a672-4d812f09810a/files/3e242850-fff7-4215-8aad-2a0eff880cd9",
+    "version": 7
+   }
+  ],
+  "engines": [
+   {
+    "name": "chord.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/7c95cc30-6733-4893-9cda-1716b96e46a7",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 59
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "a179ea9b-02bb-4982-a4fe-2f3326657cc9",
+  "store_id": "com.teenageengineering.te012.plug.tapetwo",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "tape",
+  "description": "dual tape delay",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 13,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 38,
+    "engine": "tapetwo.engine",
+    "name": "tape",
+    "version": 0,
+    "samples": "",
+    "trackmask": 1024,
+    "flags": 1,
+    "parameter_names": [
+     "speed"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       0,
+       127,
+       0,
+       127,
+       127,
+       127,
+       0,
+       0,
+       127,
+       0,
+       127,
+       128,
+       0,
+       0,
+       127,
+       255,
+       255,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "tape.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/a179ea9b-02bb-4982-a4fe-2f3326657cc9/files/8da55c7d-a862-4867-9705-7bbd8f111566",
+    "version": 4
+   }
+  ],
+  "engines": [
+   {
+    "name": "tapetwo.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/e6c36f94-95bf-4125-b8ec-3dbf354bb97a",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 9
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "9208fbb6-6eb7-49ac-a2f0-285b4e855393",
+  "store_id": "com.teenageengineering.te012.plug.cuckoo",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "cuckoo",
+  "description": "cuckoo sounds",
+  "is_new": false,
+  "maker": "cuckoo",
+  "version": 10,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 134,
+    "engine": "sampleplayergain.engine",
+    "name": "cuckoo kicks",
+    "version": 0,
+    "samples": "CuckooKicks.aif",
+    "trackmask": 1,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": []
+   },
+   {
+    "id": 135,
+    "engine": "sampleplayergain.engine",
+    "name": "cuckoo snares",
+    "version": 0,
+    "samples": "CuckooSnares.aif",
+    "trackmask": 2,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": []
+   },
+   {
+    "id": 136,
+    "engine": "sampleplayergain.engine",
+    "name": "cuckoo perc",
+    "version": 0,
+    "samples": "CuckooPerc.aif",
+    "trackmask": 4,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": []
+   },
+   {
+    "id": 137,
+    "engine": "sampleplayergain.engine",
+    "name": "cuckoo fx",
+    "version": 0,
+    "samples": "CuckooFX.aif",
+    "trackmask": 8,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": []
+   },
+   {
+    "id": 138,
+    "engine": "synthsampler.engine",
+    "name": "cuckoo pawn",
+    "version": 0,
+    "samples": "CuckooC_keypawn.aif",
+    "trackmask": 240,
+    "flags": 0,
+    "parameter_names": [
+     "param a",
+     "param b"
+    ],
+    "presets": []
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "cuckoo.jpg",
+    "mime": "image/jpeg",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/9208fbb6-6eb7-49ac-a2f0-285b4e855393/files/1a269d3b-4e9d-4787-a8d4-108ff969540e",
+    "version": 1
+   }
+  ],
+  "engines": [
+   {
+    "name": "sampleplayergain.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/6c9c8e42-442b-419f-9f82-bd2816450be6",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 10
+    }
+   },
+   {
+    "name": "synthsampler.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/c9f93dcb-1e85-4323-80a9-5543b56b98dc",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 68
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "77fcfc3d-f592-45c2-a006-316ad746a930",
+  "store_id": "com.teenageengineering.te012.plug.seba",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "seba",
+  "description": "seba kit",
+  "is_new": false,
+  "maker": "seba",
+  "version": 10,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 140,
+    "engine": "sampleplayergain.engine",
+    "name": "seba kicks",
+    "version": 0,
+    "samples": "SebaKicks.aif",
+    "trackmask": 1,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": []
+   },
+   {
+    "id": 141,
+    "engine": "sampleplayergain.engine",
+    "name": "seba snares",
+    "version": 0,
+    "samples": "SebaSnares.aif",
+    "trackmask": 2,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": []
+   },
+   {
+    "id": 142,
+    "engine": "sampleplayergain.engine",
+    "name": "seba perc",
+    "version": 0,
+    "samples": "SebaPerc.aif",
+    "trackmask": 4,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": []
+   },
+   {
+    "id": 143,
+    "engine": "sampleplayergain.engine",
+    "name": "seba fx",
+    "version": 0,
+    "samples": "SebaFX.aif",
+    "trackmask": 8,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": []
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "seba.jpg",
+    "mime": "image/jpeg",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/77fcfc3d-f592-45c2-a006-316ad746a930/files/42d6fe6f-10dc-4b2b-9111-b1b9ba29838d",
+    "version": 2
+   }
+  ],
+  "engines": [
+   {
+    "name": "sampleplayergain.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/6c9c8e42-442b-419f-9f82-bd2816450be6",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 10
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "d749323a-8e94-4af0-a5da-35e04fbd4d16",
+  "store_id": "com.teenageengineering.te012.plug.chorus",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "chorus",
+  "description": "master chorus fx",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 6,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 39,
+    "engine": "chorus.engine",
+    "name": "chorus",
+    "version": 0,
+    "samples": "",
+    "trackmask": 2048,
+    "flags": 0,
+    "parameter_names": [
+     "amount"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       0,
+       0,
+       127,
+       127,
+       127,
+       255,
+       127,
+       127,
+       127,
+       0,
+       127,
+       128,
+       0,
+       0,
+       127,
+       255,
+       255,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "chorus.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/d749323a-8e94-4af0-a5da-35e04fbd4d16/files/efb413b5-68a1-4fd1-bea5-13dced3ebc68",
+    "version": 5
+   }
+  ],
+  "engines": [
+   {
+    "name": "chorus.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/05bfe4a6-d036-450a-8817-04aebbbd9cb8",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 60
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "716c5dd4-a6f7-440a-a9db-8957937f89b0",
+  "store_id": "com.teenageengineering.te012.plug.bow",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "bow",
+  "description": "string synthesizer",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 10,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 112,
+    "engine": "ministringshort.engine",
+    "name": "bow",
+    "version": 0,
+    "samples": "",
+    "trackmask": 240,
+    "flags": 0,
+    "parameter_names": [
+     "decay",
+     "spread"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       19,
+       53,
+       4,
+       127,
+       147,
+       83,
+       0,
+       0,
+       90,
+       26,
+       150,
+       179,
+       0,
+       45,
+       127,
+       255,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       35,
+       255,
+       4,
+       127,
+       221,
+       27,
+       0,
+       61,
+       129,
+       80,
+       137,
+       159,
+       0,
+       151,
+       94,
+       200,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       15,
+       255,
+       4,
+       127,
+       147,
+       83,
+       0,
+       5,
+       65,
+       81,
+       137,
+       142,
+       0,
+       45,
+       127,
+       255,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       25,
+       255,
+       43,
+       127,
+       224,
+       13,
+       0,
+       73,
+       53,
+       127,
+       137,
+       128,
+       0,
+       20,
+       105,
+       113,
+       255,
+       255
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 1,
+      "default_octave": 1,
+      "name": "",
+      "values": [
+       10,
+       60,
+       0,
+       20,
+       126,
+       121,
+       0,
+       0,
+       127,
+       0,
+       127,
+       142,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       52,
+       141,
+       117,
+       83,
+       225,
+       13,
+       216,
+       212,
+       69,
+       228,
+       127,
+       113,
+       0,
+       44,
+       54,
+       95,
+       248,
+       255
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       10,
+       73,
+       4,
+       32,
+       126,
+       16,
+       0,
+       0,
+       127,
+       0,
+       127,
+       128,
+       0,
+       41,
+       54,
+       186,
+       206,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       155,
+       147,
+       15,
+       20,
+       126,
+       121,
+       0,
+       29,
+       82,
+       27,
+       127,
+       113,
+       0,
+       76,
+       198,
+       227,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       13,
+       57,
+       0,
+       20,
+       0,
+       38,
+       0,
+       11,
+       132,
+       0,
+       127,
+       128,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 2,
+      "default_octave": -1,
+      "name": "",
+      "values": [
+       14,
+       136,
+       22,
+       39,
+       0,
+       37,
+       0,
+       9,
+       115,
+       0,
+       127,
+       142,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 2,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       187,
+       129,
+       8,
+       39,
+       0,
+       55,
+       0,
+       23,
+       70,
+       202,
+       127,
+       128,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       52,
+       141,
+       65,
+       83,
+       225,
+       13,
+       123,
+       118,
+       69,
+       70,
+       127,
+       128,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       3,
+       0,
+       0,
+       20,
+       216,
+       127,
+       0,
+       3,
+       135,
+       0,
+       67,
+       142,
+       0,
+       21,
+       214,
+       180,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       12,
+       0,
+       66,
+       51,
+       216,
+       127,
+       0,
+       3,
+       153,
+       0,
+       67,
+       128,
+       0,
+       11,
+       116,
+       102,
+       248,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 3,
+      "default_octave": 1,
+      "name": "",
+      "values": [
+       0,
+       49,
+       139,
+       83,
+       225,
+       127,
+       63,
+       70,
+       126,
+       0,
+       127,
+       128,
+       0,
+       81,
+       116,
+       173,
+       248,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 3,
+      "default_octave": -1,
+      "name": "morran",
+      "values": [
+       52,
+       141,
+       117,
+       83,
+       225,
+       13,
+       216,
+       212,
+       69,
+       228,
+       127,
+       128,
+       0,
+       44,
+       54,
+       95,
+       248,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "bow.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/716c5dd4-a6f7-440a-a9db-8957937f89b0/files/1ebe8a4c-a772-49a9-b322-db3558f3c67f",
+    "version": 5
+   }
+  ],
+  "engines": [
+   {
+    "name": "ministringshort.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/18391e87-a268-4976-bb6e-27772c95961f",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 82
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "f52e74ad-dc33-48a6-8767-7d27673a385f",
+  "store_id": "com.teenageengineering.te012.plug.crush",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "crush",
+  "description": "vector semilinear crusher",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 5,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 109,
+    "engine": "crush.engine",
+    "name": "crush",
+    "version": 0,
+    "samples": "",
+    "trackmask": 768,
+    "flags": 1,
+    "parameter_names": [
+     "resample",
+     "vector"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       90,
+       136,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "crush.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/f52e74ad-dc33-48a6-8767-7d27673a385f/files/049b69ff-654f-445a-aec4-d2717f9c42f3",
+    "version": 7
+   }
+  ],
+  "engines": [
+   {
+    "name": "crush.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/4c94d2f1-ef47-4403-a977-9fa351e89cd5",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 79
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "eb94f285-1d73-407f-9ea2-3c59b4bddbbe",
+  "store_id": "com.teenageengineering.te012.plug.delay",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "delay",
+  "description": "basic digital delay",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 8,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 34,
+    "engine": "delay.engine",
+    "name": "delay",
+    "version": 0,
+    "samples": "",
+    "trackmask": 256,
+    "flags": 0,
+    "parameter_names": [
+     "feedback",
+     "lp filter"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       160,
+       200,
+       0,
+       127,
+       127,
+       127,
+       0,
+       0,
+       127,
+       0,
+       127,
+       128,
+       0,
+       0,
+       127,
+       255,
+       255,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "delay.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/eb94f285-1d73-407f-9ea2-3c59b4bddbbe/files/5252fb73-d64b-4203-a1fd-6ccb8dcd070b",
+    "version": 6
+   }
+  ],
+  "engines": [
+   {
+    "name": "delay.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/7cb7f17f-0e5d-4dbd-8f17-6a3f7521a7e7",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 61
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "c336e2cc-4671-4bc4-83be-2892bfa3fa5e",
+  "store_id": "com.teenageengineering.te012.plug.dist",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "dist",
+  "description": "overdrive distortion",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 5,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 99,
+    "engine": "dist.engine",
+    "name": "dist",
+    "version": 0,
+    "samples": "",
+    "trackmask": 768,
+    "flags": 1,
+    "parameter_names": [
+     "drive",
+     "tone"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "default",
+      "values": [
+       0,
+       127,
+       127,
+       0,
+       0,
+       0,
+       0,
+       0,
+       127,
+       0,
+       127,
+       128,
+       0,
+       0,
+       127,
+       255,
+       255,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "dist.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/c336e2cc-4671-4bc4-83be-2892bfa3fa5e/files/49a93d7e-6831-4a28-9b70-d237cd957755",
+    "version": 6
+   }
+  ],
+  "engines": [
+   {
+    "name": "dist.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/6cee2af8-068e-431b-aaad-5b26321c54ac",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 78
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "c2d54c11-e13e-4746-86c9-c7d6d0d2b4bc",
+  "store_id": "com.teenageengineering.te012.plug.grantfx",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "nedavine fx",
+  "description": "nedavine fx kit",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 5,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 145,
+    "engine": "sampleplayergain.engine",
+    "name": "nedavine fx",
+    "version": 0,
+    "samples": "GrantFX.aif",
+    "trackmask": 8,
+    "flags": 4,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": []
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "grant_fx.jpg",
+    "mime": "image/jpeg",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/c2d54c11-e13e-4746-86c9-c7d6d0d2b4bc/files/895af785-4492-47a2-96f6-f419295da71f",
+    "version": 3
+   }
+  ],
+  "engines": [
+   {
+    "name": "sampleplayergain.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/6c9c8e42-442b-419f-9f82-bd2816450be6",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 10
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "5f86d736-9668-4367-b3a0-69ed76887cf6",
+  "store_id": "com.teenageengineering.te012.plug.dmxbasic",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "dmx basic",
+  "description": "",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 3,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 146,
+    "engine": "",
+    "name": "dmx basic",
+    "version": 0,
+    "samples": "",
+    "trackmask": 0,
+    "flags": 0,
+    "parameter_names": [],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       167,
+       124,
+       0,
+       20,
+       0,
+       127,
+       0,
+       0,
+       187,
+       255,
+       0,
+       255,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [],
+  "engines": [],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "f449c31b-775b-43b1-8474-9b0857d067a8",
+  "store_id": "com.teenageengineering.te012.plug.alain",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "z",
+  "description": "z sounds",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 8,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 130,
+    "engine": "sampleplayergain.engine",
+    "name": "z-kicks",
+    "version": 0,
+    "samples": "AlainKicks.aif",
+    "trackmask": 1,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": []
+   },
+   {
+    "id": 131,
+    "engine": "sampleplayergain.engine",
+    "name": "z-snares",
+    "version": 0,
+    "samples": "AlainSnares.aif",
+    "trackmask": 2,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": []
+   },
+   {
+    "id": 132,
+    "engine": "sampleplayergain.engine",
+    "name": "z-perc",
+    "version": 0,
+    "samples": "AlainPerc.aif",
+    "trackmask": 4,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": []
+   },
+   {
+    "id": 133,
+    "engine": "sampleplayergain.engine",
+    "name": "z-fx",
+    "version": 0,
+    "samples": "AlainFX.aif",
+    "trackmask": 8,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": []
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "z.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/f449c31b-775b-43b1-8474-9b0857d067a8/files/d397b88e-5335-4cbc-9108-d8739c959e7b",
+    "version": 1
+   }
+  ],
+  "engines": [
+   {
+    "name": "sampleplayergain.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/6c9c8e42-442b-419f-9f82-bd2816450be6",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 10
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "59683238-2d20-41de-8246-a8ecd4501fc6",
+  "store_id": "com.teenageengineering.te012.plug.performancebasic",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "performance basic",
+  "description": "",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 3,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 147,
+    "engine": "",
+    "name": "performance basic",
+    "version": 0,
+    "samples": "",
+    "trackmask": 0,
+    "flags": 0,
+    "parameter_names": [],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       127,
+       0,
+       0,
+       0,
+       255,
+       0,
+       255,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [],
+  "engines": [],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "486da0c9-bcdb-4ffc-94f1-5644f33d5bcc",
+  "store_id": "com.teenageengineering.te012.plug.uranus",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "uranus",
+  "description": "clean bass",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 10,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 129,
+    "engine": "fm003b.engine",
+    "name": "uranus",
+    "version": 0,
+    "samples": "",
+    "trackmask": 240,
+    "flags": 0,
+    "parameter_names": [
+     "fat",
+     "grease"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "thud",
+      "values": [
+       0,
+       0,
+       3,
+       43,
+       0,
+       14,
+       0,
+       0,
+       124,
+       0,
+       137,
+       178,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "thump",
+      "values": [
+       5,
+       197,
+       27,
+       43,
+       7,
+       41,
+       0,
+       89,
+       24,
+       12,
+       129,
+       113,
+       0,
+       133,
+       69,
+       119,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "thick",
+      "values": [
+       164,
+       70,
+       19,
+       57,
+       255,
+       44,
+       0,
+       0,
+       171,
+       102,
+       137,
+       128,
+       0,
+       96,
+       30,
+       82,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "thug",
+      "values": [
+       115,
+       0,
+       17,
+       31,
+       22,
+       60,
+       9,
+       0,
+       84,
+       69,
+       137,
+       143,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "uranus.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/486da0c9-bcdb-4ffc-94f1-5644f33d5bcc/files/1664ddb4-7b1d-4124-b7c1-e4dc2a0fba3a",
+    "version": 6
+   }
+  ],
+  "engines": [
+   {
+    "name": "fm003b.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/e8274ee9-e9fa-45cc-b690-1bd659c1a4c8",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 13
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "ece4a677-5126-4e5a-9112-97730235bed8",
+  "store_id": "com.teenageengineering.te012.plug.teenage",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "teenage",
+  "description": "te kit",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 17,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 121,
+    "engine": "sampleplayergain.engine",
+    "name": "te-kicks",
+    "version": 0,
+    "samples": "TeKicks.aif",
+    "trackmask": 1,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       127,
+       0,
+       0,
+       0,
+       255,
+       0,
+       0,
+       0,
+       127,
+       0,
+       127,
+       128,
+       0,
+       0,
+       127,
+       255,
+       255,
+       0
+      ]
+     }
+    ]
+   },
+   {
+    "id": 122,
+    "engine": "sampleplayergain.engine",
+    "name": "te-snares",
+    "version": 0,
+    "samples": "TeSnares.aif",
+    "trackmask": 2,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       127,
+       0,
+       0,
+       0,
+       255,
+       0,
+       0,
+       0,
+       127,
+       0,
+       127,
+       128,
+       0,
+       0,
+       127,
+       255,
+       255,
+       0
+      ]
+     }
+    ]
+   },
+   {
+    "id": 123,
+    "engine": "sampleplayergain.engine",
+    "name": "te-perc",
+    "version": 0,
+    "samples": "TePercs.aif",
+    "trackmask": 4,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       127,
+       0,
+       0,
+       0,
+       255,
+       0,
+       0,
+       0,
+       127,
+       0,
+       127,
+       128,
+       0,
+       0,
+       127,
+       255,
+       255,
+       0
+      ]
+     }
+    ]
+   },
+   {
+    "id": 124,
+    "engine": "sampleplayergain.engine",
+    "name": "te-fx",
+    "version": 0,
+    "samples": "TeFX.aif",
+    "trackmask": 8,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       127,
+       0,
+       0,
+       0,
+       255,
+       0,
+       0,
+       0,
+       127,
+       0,
+       127,
+       128,
+       0,
+       0,
+       127,
+       255,
+       255,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "te.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/ece4a677-5126-4e5a-9112-97730235bed8/files/b47ae9f8-ed43-448f-9fc1-9b1429e36cd8",
+    "version": 1
+   }
+  ],
+  "engines": [
+   {
+    "name": "sampleplayergain.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/6c9c8e42-442b-419f-9f82-bd2816450be6",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 10
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "d6568428-e43d-4d0d-8c68-2895c197d8ec",
+  "store_id": "com.teenageengineering.te012.plug.vinyl",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "vinyl",
+  "description": "33 revolutions per minute",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 7,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 71,
+    "engine": "sampleplayergain.engine",
+    "name": "vinyl",
+    "version": 0,
+    "samples": "zVinyl.aif",
+    "trackmask": 12,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "accent"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "default",
+      "values": [
+       127,
+       50,
+       0,
+       0,
+       255,
+       0,
+       0,
+       0,
+       127,
+       0,
+       127,
+       128,
+       0,
+       0,
+       127,
+       255,
+       255,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "vinyl.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/d6568428-e43d-4d0d-8c68-2895c197d8ec/files/820896fb-3ee3-465e-9244-ad123b62f8ec",
+    "version": 1
+   }
+  ],
+  "engines": [
+   {
+    "name": "sampleplayergain.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/6c9c8e42-442b-419f-9f82-bd2816450be6",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 10
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "e20e0623-2bc4-4b4c-a004-d6cadc24e139",
+  "store_id": "com.teenageengineering.te012.plug.volt",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "volt",
+  "description": "fat and sparky",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 12,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 65,
+    "engine": "volt.engine",
+    "name": "volt",
+    "version": 0,
+    "samples": "",
+    "trackmask": 240,
+    "flags": 0,
+    "parameter_names": [
+     "support",
+     "expression"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       255,
+       255,
+       0,
+       30,
+       0,
+       19,
+       0,
+       81,
+       136,
+       156,
+       137,
+       142,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       0,
+       113,
+       0,
+       30,
+       0,
+       48,
+       0,
+       81,
+       109,
+       173,
+       137,
+       128,
+       0,
+       158,
+       104,
+       0,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       0,
+       13,
+       0,
+       30,
+       0,
+       19,
+       0,
+       81,
+       43,
+       93,
+       137,
+       128,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "",
+      "values": [
+       0,
+       85,
+       31,
+       30,
+       0,
+       24,
+       3,
+       144,
+       162,
+       188,
+       137,
+       159,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       229,
+       241,
+       3,
+       62,
+       76,
+       29,
+       8,
+       18,
+       104,
+       114,
+       127,
+       115,
+       0,
+       0,
+       0,
+       255,
+       0,
+       96
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       229,
+       241,
+       2,
+       64,
+       76,
+       9,
+       79,
+       16,
+       64,
+       145,
+       127,
+       100,
+       0,
+       29,
+       21,
+       116,
+       0,
+       255
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       238,
+       117,
+       8,
+       37,
+       195,
+       71,
+       0,
+       19,
+       139,
+       0,
+       127,
+       76,
+       84,
+       70,
+       46,
+       55,
+       205,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       101,
+       246,
+       29,
+       118,
+       92,
+       177,
+       0,
+       153,
+       54,
+       26,
+       127,
+       96,
+       84,
+       101,
+       129,
+       113,
+       213,
+       0
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 2,
+      "default_octave": 1,
+      "name": "",
+      "values": [
+       255,
+       19,
+       2,
+       114,
+       68,
+       87,
+       20,
+       48,
+       116,
+       38,
+       127,
+       80,
+       0,
+       127,
+       0,
+       0,
+       0,
+       124
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 2,
+      "default_octave": 1,
+      "name": "",
+      "values": [
+       241,
+       255,
+       0,
+       26,
+       255,
+       4,
+       20,
+       48,
+       167,
+       13,
+       127,
+       89,
+       0,
+       127,
+       0,
+       0,
+       0,
+       124
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 2,
+      "default_octave": -1,
+      "name": "",
+      "values": [
+       91,
+       167,
+       7,
+       40,
+       73,
+       15,
+       8,
+       13,
+       127,
+       0,
+       127,
+       100,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 2,
+      "default_octave": 1,
+      "name": "",
+      "values": [
+       255,
+       255,
+       7,
+       255,
+       0,
+       39,
+       65,
+       0,
+       116,
+       38,
+       127,
+       80,
+       0,
+       127,
+       135,
+       0,
+       188,
+       124
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       229,
+       241,
+       2,
+       64,
+       76,
+       9,
+       108,
+       16,
+       85,
+       255,
+       127,
+       128,
+       0,
+       56,
+       33,
+       52,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "",
+      "values": [
+       70,
+       202,
+       140,
+       85,
+       255,
+       165,
+       0,
+       69,
+       168,
+       0,
+       127,
+       128,
+       0,
+       152,
+       133,
+       0,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       184,
+       255,
+       148,
+       40,
+       203,
+       74,
+       7,
+       192,
+       118,
+       255,
+       127,
+       113,
+       0,
+       183,
+       170,
+       202,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 3,
+      "default_octave": 1,
+      "name": "",
+      "values": [
+       0,
+       0,
+       33,
+       85,
+       255,
+       75,
+       0,
+       153,
+       174,
+       0,
+       127,
+       128,
+       0,
+       255,
+       210,
+       228,
+       255,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "volt.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/e20e0623-2bc4-4b4c-a004-d6cadc24e139/files/df37f050-b8fa-4880-8439-51b22007b7de",
+    "version": 9
+   }
+  ],
+  "engines": [
+   {
+    "name": "volt.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/833b6274-de75-44e1-9153-9bae8fe22950",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 70
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "02e51c80-65bc-474b-9b31-4b4076a1d989",
+  "store_id": "com.teenageengineering.te012.plug.saw",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "saw",
+  "description": "filtered waves",
+  "is_new": false,
+  "maker": "teenage engineering",
+  "version": 13,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 26,
+    "engine": "saw013a.engine",
+    "name": "saw",
+    "version": 0,
+    "samples": "",
+    "trackmask": 240,
+    "flags": 0,
+    "parameter_names": [
+     "offset",
+     "space"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "stump",
+      "values": [
+       32,
+       0,
+       0,
+       55,
+       192,
+       20,
+       0,
+       113,
+       118,
+       18,
+       137,
+       128,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "chain",
+      "values": [
+       211,
+       92,
+       0,
+       55,
+       199,
+       55,
+       0,
+       89,
+       118,
+       18,
+       137,
+       113,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "gulp",
+      "values": [
+       56,
+       255,
+       47,
+       91,
+       0,
+       0,
+       0,
+       89,
+       46,
+       107,
+       137,
+       113,
+       0,
+       85,
+       79,
+       136,
+       229,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "filled up",
+      "values": [
+       56,
+       255,
+       51,
+       91,
+       130,
+       9,
+       0,
+       89,
+       88,
+       88,
+       137,
+       142,
+       0,
+       176,
+       114,
+       55,
+       229,
+       0
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "class IC",
+      "values": [
+       218,
+       49,
+       0,
+       44,
+       69,
+       114,
+       0,
+       82,
+       127,
+       0,
+       127,
+       113,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "mill",
+      "values": [
+       255,
+       255,
+       0,
+       86,
+       255,
+       53,
+       0,
+       38,
+       123,
+       0,
+       127,
+       100,
+       0,
+       4,
+       138,
+       67,
+       238,
+       255
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "jig",
+      "values": [
+       255,
+       244,
+       72,
+       120,
+       255,
+       109,
+       0,
+       38,
+       42,
+       67,
+       129,
+       128,
+       0,
+       66,
+       160,
+       114,
+       221,
+       131
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 1,
+      "default_octave": -1,
+      "name": "trombone",
+      "values": [
+       135,
+       128,
+       30,
+       243,
+       0,
+       0,
+       0,
+       38,
+       109,
+       163,
+       129,
+       113,
+       0,
+       205,
+       228,
+       83,
+       138,
+       131
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "see",
+      "values": [
+       155,
+       255,
+       0,
+       55,
+       63,
+       14,
+       27,
+       157,
+       127,
+       17,
+       127,
+       113,
+       0,
+       127,
+       0,
+       0,
+       0,
+       120
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 2,
+      "default_octave": 1,
+      "name": "chip",
+      "values": [
+       162,
+       41,
+       0,
+       65,
+       92,
+       0,
+       64,
+       44,
+       132,
+       22,
+       127,
+       113,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 2,
+      "default_octave": -2,
+      "name": "trump",
+      "values": [
+       255,
+       255,
+       47,
+       114,
+       255,
+       7,
+       0,
+       254,
+       129,
+       68,
+       127,
+       113,
+       0,
+       127,
+       0,
+       0,
+       0,
+       116
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 2,
+      "default_octave": 2,
+      "name": "sharp",
+      "values": [
+       95,
+       187,
+       1,
+       12,
+       95,
+       44,
+       24,
+       23,
+       98,
+       70,
+       127,
+       113,
+       0,
+       127,
+       0,
+       0,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "composer",
+      "values": [
+       177,
+       165,
+       6,
+       124,
+       81,
+       140,
+       0,
+       200,
+       146,
+       0,
+       127,
+       128,
+       0,
+       129,
+       166,
+       255,
+       255,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "forever",
+      "values": [
+       255,
+       197,
+       183,
+       124,
+       145,
+       127,
+       0,
+       75,
+       117,
+       0,
+       127,
+       128,
+       0,
+       59,
+       18,
+       88,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "wait",
+      "values": [
+       93,
+       165,
+       0,
+       124,
+       81,
+       127,
+       0,
+       75,
+       146,
+       0,
+       127,
+       128,
+       0,
+       59,
+       18,
+       88,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 3,
+      "default_octave": -1,
+      "name": "the end",
+      "values": [
+       177,
+       165,
+       59,
+       124,
+       81,
+       140,
+       198,
+       59,
+       43,
+       77,
+       127,
+       100,
+       0,
+       68,
+       29,
+       162,
+       0,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "saw.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/02e51c80-65bc-474b-9b31-4b4076a1d989/files/1b2ecb50-db9a-44ab-a7a2-3da07d6b6bd4",
+    "version": 5
+   }
+  ],
+  "engines": [
+   {
+    "name": "saw013a.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/71241ee9-8d54-48ba-827e-d2bae20a9ccc",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 16
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "f5dbe1af-902f-4c2e-a805-63e13806fdef",
+  "store_id": "com.teenageengineering.te012.plug.chorus2",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "chorus-80",
+  "description": "oldschool chorus",
+  "is_new": true,
+  "maker": "teenage engineering",
+  "version": 6,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 13,
+    "engine": "chorus2.engine",
+    "name": "chorus-80",
+    "version": 6,
+    "samples": "",
+    "trackmask": 768,
+    "flags": 0,
+    "parameter_names": [
+     "speed",
+     "depth"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       37,
+       99,
+       232,
+       159,
+       136,
+       25,
+       255,
+       0,
+       129,
+       63,
+       127,
+       255,
+       63,
+       132,
+       51,
+       255,
+       0,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "chorus.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/f5dbe1af-902f-4c2e-a805-63e13806fdef/files/6ebfde61-35c4-46fe-aeca-4fe6ea3894a1",
+    "version": 1
+   }
+  ],
+  "engines": [
+   {
+    "name": "chorus2.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/89a75e0b-4461-476d-922b-8ad370ba749a",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 88
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "99e04054-6995-4e79-a887-917524fc12c7",
+  "store_id": "com.teenageengineering.te012.plug.fdnreverb",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "reverb",
+  "description": "clean reverb with predelay",
+  "is_new": true,
+  "maker": "teenage engineering",
+  "version": 7,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 43,
+    "engine": "fdnreverb.engine",
+    "name": "reverb",
+    "version": 7,
+    "samples": "",
+    "trackmask": 768,
+    "flags": 0,
+    "parameter_names": [
+     "time",
+     "tone"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       127,
+       70,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       126,
+       0,
+       127,
+       255,
+       0,
+       128,
+       100,
+       255,
+       0,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "reverb.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/99e04054-6995-4e79-a887-917524fc12c7/files/10ec9801-d1fc-4dc8-85df-3c35e602e960",
+    "version": 1
+   }
+  ],
+  "engines": [
+   {
+    "name": "fdnreverb.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/2df06532-ba50-45c8-88f1-cc9bfd72e66f",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 89
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "9591938c-0759-4045-b26d-9f7b5388f391",
+  "store_id": "com.teenageengineering.te012.plug.analoga",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "analoga",
+  "description": " saw, sub, noise with filter",
+  "is_new": true,
+  "maker": "teenage engineering",
+  "version": 24,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 10,
+    "engine": "analoga.engine",
+    "name": "analog",
+    "version": 25,
+    "samples": "",
+    "trackmask": 240,
+    "flags": 20,
+    "parameter_names": [
+     "osc",
+     "env"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "default",
+      "values": [
+       57,
+       181,
+       30,
+       138,
+       0,
+       87,
+       0,
+       0,
+       80,
+       32,
+       127,
+       218,
+       0,
+       159,
+       249,
+       230,
+       159,
+       187
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 0,
+      "default_octave": -1,
+      "name": "default",
+      "values": [
+       61,
+       212,
+       42,
+       77,
+       48,
+       209,
+       0,
+       0,
+       40,
+       82,
+       127,
+       135,
+       0,
+       66,
+       37,
+       69,
+       203,
+       119
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 0,
+      "default_octave": -1,
+      "name": "default",
+      "values": [
+       81,
+       214,
+       27,
+       144,
+       0,
+       194,
+       0,
+       0,
+       6,
+       143,
+       127,
+       206,
+       2,
+       113,
+       196,
+       165,
+       5,
+       114
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 0,
+      "default_octave": -1,
+      "name": "default",
+      "values": [
+       52,
+       254,
+       10,
+       67,
+       0,
+       41,
+       0,
+       0,
+       0,
+       43,
+       127,
+       170,
+       0,
+       136,
+       155,
+       125,
+       158,
+       53
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 1,
+      "default_octave": 1,
+      "name": "default",
+      "values": [
+       74,
+       192,
+       2,
+       235,
+       20,
+       202,
+       15,
+       12,
+       57,
+       34,
+       127,
+       174,
+       0,
+       93,
+       188,
+       178,
+       5,
+       50
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 1,
+      "default_octave": 1,
+      "name": "default",
+      "values": [
+       135,
+       211,
+       56,
+       255,
+       60,
+       176,
+       12,
+       0,
+       28,
+       78,
+       127,
+       170,
+       16,
+       113,
+       196,
+       165,
+       5,
+       211
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       81,
+       220,
+       27,
+       144,
+       0,
+       125,
+       10,
+       24,
+       0,
+       148,
+       127,
+       170,
+       0,
+       113,
+       196,
+       165,
+       5,
+       60
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       141,
+       182,
+       56,
+       185,
+       0,
+       195,
+       12,
+       52,
+       35,
+       142,
+       127,
+       170,
+       0,
+       70,
+       188,
+       170,
+       140,
+       149
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       189,
+       163,
+       38,
+       142,
+       39,
+       73,
+       43,
+       14,
+       158,
+       84,
+       127,
+       122,
+       0,
+       113,
+       128,
+       8,
+       0,
+       87
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 2,
+      "default_octave": -1,
+      "name": "default",
+      "values": [
+       165,
+       205,
+       12,
+       26,
+       0,
+       125,
+       24,
+       8,
+       28,
+       144,
+       127,
+       162,
+       0,
+       113,
+       128,
+       8,
+       0,
+       11
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       110,
+       217,
+       2,
+       229,
+       159,
+       85,
+       50,
+       29,
+       85,
+       90,
+       127,
+       146,
+       0,
+       115,
+       128,
+       8,
+       0,
+       121
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       65,
+       204,
+       0,
+       47,
+       0,
+       69,
+       0,
+       0,
+       18,
+       92,
+       127,
+       190,
+       0,
+       113,
+       128,
+       8,
+       0,
+       11
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       60,
+       0,
+       22,
+       125,
+       17,
+       218,
+       7,
+       6,
+       72,
+       104,
+       127,
+       156,
+       0,
+       104,
+       127,
+       165,
+       145,
+       81
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       70,
+       91,
+       132,
+       151,
+       255,
+       174,
+       43,
+       0,
+       71,
+       145,
+       127,
+       171,
+       0,
+       166,
+       226,
+       170,
+       196,
+       65
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       110,
+       193,
+       63,
+       122,
+       196,
+       158,
+       28,
+       0,
+       59,
+       88,
+       127,
+       180,
+       0,
+       53,
+       119,
+       89,
+       255,
+       14
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 3,
+      "default_octave": -1,
+      "name": "default",
+      "values": [
+       128,
+       220,
+       0,
+       222,
+       48,
+       237,
+       0,
+       0,
+       32,
+       82,
+       127,
+       170,
+       0,
+       34,
+       37,
+       69,
+       203,
+       44
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "saw.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/9591938c-0759-4045-b26d-9f7b5388f391/files/dfab7bce-f201-4600-9697-3089345058cf",
+    "version": 1
+   }
+  ],
+  "engines": [
+   {
+    "name": "analoga.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/ecea58b6-8939-4aed-8a79-abbdcaea2b90",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 27
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "9ffe9200-b5d5-4d0c-9f4a-65d79932c5b6",
+  "store_id": "com.teenageengineering.te012.plug.organ",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "organ",
+  "description": "fm organ sounds ",
+  "is_new": true,
+  "maker": "teenage engineering",
+  "version": 8,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 14,
+    "engine": "organ.engine",
+    "name": "organ",
+    "version": 9,
+    "samples": "",
+    "trackmask": 240,
+    "flags": 0,
+    "parameter_names": [
+     "algo",
+     "tone"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "default",
+      "values": [
+       109,
+       0,
+       20,
+       175,
+       140,
+       30,
+       0,
+       0,
+       88,
+       51,
+       137,
+       191,
+       0,
+       130,
+       211,
+       79,
+       4,
+       111
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "default",
+      "values": [
+       233,
+       255,
+       18,
+       80,
+       0,
+       18,
+       0,
+       0,
+       128,
+       40,
+       137,
+       229,
+       0,
+       154,
+       189,
+       83,
+       255,
+       71
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "default",
+      "values": [
+       168,
+       18,
+       18,
+       80,
+       51,
+       28,
+       0,
+       0,
+       97,
+       48,
+       137,
+       229,
+       0,
+       154,
+       189,
+       83,
+       255,
+       71
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 0,
+      "default_octave": -1,
+      "name": "default",
+      "values": [
+       232,
+       19,
+       3,
+       226,
+       120,
+       80,
+       0,
+       0,
+       43,
+       58,
+       137,
+       191,
+       0,
+       130,
+       197,
+       114,
+       68,
+       102
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 1,
+      "default_octave": 1,
+      "name": "default",
+      "values": [
+       39,
+       17,
+       0,
+       166,
+       46,
+       102,
+       15,
+       18,
+       96,
+       20,
+       127,
+       160,
+       0,
+       102,
+       208,
+       250,
+       209,
+       44
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 1,
+      "default_octave": 1,
+      "name": "default",
+      "values": [
+       196,
+       0,
+       0,
+       143,
+       0,
+       47,
+       16,
+       93,
+       135,
+       38,
+       127,
+       170,
+       0,
+       85,
+       202,
+       191,
+       39,
+       44
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 1,
+      "default_octave": 1,
+      "name": "default",
+      "values": [
+       0,
+       17,
+       1,
+       173,
+       205,
+       82,
+       0,
+       0,
+       72,
+       150,
+       127,
+       180,
+       175,
+       245,
+       58,
+       1,
+       91,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 1,
+      "default_octave": 1,
+      "name": "default",
+      "values": [
+       171,
+       0,
+       51,
+       103,
+       76,
+       63,
+       16,
+       93,
+       128,
+       32,
+       127,
+       180,
+       31,
+       50,
+       196,
+       81,
+       145,
+       216
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       255,
+       255,
+       0,
+       12,
+       34,
+       63,
+       17,
+       5,
+       125,
+       48,
+       127,
+       200,
+       0,
+       118,
+       0,
+       12,
+       0,
+       47
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       120,
+       65,
+       0,
+       1,
+       234,
+       43,
+       30,
+       5,
+       127,
+       0,
+       127,
+       150,
+       0,
+       118,
+       0,
+       12,
+       0,
+       158
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       179,
+       222,
+       0,
+       12,
+       34,
+       66,
+       17,
+       5,
+       125,
+       48,
+       127,
+       190,
+       0,
+       118,
+       0,
+       12,
+       0,
+       47
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       73,
+       222,
+       0,
+       0,
+       255,
+       45,
+       17,
+       5,
+       125,
+       48,
+       127,
+       145,
+       0,
+       118,
+       0,
+       12,
+       0,
+       47
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       0,
+       0,
+       0,
+       20,
+       255,
+       2,
+       0,
+       0,
+       126,
+       4,
+       127,
+       170,
+       0,
+       108,
+       181,
+       182,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       55,
+       0,
+       0,
+       20,
+       255,
+       0,
+       0,
+       0,
+       126,
+       5,
+       127,
+       170,
+       0,
+       78,
+       191,
+       255,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       88,
+       0,
+       88,
+       213,
+       182,
+       32,
+       0,
+       0,
+       126,
+       4,
+       127,
+       170,
+       0,
+       62,
+       156,
+       245,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       114,
+       0,
+       1,
+       20,
+       255,
+       20,
+       0,
+       0,
+       126,
+       4,
+       127,
+       170,
+       0,
+       131,
+       191,
+       184,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 4,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       151,
+       0,
+       0,
+       20,
+       255,
+       2,
+       0,
+       0,
+       126,
+       4,
+       127,
+       170,
+       0,
+       128,
+       181,
+       197,
+       2,
+       0
+      ]
+     },
+     {
+      "index": 5,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       184,
+       0,
+       1,
+       20,
+       255,
+       3,
+       0,
+       0,
+       126,
+       4,
+       127,
+       170,
+       0,
+       131,
+       191,
+       184,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 6,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       192,
+       0,
+       0,
+       20,
+       255,
+       20,
+       0,
+       0,
+       129,
+       5,
+       127,
+       170,
+       0,
+       86,
+       194,
+       179,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 7,
+      "slot": 3,
+      "default_octave": 1,
+      "name": "default",
+      "values": [
+       255,
+       255,
+       0,
+       20,
+       255,
+       12,
+       0,
+       0,
+       126,
+       5,
+       127,
+       170,
+       0,
+       127,
+       197,
+       185,
+       0,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "analog.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/9ffe9200-b5d5-4d0c-9f4a-65d79932c5b6/files/01c8173a-7d16-4cc4-ab29-1efd38728ee3",
+    "version": 1
+   }
+  ],
+  "engines": [
+   {
+    "name": "organ.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/0fd49de5-938a-4c01-a854-145b39670c86",
+    "version": 3,
+    "attributes": {
+     "memoryslot": 18
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "288ecfdc-9a3c-41c9-b0ef-6ce9b2ea32a9",
+  "store_id": "com.teenageengineering.te012.plug.redmount",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "redmount samples vol.1",
+  "description": "dirt and acoustic",
+  "is_new": false,
+  "maker": "redmount studios",
+  "version": 20,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 150,
+    "engine": "sampleplayergain.engine",
+    "name": "rdmt kicks",
+    "version": 20,
+    "samples": "redmountKicks.aif",
+    "trackmask": 1,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "reverse"
+    ],
+    "presets": []
+   },
+   {
+    "id": 151,
+    "engine": "sampleplayergain.engine",
+    "name": "rdmt snares",
+    "version": 20,
+    "samples": "redmountSnares.aif",
+    "trackmask": 2,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "reverse"
+    ],
+    "presets": []
+   },
+   {
+    "id": 152,
+    "engine": "sampleplayergain.engine",
+    "name": "rdmt perc",
+    "version": 20,
+    "samples": "redmountPerc.aif",
+    "trackmask": 4,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "reverse"
+    ],
+    "presets": []
+   },
+   {
+    "id": 153,
+    "engine": "sampleplayergain.engine",
+    "name": "rdmt fx",
+    "version": 20,
+    "samples": "redmountFX.aif",
+    "trackmask": 8,
+    "flags": 0,
+    "parameter_names": [
+     "pitch",
+     "reverse"
+    ],
+    "presets": []
+   }
+  ],
+  "files": [
+   {
+    "kind": "opz-sample",
+    "name": "redmountKicks.aif",
+    "mime": "application/opz-sample",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/288ecfdc-9a3c-41c9-b0ef-6ce9b2ea32a9/files/c4068e82-bd45-4afd-8cb3-6bf9608ccd3f",
+    "version": 2
+   },
+   {
+    "kind": "opz-sample",
+    "name": "redmountPerc.aif",
+    "mime": "application/opz-sample",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/288ecfdc-9a3c-41c9-b0ef-6ce9b2ea32a9/files/a7baf1ed-313b-4655-9d2e-f51ebc3683e4",
+    "version": 2
+   },
+   {
+    "kind": "opz-sample",
+    "name": "redmountSnares.aif",
+    "mime": "application/opz-sample",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/288ecfdc-9a3c-41c9-b0ef-6ce9b2ea32a9/files/fc55a747-5fb4-4126-9092-78d838c92716",
+    "version": 2
+   },
+   {
+    "kind": "hero-image",
+    "name": "redmount.jpg",
+    "mime": "image/jpeg",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/288ecfdc-9a3c-41c9-b0ef-6ce9b2ea32a9/files/990760a8-6870-42e7-b748-1840c7a87abe",
+    "version": 1
+   },
+   {
+    "kind": "opz-sample",
+    "name": "redmountFX.aif",
+    "mime": "application/opz-sample",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/288ecfdc-9a3c-41c9-b0ef-6ce9b2ea32a9/files/bb35293e-bf77-4e81-b66c-2d0aae65b25e",
+    "version": 4
+   }
+  ],
+  "engines": [
+   {
+    "name": "sampleplayergain.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/6c9c8e42-442b-419f-9f82-bd2816450be6",
+    "version": 2,
+    "attributes": {
+     "memoryslot": 10
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ },
+ {
+  "id": "190ec70a-6fcf-4574-9cf7-b4fe22faee46",
+  "store_id": "com.teenageengineering.te012.plug.ep",
+  "price_tier": 0,
+  "factory_plug": true,
+  "name": "ep",
+  "description": "digital piano",
+  "is_new": true,
+  "maker": "teenage engineering",
+  "version": 0,
+  "product_version": "",
+  "plugs": [
+   {
+    "id": 17,
+    "engine": "ep.engine",
+    "name": "ep",
+    "version": 2,
+    "samples": "",
+    "trackmask": 240,
+    "flags": 16,
+    "parameter_names": [
+     "algo",
+     "tone"
+    ],
+    "presets": [
+     {
+      "index": 0,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "default",
+      "values": [
+       0,
+       128,
+       0,
+       70,
+       0,
+       60,
+       0,
+       0,
+       128,
+       1,
+       127,
+       240,
+       0,
+       125,
+       51,
+       255,
+       0,
+       114
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "default",
+      "values": [
+       47,
+       128,
+       0,
+       70,
+       0,
+       60,
+       0,
+       0,
+       128,
+       1,
+       127,
+       140,
+       0,
+       125,
+       51,
+       255,
+       0,
+       114
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "default",
+      "values": [
+       113,
+       128,
+       0,
+       70,
+       0,
+       60,
+       0,
+       0,
+       128,
+       1,
+       127,
+       160,
+       0,
+       125,
+       51,
+       255,
+       0,
+       114
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 0,
+      "default_octave": -2,
+      "name": "default",
+      "values": [
+       173,
+       128,
+       0,
+       70,
+       0,
+       60,
+       0,
+       0,
+       128,
+       1,
+       127,
+       160,
+       0,
+       125,
+       51,
+       255,
+       0,
+       114
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       0,
+       127,
+       0,
+       0,
+       255,
+       20,
+       0,
+       20,
+       128,
+       0,
+       127,
+       170,
+       0,
+       128,
+       51,
+       255,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 1,
+      "default_octave": 1,
+      "name": "default",
+      "values": [
+       137,
+       74,
+       0,
+       0,
+       255,
+       182,
+       0,
+       20,
+       128,
+       0,
+       127,
+       170,
+       0,
+       128,
+       51,
+       255,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       220,
+       127,
+       0,
+       0,
+       255,
+       20,
+       0,
+       20,
+       128,
+       0,
+       127,
+       170,
+       0,
+       128,
+       51,
+       255,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 1,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       255,
+       127,
+       0,
+       0,
+       255,
+       20,
+       0,
+       20,
+       128,
+       0,
+       127,
+       170,
+       0,
+       128,
+       51,
+       255,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       0,
+       70,
+       0,
+       27,
+       21,
+       43,
+       0,
+       10,
+       130,
+       0,
+       127,
+       255,
+       0,
+       51,
+       92,
+       0,
+       105,
+       114
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 2,
+      "default_octave": 1,
+      "name": "default",
+      "values": [
+       137,
+       82,
+       0,
+       26,
+       14,
+       50,
+       0,
+       20,
+       128,
+       0,
+       127,
+       255,
+       0,
+       51,
+       92,
+       0,
+       105,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 2,
+      "default_octave": -1,
+      "name": "default",
+      "values": [
+       220,
+       131,
+       0,
+       0,
+       250,
+       9,
+       0,
+       8,
+       128,
+       0,
+       127,
+       255,
+       0,
+       51,
+       92,
+       0,
+       105,
+       114
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 2,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       198,
+       101,
+       0,
+       30,
+       36,
+       24,
+       0,
+       20,
+       128,
+       0,
+       127,
+       255,
+       0,
+       51,
+       92,
+       0,
+       105,
+       114
+      ]
+     },
+     {
+      "index": 0,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       0,
+       127,
+       0,
+       0,
+       255,
+       20,
+       0,
+       20,
+       128,
+       0,
+       127,
+       170,
+       0,
+       128,
+       51,
+       255,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 1,
+      "slot": 3,
+      "default_octave": 1,
+      "name": "default",
+      "values": [
+       137,
+       74,
+       0,
+       0,
+       255,
+       182,
+       0,
+       20,
+       128,
+       0,
+       127,
+       170,
+       0,
+       128,
+       51,
+       255,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 2,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       220,
+       127,
+       0,
+       0,
+       255,
+       20,
+       0,
+       20,
+       128,
+       0,
+       127,
+       170,
+       0,
+       128,
+       51,
+       255,
+       0,
+       0
+      ]
+     },
+     {
+      "index": 3,
+      "slot": 3,
+      "default_octave": 0,
+      "name": "default",
+      "values": [
+       255,
+       127,
+       0,
+       0,
+       255,
+       20,
+       0,
+       20,
+       128,
+       0,
+       127,
+       170,
+       0,
+       46,
+       194,
+       255,
+       0,
+       0
+      ]
+     }
+    ]
+   }
+  ],
+  "files": [
+   {
+    "kind": "hero-image",
+    "name": "blues.png",
+    "mime": "image/png",
+    "api_path": "/_api/id/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/dlcs/190ec70a-6fcf-4574-9cf7-b4fe22faee46/files/81f0a06f-2a08-4a02-82ff-3e6074d0c2fb",
+    "version": 1
+   }
+  ],
+  "engines": [
+   {
+    "name": "ep.engine",
+    "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/a5848ba0-5494-4d8e-beb7-14c634dbee3c",
+    "version": 4,
+    "attributes": {
+     "memoryslot": 4
+    }
+   }
+  ],
+  "videopaks": [],
+  "camerarolls": []
+ }
+]

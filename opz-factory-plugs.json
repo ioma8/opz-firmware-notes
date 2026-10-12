@@ -1,0 +1,2134 @@
+{
+ "source": "OP-Z_1.3.0_APKPure.apk assets/factory-plug-cache/*/metadata.json",
+ "plugs": [
+  {
+   "id": 11,
+   "name": "cluster",
+   "short_name": "",
+   "engine": "cluster.engine",
+   "flags": 0,
+   "trackmask": 240,
+   "samples": "",
+   "parameterNames": [
+    "noise",
+    "shape"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.cluster",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "dank",
+     "index": 2,
+     "slot": 1,
+     "defaultOctave": 1,
+     "values": [
+      0,
+      24,
+      0,
+      53,
+      37,
+      59,
+      0,
+      56,
+      122,
+      83,
+      127,
+      128,
+      0,
+      175,
+      116,
+      202,
+      255,
+      0
+     ]
+    },
+    {
+     "name": "puffer",
+     "index": 3,
+     "slot": 1,
+     "defaultOctave": 2,
+     "values": [
+      45,
+      161,
+      9,
+      230,
+      27,
+      10,
+      2,
+      191,
+      194,
+      54,
+      129,
+      128,
+      0,
+      127,
+      0,
+      255,
+      0,
+      96
+     ]
+    },
+    {
+     "name": "snap",
+     "index": 0,
+     "slot": 2,
+     "defaultOctave": 0,
+     "values": [
+      202,
+      28,
+      0,
+      64,
+      255,
+      36,
+      56,
+      255,
+      130,
+      33,
+      127,
+      113,
+      0,
+      127,
+      0,
+      0,
+      0,
+      96
+     ]
+    },
+    {
+     "name": "puffer",
+     "index": 1,
+     "slot": 2,
+     "defaultOctave": 1,
+     "values": [
+      255,
+      255,
+      0,
+      64,
+      255,
+      11,
+      69,
+      220,
+      130,
+      33,
+      127,
+      100,
+      0,
+      127,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "name": "dank",
+     "index": 2,
+     "slot": 2,
+     "defaultOctave": 2,
+     "values": [
+      255,
+      255,
+      9,
+      71,
+      102,
+      70,
+      56,
+      255,
+      194,
+      59,
+      127,
+      113,
+      0,
+      127,
+      0,
+      0,
+      0,
+      96
+     ]
+    },
+    {
+     "name": "abra",
+     "index": 0,
+     "slot": 3,
+     "defaultOctave": 0,
+     "values": [
+      40,
+      35,
+      121,
+      79,
+      255,
+      182,
+      11,
+      184,
+      146,
+      0,
+      129,
+      128,
+      0,
+      43,
+      183,
+      222,
+      255,
+      0
+     ]
+    },
+    {
+     "name": "cadabra",
+     "index": 1,
+     "slot": 3,
+     "defaultOctave": 0,
+     "values": [
+      46,
+      204,
+      140,
+      79,
+      241,
+      182,
+      11,
+      255,
+      123,
+      0,
+      129,
+      113,
+      0,
+      8,
+      153,
+      0,
+      253,
+      0
+     ]
+    },
+    {
+     "name": "pop",
+     "index": 2,
+     "slot": 3,
+     "defaultOctave": 2,
+     "values": [
+      77,
+      255,
+      0,
+      186,
+      45,
+      106,
+      0,
+      112,
+      189,
+      123,
+      127,
+      100,
+      0,
+      76,
+      130,
+      203,
+      255,
+      0
+     ]
+    },
+    {
+     "name": "corn",
+     "index": 3,
+     "slot": 3,
+     "defaultOctave": 2,
+     "values": [
+      13,
+      251,
+      0,
+      186,
+      22,
+      0,
+      31,
+      112,
+      152,
+      123,
+      127,
+      113,
+      0,
+      47,
+      93,
+      117,
+      255,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 25,
+   "name": "digital",
+   "short_name": "",
+   "engine": "digital.engine",
+   "flags": 0,
+   "trackmask": 240,
+   "samples": "",
+   "parameterNames": [
+    "offset",
+    "space"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.leaddigital",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "dust",
+     "index": 1,
+     "slot": 1,
+     "defaultOctave": 0,
+     "values": [
+      0,
+      255,
+      14,
+      84,
+      30,
+      17,
+      2,
+      0,
+      156,
+      163,
+      127,
+      123,
+      0,
+      210,
+      125,
+      203,
+      255,
+      0
+     ]
+    },
+    {
+     "name": "digital",
+     "index": 2,
+     "slot": 1,
+     "defaultOctave": 0,
+     "values": [
+      31,
+      111,
+      43,
+      10,
+      94,
+      67,
+      80,
+      191,
+      92,
+      22,
+      127,
+      128,
+      0,
+      0,
+      250,
+      183,
+      255,
+      0
+     ]
+    },
+    {
+     "name": "where are y",
+     "index": 3,
+     "slot": 1,
+     "defaultOctave": 0,
+     "values": [
+      0,
+      0,
+      0,
+      238,
+      239,
+      75,
+      30,
+      98,
+      89,
+      50,
+      127,
+      71,
+      0,
+      10,
+      120,
+      255,
+      147,
+      255
+     ]
+    }
+   ]
+  },
+  {
+   "id": 26,
+   "name": "saw",
+   "short_name": "",
+   "engine": "saw013a.engine",
+   "flags": 0,
+   "trackmask": 240,
+   "samples": "",
+   "parameterNames": [
+    "offset",
+    "space"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.saw",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "stump",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      32,
+      0,
+      0,
+      55,
+      192,
+      20,
+      0,
+      113,
+      118,
+      18,
+      137,
+      128,
+      0,
+      127,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "name": "chain",
+     "index": 1,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      211,
+      92,
+      0,
+      55,
+      199,
+      55,
+      0,
+      89,
+      118,
+      18,
+      137,
+      113,
+      0,
+      127,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "name": "gulp",
+     "index": 2,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      56,
+      255,
+      47,
+      91,
+      0,
+      0,
+      0,
+      89,
+      46,
+      107,
+      137,
+      113,
+      0,
+      85,
+      79,
+      136,
+      229,
+      0
+     ]
+    },
+    {
+     "name": "filled up",
+     "index": 3,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      56,
+      255,
+      51,
+      91,
+      130,
+      9,
+      0,
+      89,
+      88,
+      88,
+      137,
+      142,
+      0,
+      176,
+      114,
+      55,
+      229,
+      0
+     ]
+    },
+    {
+     "name": "class IC",
+     "index": 0,
+     "slot": 1,
+     "defaultOctave": 0,
+     "values": [
+      218,
+      49,
+      0,
+      44,
+      69,
+      114,
+      0,
+      82,
+      127,
+      0,
+      127,
+      113,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "name": "mill",
+     "index": 1,
+     "slot": 1,
+     "defaultOctave": 0,
+     "values": [
+      255,
+      255,
+      0,
+      86,
+      255,
+      53,
+      0,
+      38,
+      123,
+      0,
+      127,
+      100,
+      0,
+      4,
+      138,
+      67,
+      238,
+      255
+     ]
+    },
+    {
+     "name": "jig",
+     "index": 2,
+     "slot": 1,
+     "defaultOctave": 0,
+     "values": [
+      255,
+      244,
+      72,
+      120,
+      255,
+      109,
+      0,
+      38,
+      42,
+      67,
+      129,
+      128,
+      0,
+      66,
+      160,
+      114,
+      221,
+      131
+     ]
+    },
+    {
+     "name": "trombone",
+     "index": 3,
+     "slot": 1,
+     "defaultOctave": -1,
+     "values": [
+      135,
+      128,
+      30,
+      243,
+      0,
+      0,
+      0,
+      38,
+      109,
+      163,
+      129,
+      113,
+      0,
+      205,
+      228,
+      83,
+      138,
+      131
+     ]
+    },
+    {
+     "name": "see",
+     "index": 0,
+     "slot": 2,
+     "defaultOctave": 0,
+     "values": [
+      155,
+      255,
+      0,
+      55,
+      63,
+      14,
+      27,
+      157,
+      127,
+      17,
+      127,
+      113,
+      0,
+      127,
+      0,
+      0,
+      0,
+      120
+     ]
+    },
+    {
+     "name": "chip",
+     "index": 1,
+     "slot": 2,
+     "defaultOctave": 1,
+     "values": [
+      162,
+      41,
+      0,
+      65,
+      92,
+      0,
+      64,
+      44,
+      132,
+      22,
+      127,
+      113,
+      0,
+      127,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "name": "trump",
+     "index": 2,
+     "slot": 2,
+     "defaultOctave": -2,
+     "values": [
+      255,
+      255,
+      47,
+      114,
+      255,
+      7,
+      0,
+      254,
+      129,
+      68,
+      127,
+      113,
+      0,
+      127,
+      0,
+      0,
+      0,
+      116
+     ]
+    },
+    {
+     "name": "sharp",
+     "index": 3,
+     "slot": 2,
+     "defaultOctave": 2,
+     "values": [
+      95,
+      187,
+      1,
+      12,
+      95,
+      44,
+      24,
+      23,
+      98,
+      70,
+      127,
+      113,
+      0,
+      127,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "name": "composer",
+     "index": 0,
+     "slot": 3,
+     "defaultOctave": 0,
+     "values": [
+      177,
+      165,
+      6,
+      124,
+      81,
+      140,
+      0,
+      200,
+      146,
+      0,
+      127,
+      128,
+      0,
+      129,
+      166,
+      255,
+      255,
+      0
+     ]
+    },
+    {
+     "name": "forever",
+     "index": 1,
+     "slot": 3,
+     "defaultOctave": 0,
+     "values": [
+      255,
+      197,
+      183,
+      124,
+      145,
+      127,
+      0,
+      75,
+      117,
+      0,
+      127,
+      128,
+      0,
+      59,
+      18,
+      88,
+      0,
+      0
+     ]
+    },
+    {
+     "name": "wait",
+     "index": 2,
+     "slot": 3,
+     "defaultOctave": 0,
+     "values": [
+      93,
+      165,
+      0,
+      124,
+      81,
+      127,
+      0,
+      75,
+      146,
+      0,
+      127,
+      128,
+      0,
+      59,
+      18,
+      88,
+      0,
+      0
+     ]
+    },
+    {
+     "name": "the end",
+     "index": 3,
+     "slot": 3,
+     "defaultOctave": -1,
+     "values": [
+      177,
+      165,
+      59,
+      124,
+      81,
+      140,
+      198,
+      59,
+      43,
+      77,
+      127,
+      100,
+      0,
+      68,
+      29,
+      162,
+      0,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 31,
+   "name": "shade",
+   "short_name": "",
+   "engine": "chord.engine",
+   "flags": 0,
+   "trackmask": 240,
+   "samples": "",
+   "parameterNames": [
+    "phase",
+    "shape"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.shade",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "smooth",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      64,
+      255,
+      0,
+      75,
+      53,
+      24,
+      0,
+      179,
+      58,
+      84,
+      136,
+      128,
+      0,
+      0,
+      145,
+      185,
+      255,
+      0
+     ]
+    },
+    {
+     "name": " ",
+     "index": 1,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      235,
+      100,
+      70,
+      75,
+      53,
+      47,
+      0,
+      17,
+      36,
+      85,
+      137,
+      128,
+      0,
+      0,
+      145,
+      185,
+      255,
+      0
+     ]
+    },
+    {
+     "name": "sinus",
+     "index": 0,
+     "slot": 1,
+     "defaultOctave": 0,
+     "values": [
+      0,
+      255,
+      13,
+      23,
+      255,
+      3,
+      0,
+      0,
+      204,
+      84,
+      127,
+      128,
+      0,
+      0,
+      231,
+      112,
+      179,
+      100
+     ]
+    },
+    {
+     "name": "tweet",
+     "index": 1,
+     "slot": 1,
+     "defaultOctave": 0,
+     "values": [
+      197,
+      162,
+      13,
+      23,
+      255,
+      3,
+      0,
+      65,
+      211,
+      83,
+      127,
+      128,
+      127,
+      19,
+      231,
+      112,
+      179,
+      0
+     ]
+    },
+    {
+     "name": "clean",
+     "index": 0,
+     "slot": 3,
+     "defaultOctave": 0,
+     "values": [
+      0,
+      0,
+      0,
+      75,
+      47,
+      137,
+      0,
+      0,
+      127,
+      0,
+      127,
+      128,
+      0,
+      78,
+      145,
+      185,
+      255,
+      0
+     ]
+    },
+    {
+     "name": "drive",
+     "index": 1,
+     "slot": 3,
+     "defaultOctave": 0,
+     "values": [
+      117,
+      65,
+      0,
+      75,
+      47,
+      137,
+      0,
+      72,
+      125,
+      25,
+      127,
+      128,
+      0,
+      173,
+      185,
+      179,
+      255,
+      0
+     ]
+    },
+    {
+     "name": "bright",
+     "index": 2,
+     "slot": 3,
+     "defaultOctave": 1,
+     "values": [
+      0,
+      0,
+      0,
+      75,
+      47,
+      137,
+      0,
+      0,
+      127,
+      0,
+      127,
+      128,
+      0,
+      118,
+      123,
+      255,
+      255,
+      0
+     ]
+    },
+    {
+     "name": "vibrato",
+     "index": 3,
+     "slot": 3,
+     "defaultOctave": 0,
+     "values": [
+      0,
+      0,
+      0,
+      75,
+      47,
+      137,
+      0,
+      0,
+      38,
+      68,
+      127,
+      142,
+      0,
+      106,
+      126,
+      106,
+      255,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 34,
+   "name": "delay",
+   "short_name": "",
+   "engine": "delay.engine",
+   "flags": 0,
+   "trackmask": 256,
+   "samples": "",
+   "parameterNames": [
+    "feedback",
+    "lp filter"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.delay",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "default",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": 0,
+     "values": [
+      160,
+      200,
+      0,
+      127,
+      127,
+      127,
+      0,
+      0,
+      127,
+      0,
+      127,
+      128,
+      0,
+      0,
+      127,
+      255,
+      255,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 35,
+   "name": "rymd",
+   "short_name": "",
+   "engine": "reverb.engine",
+   "flags": 0,
+   "trackmask": 768,
+   "samples": "",
+   "parameterNames": [
+    "size",
+    "tone"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.reverb",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "default",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": 0,
+     "values": [
+      179,
+      0,
+      0,
+      127,
+      127,
+      255,
+      0,
+      0,
+      127,
+      0,
+      127,
+      128,
+      0,
+      0,
+      127,
+      255,
+      255,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 38,
+   "name": "tape",
+   "short_name": "",
+   "engine": "tapetwo.engine",
+   "flags": 1,
+   "trackmask": 1024,
+   "samples": "",
+   "parameterNames": [
+    "speed"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.tapetwo",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "default",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": 0,
+     "values": [
+      0,
+      127,
+      0,
+      127,
+      127,
+      127,
+      0,
+      0,
+      127,
+      0,
+      127,
+      128,
+      0,
+      0,
+      127,
+      255,
+      255,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 39,
+   "name": "chorus",
+   "short_name": "",
+   "engine": "chorus.engine",
+   "flags": 0,
+   "trackmask": 2048,
+   "samples": "",
+   "parameterNames": [
+    "amount"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.chorus",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "default",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": 0,
+     "values": [
+      0,
+      0,
+      127,
+      127,
+      127,
+      255,
+      127,
+      127,
+      127,
+      0,
+      127,
+      128,
+      0,
+      0,
+      127,
+      255,
+      255,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 65,
+   "name": "volt",
+   "short_name": "",
+   "engine": "volt.engine",
+   "flags": 0,
+   "trackmask": 240,
+   "samples": "",
+   "parameterNames": [
+    "support",
+    "expression"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.volt",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "default",
+     "index": 1,
+     "slot": 1,
+     "defaultOctave": 0,
+     "values": [
+      229,
+      241,
+      2,
+      64,
+      76,
+      9,
+      79,
+      16,
+      64,
+      145,
+      127,
+      100,
+      0,
+      29,
+      21,
+      116,
+      0,
+      255
+     ]
+    },
+    {
+     "name": "default",
+     "index": 2,
+     "slot": 3,
+     "defaultOctave": 0,
+     "values": [
+      184,
+      255,
+      148,
+      40,
+      203,
+      74,
+      7,
+      192,
+      118,
+      255,
+      127,
+      113,
+      0,
+      183,
+      170,
+      202,
+      255,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 71,
+   "name": "vinyl",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 12,
+   "samples": "zVinyl.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.vinyl",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "default",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      127,
+      50,
+      0,
+      0,
+      255,
+      0,
+      0,
+      0,
+      127,
+      0,
+      127,
+      128,
+      0,
+      0,
+      127,
+      255,
+      255,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 98,
+   "name": "electric",
+   "short_name": "",
+   "engine": "electric.engine",
+   "flags": 0,
+   "trackmask": 240,
+   "samples": "",
+   "parameterNames": [
+    "tone",
+    "digital"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.electric",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "bias",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      58,
+      2,
+      0,
+      80,
+      84,
+      58,
+      8,
+      87,
+      60,
+      89,
+      137,
+      100,
+      0,
+      26,
+      178,
+      175,
+      190,
+      255
+     ]
+    },
+    {
+     "name": "charge",
+     "index": 1,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      135,
+      10,
+      32,
+      83,
+      151,
+      28,
+      4,
+      109,
+      110,
+      0,
+      137,
+      155,
+      0,
+      125,
+      178,
+      175,
+      190,
+      255
+     ]
+    },
+    {
+     "name": "circuit",
+     "index": 2,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      84,
+      49,
+      0,
+      0,
+      156,
+      44,
+      0,
+      229,
+      72,
+      91,
+      129,
+      142,
+      0,
+      58,
+      178,
+      166,
+      190,
+      0
+     ]
+    },
+    {
+     "name": "discharge",
+     "index": 3,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      60,
+      2,
+      0,
+      21,
+      46,
+      18,
+      19,
+      118,
+      55,
+      177,
+      137,
+      128,
+      0,
+      72,
+      35,
+      39,
+      239,
+      255
+     ]
+    }
+   ]
+  },
+  {
+   "id": 99,
+   "name": "dist",
+   "short_name": "",
+   "engine": "dist.engine",
+   "flags": 1,
+   "trackmask": 768,
+   "samples": "",
+   "parameterNames": [
+    "drive",
+    "tone"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.dist",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "default",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      0,
+      127,
+      127,
+      0,
+      0,
+      0,
+      0,
+      0,
+      127,
+      0,
+      127,
+      128,
+      0,
+      0,
+      127,
+      255,
+      255,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 109,
+   "name": "crush",
+   "short_name": "",
+   "engine": "crush.engine",
+   "flags": 1,
+   "trackmask": 768,
+   "samples": "",
+   "parameterNames": [
+    "resample",
+    "vector"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.crush",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "default",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": 0,
+     "values": [
+      90,
+      136,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      127,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 112,
+   "name": "bow",
+   "short_name": "",
+   "engine": "ministringshort.engine",
+   "flags": 0,
+   "trackmask": 240,
+   "samples": "",
+   "parameterNames": [
+    "decay",
+    "spread"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.bow",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "morran",
+     "index": 3,
+     "slot": 3,
+     "defaultOctave": -1,
+     "values": [
+      52,
+      141,
+      117,
+      83,
+      225,
+      13,
+      216,
+      212,
+      69,
+      228,
+      127,
+      128,
+      0,
+      44,
+      54,
+      95,
+      248,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 121,
+   "name": "te-kicks",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 1,
+   "samples": "TeKicks.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.teenage",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "default",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": 0,
+     "values": [
+      127,
+      0,
+      0,
+      0,
+      255,
+      0,
+      0,
+      0,
+      127,
+      0,
+      127,
+      128,
+      0,
+      0,
+      127,
+      255,
+      255,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 122,
+   "name": "te-snares",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 2,
+   "samples": "TeSnares.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.teenage",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "default",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": 0,
+     "values": [
+      127,
+      0,
+      0,
+      0,
+      255,
+      0,
+      0,
+      0,
+      127,
+      0,
+      127,
+      128,
+      0,
+      0,
+      127,
+      255,
+      255,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 123,
+   "name": "te-perc",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 4,
+   "samples": "TePercs.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.teenage",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "default",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": 0,
+     "values": [
+      127,
+      0,
+      0,
+      0,
+      255,
+      0,
+      0,
+      0,
+      127,
+      0,
+      127,
+      128,
+      0,
+      0,
+      127,
+      255,
+      255,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 124,
+   "name": "te-fx",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 8,
+   "samples": "TeFX.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.teenage",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "default",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": 0,
+     "values": [
+      127,
+      0,
+      0,
+      0,
+      255,
+      0,
+      0,
+      0,
+      127,
+      0,
+      127,
+      128,
+      0,
+      0,
+      127,
+      255,
+      255,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 129,
+   "name": "uranus",
+   "short_name": "",
+   "engine": "fm003b.engine",
+   "flags": 0,
+   "trackmask": 240,
+   "samples": "",
+   "parameterNames": [
+    "fat",
+    "grease"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.uranus",
+   "factory_plug": true,
+   "presets": [
+    {
+     "name": "thud",
+     "index": 0,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      0,
+      0,
+      3,
+      43,
+      0,
+      14,
+      0,
+      0,
+      124,
+      0,
+      137,
+      178,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "name": "thump",
+     "index": 1,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      5,
+      197,
+      27,
+      43,
+      7,
+      41,
+      0,
+      89,
+      24,
+      12,
+      129,
+      113,
+      0,
+      133,
+      69,
+      119,
+      255,
+      0
+     ]
+    },
+    {
+     "name": "thick",
+     "index": 2,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      164,
+      70,
+      19,
+      57,
+      255,
+      44,
+      0,
+      0,
+      171,
+      102,
+      137,
+      128,
+      0,
+      96,
+      30,
+      82,
+      0,
+      0
+     ]
+    },
+    {
+     "name": "thug",
+     "index": 3,
+     "slot": 0,
+     "defaultOctave": -2,
+     "values": [
+      115,
+      0,
+      17,
+      31,
+      22,
+      60,
+      9,
+      0,
+      84,
+      69,
+      137,
+      143,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "id": 130,
+   "name": "z-kicks",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 1,
+   "samples": "AlainKicks.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.alain",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 131,
+   "name": "z-snares",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 2,
+   "samples": "AlainSnares.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.alain",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 132,
+   "name": "z-perc",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 4,
+   "samples": "AlainPerc.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.alain",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 133,
+   "name": "z-fx",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 8,
+   "samples": "AlainFX.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.alain",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 134,
+   "name": "cuckoo kicks",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 1,
+   "samples": "CuckooKicks.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.cuckoo",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 135,
+   "name": "cuckoo snares",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 2,
+   "samples": "CuckooSnares.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.cuckoo",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 136,
+   "name": "cuckoo perc",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 4,
+   "samples": "CuckooPerc.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.cuckoo",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 137,
+   "name": "cuckoo fx",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 8,
+   "samples": "CuckooFX.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.cuckoo",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 138,
+   "name": "cuckoo pawn",
+   "short_name": "",
+   "engine": "synthsampler.engine",
+   "flags": 0,
+   "trackmask": 240,
+   "samples": "CuckooC_keypawn.aif",
+   "parameterNames": [
+    "param a",
+    "param b"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.cuckoo",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 140,
+   "name": "seba kicks",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 1,
+   "samples": "SebaKicks.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.seba",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 141,
+   "name": "seba snares",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 2,
+   "samples": "SebaSnares.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.seba",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 142,
+   "name": "seba perc",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 4,
+   "samples": "SebaPerc.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.seba",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 143,
+   "name": "seba fx",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 0,
+   "trackmask": 8,
+   "samples": "SebaFX.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.seba",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 145,
+   "name": "nedavine fx",
+   "short_name": "",
+   "engine": "sampleplayergain.engine",
+   "flags": 4,
+   "trackmask": 8,
+   "samples": "GrantFX.aif",
+   "parameterNames": [
+    "pitch",
+    "accent"
+   ],
+   "store_id": "com.teenageengineering.te012.plug.grantfx",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 146,
+   "name": "dmx basic",
+   "short_name": "",
+   "engine": "",
+   "flags": 0,
+   "trackmask": 0,
+   "samples": "",
+   "parameterNames": [],
+   "store_id": "com.teenageengineering.te012.plug.dmxbasic",
+   "factory_plug": true,
+   "presets": []
+  },
+  {
+   "id": 147,
+   "name": "performance basic",
+   "short_name": "",
+   "engine": "",
+   "flags": 0,
+   "trackmask": 0,
+   "samples": "",
+   "parameterNames": [],
+   "store_id": "com.teenageengineering.te012.plug.performancebasic",
+   "factory_plug": true,
+   "presets": []
+  }
+ ],
+ "engines": {
+  "saw013a.engine": {
+   "memoryslot": 16
+  },
+  "digital.engine": {
+   "memoryslot": 62
+  },
+  "fm003b.engine": {
+   "memoryslot": 13
+  },
+  "reverb.engine": {
+   "memoryslot": 66
+  },
+  "cluster.engine": {
+   "memoryslot": 83
+  },
+  "ministringshort.engine": {
+   "memoryslot": 82
+  },
+  "sampleplayergain.engine": {
+   "memoryslot": 10
+  },
+  "synthsampler.engine": {
+   "memoryslot": 68
+  },
+  "tapetwo.engine": {
+   "memoryslot": 9
+  },
+  "dist.engine": {
+   "memoryslot": 78
+  },
+  "chord.engine": {
+   "memoryslot": 59
+  },
+  "chorus.engine": {
+   "memoryslot": 60
+  },
+  "electric.engine": {
+   "memoryslot": 77
+  },
+  "volt.engine": {
+   "memoryslot": 70
+  },
+  "delay.engine": {
+   "memoryslot": 61
+  },
+  "crush.engine": {
+   "memoryslot": 79
+  }
+ }
+}

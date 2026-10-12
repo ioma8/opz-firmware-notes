@@ -1,0 +1,6 @@
+[firmware: 1.2.45]
+os version: 1.2.43
+bootloader version: 1.1.35
+keyboard version: 1.2.26
+ble version: 1.1.9
+module type: none

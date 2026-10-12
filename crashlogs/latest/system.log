@@ -1,0 +1,29 @@
+[00-01-00 00:00:00] task: create task main_task
+[00-01-00 00:00:00] main: initialize [communication handlers]: took 1951 ms
+[00-01-00 00:00:00] main: initialize [spi flash]: took 1 ms
+[00-01-00 00:00:00] main: initialize [twi]: took 0 ms
+[00-01-00 00:00:00] main: initialize [usb initialization]: took 0 ms
+[00-01-00 00:00:00] main: initialize [led control]: took 0 ms
+[00-01-00 00:00:00] main: initialize [codec]: took 3 ms
+[00-01-00 00:00:00] main: initialize [module]: took 0 ms
+[00-01-00 00:00:00] main: initialize [pmic]: took 0 ms
+[17-12-31 00:00:00] main: initialize [rtc]: took 0 ms
+[17-12-31 00:00:00] main: initialize [file system init]: took 0 ms
+[17-12-31 00:00:00] main: initialize [file system mount]: took 51 ms
+[17-12-31 00:00:00] main: Read firmware 1.2.45+
+[17-12-31 00:00:00] usbcontrol: connection event: attached 0x12 0x21 0x39
+[17-12-31 00:00:00] usbcontrol: init device driver: 3
+[17-12-31 00:00:00] main: initialize [usb]: took 186 ms
+[17-12-31 00:00:00] plugmanager: save slot configuration
+[17-12-31 00:00:00] yaffsfs: yaffs: error: ENOENT
+[17-12-31 00:00:00] filemanager: opendir failed: /yaffs2/user/samplepacks/user/
+[17-12-31 00:00:00] contentmanager: Calculating used sample memory: 0 kB
+[17-12-31 00:00:00] mass_storage: create and mount FAT
+[17-12-31 00:00:00] filemanager: opendir failed: /yaffs2/user/rejected/
+[17-12-31 00:00:00] filemanager: opendir failed: /yaffs2/user/config/
+[17-12-31 00:00:00] filemanager: opendir failed: /yaffs2/user/bounces/
+[17-12-31 00:00:00] fusb302: USB status update (requested by: blackfin): Attached (cc: 2)
+[17-12-31 00:00:00] usbcontrol: smxcallback setIlim:500mA
+[26-10-07 23:23:35] power_managemen: Going to charging state
+[26-10-07 23:23:35] power_managemen: PowerPreSleep
+[26-10-07 23:23:35] command_handler: PSOC requested SER_MSG_POWER_MODE_REQUEST_POWER_OFF

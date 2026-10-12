@@ -1,0 +1,170 @@
+{
+ "electric.engine": {
+  "name": "electric.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/11ac6ed0-4b71-4ca4-a4a1-de25e85c7349",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 77
+  }
+ },
+ "reverb.engine": {
+  "name": "reverb.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/f8cddf0c-f057-4a21-987c-7af4b1e3676b",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 66
+  }
+ },
+ "digital.engine": {
+  "name": "digital.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/991c2328-789e-4285-a5f9-b6aa03ad5172",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 62
+  }
+ },
+ "cluster.engine": {
+  "name": "cluster.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/2d1d444e-d6f2-4d2b-a7c6-240fa45def96",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 83
+  }
+ },
+ "chord.engine": {
+  "name": "chord.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/7c95cc30-6733-4893-9cda-1716b96e46a7",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 59
+  }
+ },
+ "tapetwo.engine": {
+  "name": "tapetwo.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/e6c36f94-95bf-4125-b8ec-3dbf354bb97a",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 9
+  }
+ },
+ "sampleplayergain.engine": {
+  "name": "sampleplayergain.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/6c9c8e42-442b-419f-9f82-bd2816450be6",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 10
+  }
+ },
+ "synthsampler.engine": {
+  "name": "synthsampler.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/c9f93dcb-1e85-4323-80a9-5543b56b98dc",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 68
+  }
+ },
+ "chorus.engine": {
+  "name": "chorus.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/05bfe4a6-d036-450a-8817-04aebbbd9cb8",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 60
+  }
+ },
+ "ministringshort.engine": {
+  "name": "ministringshort.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/18391e87-a268-4976-bb6e-27772c95961f",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 82
+  }
+ },
+ "crush.engine": {
+  "name": "crush.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/4c94d2f1-ef47-4403-a977-9fa351e89cd5",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 79
+  }
+ },
+ "delay.engine": {
+  "name": "delay.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/7cb7f17f-0e5d-4dbd-8f17-6a3f7521a7e7",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 61
+  }
+ },
+ "dist.engine": {
+  "name": "dist.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/6cee2af8-068e-431b-aaad-5b26321c54ac",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 78
+  }
+ },
+ "fm003b.engine": {
+  "name": "fm003b.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/e8274ee9-e9fa-45cc-b690-1bd659c1a4c8",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 13
+  }
+ },
+ "volt.engine": {
+  "name": "volt.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/833b6274-de75-44e1-9153-9bae8fe22950",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 70
+  }
+ },
+ "saw013a.engine": {
+  "name": "saw013a.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/71241ee9-8d54-48ba-827e-d2bae20a9ccc",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 16
+  }
+ },
+ "chorus2.engine": {
+  "name": "chorus2.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/89a75e0b-4461-476d-922b-8ad370ba749a",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 88
+  }
+ },
+ "fdnreverb.engine": {
+  "name": "fdnreverb.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/2df06532-ba50-45c8-88f1-cc9bfd72e66f",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 89
+  }
+ },
+ "analoga.engine": {
+  "name": "analoga.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/ecea58b6-8939-4aed-8a79-abbdcaea2b90",
+  "version": 2,
+  "attributes": {
+   "memoryslot": 27
+  }
+ },
+ "organ.engine": {
+  "name": "organ.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/0fd49de5-938a-4c01-a854-145b39670c86",
+  "version": 3,
+  "attributes": {
+   "memoryslot": 18
+  }
+ },
+ "ep.engine": {
+  "name": "ep.engine",
+  "api_path": "/_api/id/my/products/597caf1a-f7e1-4d86-8881-7b17a79adfb1/assets/a5848ba0-5494-4d8e-beb7-14c634dbee3c",
+  "version": 4,
+  "attributes": {
+   "memoryslot": 4
+  }
+ }
+}

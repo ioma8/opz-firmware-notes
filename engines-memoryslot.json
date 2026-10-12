@@ -1,0 +1,18 @@
+{
+ "electric.engine": 77,
+ "reverb.engine": 66,
+ "digital.engine": 62,
+ "cluster.engine": 83,
+ "chord.engine": 59,
+ "tapetwo.engine": 9,
+ "sampleplayergain.engine": 10,
+ "synthsampler.engine": 68,
+ "chorus.engine": 60,
+ "ministringshort.engine": 82,
+ "crush.engine": 79,
+ "delay.engine": 61,
+ "dist.engine": 78,
+ "fm003b.engine": 13,
+ "volt.engine": 70,
+ "saw013a.engine": 16
+}

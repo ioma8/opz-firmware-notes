@@ -1,0 +1,176 @@
+{
+ "plugs": [
+  [
+   "02e51c80-65bc-474b-9b31-4b4076a1d989",
+   "saw",
+   null,
+   null,
+   13
+  ],
+  [
+   "422b750f-9e95-4141-a7d0-fc435438d53e",
+   "digital",
+   null,
+   null,
+   13
+  ],
+  [
+   "486da0c9-bcdb-4ffc-94f1-5644f33d5bcc",
+   "uranus",
+   null,
+   null,
+   10
+  ],
+  [
+   "51f9c9c5-bcf1-42d9-bab9-4c7e239611f3",
+   "rymd",
+   null,
+   null,
+   10
+  ],
+  [
+   "59683238-2d20-41de-8246-a8ecd4501fc6",
+   "performance basic",
+   null,
+   null,
+   3
+  ],
+  [
+   "5f86d736-9668-4367-b3a0-69ed76887cf6",
+   "dmx basic",
+   null,
+   null,
+   3
+  ],
+  [
+   "6f5833b4-33ff-48dc-876b-77f7eb967f5f",
+   "cluster",
+   null,
+   null,
+   19
+  ],
+  [
+   "716c5dd4-a6f7-440a-a9db-8957937f89b0",
+   "bow",
+   null,
+   null,
+   10
+  ],
+  [
+   "77fcfc3d-f592-45c2-a006-316ad746a930",
+   "seba",
+   null,
+   null,
+   10
+  ],
+  [
+   "9208fbb6-6eb7-49ac-a2f0-285b4e855393",
+   "cuckoo",
+   null,
+   null,
+   10
+  ],
+  [
+   "a179ea9b-02bb-4982-a4fe-2f3326657cc9",
+   "tape",
+   null,
+   null,
+   13
+  ],
+  [
+   "c2d54c11-e13e-4746-86c9-c7d6d0d2b4bc",
+   "nedavine fx",
+   null,
+   null,
+   5
+  ],
+  [
+   "c336e2cc-4671-4bc4-83be-2892bfa3fa5e",
+   "dist",
+   null,
+   null,
+   5
+  ],
+  [
+   "d4df0df6-f8b5-4cbc-a672-4d812f09810a",
+   "shade",
+   null,
+   null,
+   8
+  ],
+  [
+   "d6568428-e43d-4d0d-8c68-2895c197d8ec",
+   "vinyl",
+   null,
+   null,
+   7
+  ],
+  [
+   "d749323a-8e94-4af0-a5da-35e04fbd4d16",
+   "chorus",
+   null,
+   null,
+   6
+  ],
+  [
+   "e079ac24-68ea-43ac-9383-e62d98df8d01",
+   "electric",
+   null,
+   null,
+   12
+  ],
+  [
+   "e20e0623-2bc4-4b4c-a004-d6cadc24e139",
+   "volt",
+   null,
+   null,
+   12
+  ],
+  [
+   "eb94f285-1d73-407f-9ea2-3c59b4bddbbe",
+   "delay",
+   null,
+   null,
+   8
+  ],
+  [
+   "ece4a677-5126-4e5a-9112-97730235bed8",
+   "teenage",
+   null,
+   null,
+   17
+  ],
+  [
+   "f449c31b-775b-43b1-8474-9b0857d067a8",
+   "z",
+   null,
+   null,
+   8
+  ],
+  [
+   "f52e74ad-dc33-48a6-8767-7d27673a385f",
+   "crush",
+   null,
+   null,
+   5
+  ]
+ ],
+ "engines": {
+  "saw013a.engine": null,
+  "digital.engine": null,
+  "fm003b.engine": null,
+  "reverb.engine": null,
+  "cluster.engine": null,
+  "ministringshort.engine": null,
+  "sampleplayergain.engine": null,
+  "synthsampler.engine": null,
+  "tapetwo.engine": null,
+  "dist.engine": null,
+  "chord.engine": null,
+  "chorus.engine": null,
+  "electric.engine": null,
+  "volt.engine": null,
+  "delay.engine": null,
+  "crush.engine": null
+ }
+}

@@ -1,0 +1,9 @@
+
+------------------------------------------
+[2026-10-07 22:49] upgrade started 
+[2026-10-07 22:49] content -> OK
+[2026-10-07 22:49] os -> OK
+[2026-10-07 22:49] bootloader -> OK
+[2026-10-07 22:49] ble -> Already installed
+[2026-10-07 22:49] keyboard -> OK
+[2026-10-07 22:49] successfully upgraded to 1.2.45
