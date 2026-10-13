@@ -48,7 +48,7 @@ tagged, Phase 3 deliberately untagged.
   host input at all. The tail combines it as
   `((samples[phase >> 31] − v5) + v6 + v7) − v9`, saturating. Its first half repeats `renderSaw`'s four
   quadrant blocks verbatim, so `ratio`, `sine_cubed` and `quadrant` in `analog_a.rs` apply as they are.
-  `((samples[phase >> 31] - v5) + v6 + v7) - v9`. Verify against the 144 `render_square` cases
+  Verify against the 144 `render_square` cases
   already in `tests/golden/analoga/oscillators.json` (its `renderSaw` sibling needed exactly one
   fixture-caught fix, an ordering of the two sub-branches).
 * **`_RFilter_fetch`** — **its fixtures already exist** (50 calls, every row, 15 distinct outcomes,
