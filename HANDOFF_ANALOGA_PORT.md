@@ -41,8 +41,11 @@ tagged, Phase 3 deliberately untagged.
 
 * **`renderSquare`** — its function-static `samples` (the one needing `__cxa_guard_*`) is just
   `samples = DAT_0017b2a0`, a pointer into the library's own `.rodata`: copy the table from the file,
-  it is not a host input. That table is **two `i32` entries** — the tail indexes it as
-  `samples[phase >> 31]`, i.e. by the phase's sign bit. Its first half repeats `renderSaw`'s four
+  it is not a host input. The table at 0x17b2a0 begins `a9454ff4, a94457f6, a9435ff8, a94267fa` — a
+  descending linear ramp with a step of `-0xF7FE`, so it is longer than the four entries read here.
+  The *tail* indexes it only as `samples[phase >> 31]` (the phase's sign bit), but the function's
+  unread middle probably indexes it by a computed position as well; **do not assume two entries**
+  — dump as many as the middle's indexing needs before porting. Its first half repeats `renderSaw`'s four
   quadrant blocks verbatim, so `ratio`, `sine_cubed` and `quadrant` in `analog_a.rs` apply as they
   are; the tail then combines its four terms as a chain of *saturating* add/sub:
   `((samples[phase >> 31] - v5) + v6 + v7) - v9`. Verify against the 144 `render_square` cases
