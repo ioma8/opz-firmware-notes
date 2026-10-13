@@ -373,6 +373,13 @@ port is analysed but **not written**, so this phase cannot be tagged yet.
         `_RFilter_fetch` (712 B), `setEnvelopeState` (76 B) and `updateFilterEnvelope` (292 B), all
         against the same fixture sets (`render` against the 20 recorded outputs, `renderSquare`
         against the same oscillator fixtures that already cover `renderSaw`).
+      - `renderSquare` starts with the function-static `samples` that needs the `__cxa_guard_*` shims,
+        and reading it shows **it is not host data at all**: the guard body is
+        `samples = DAT_0017b2a0`, a pointer to the library's own `.rodata`. So the port copies that
+        table from the file like the octave-boundary table, rather than taking it as an input. Its
+        first half repeats `renderSaw`'s four quadrant blocks verbatim - the shaping helpers
+        (`ratio`, `sine_cubed`, `quadrant`) are already written and verified, so this is the next
+        slice to land, followed by `_RFilter_fetch` and then `render`.
       - Harness bugs found and fixed on the way (they were hiding the above): the pthread shims
         returned "failure" from `pthread_mutex_lock`, which made the library's logging path abort with
         *"%s failed to acquire mutex"*; and the library's C++ logging needs `vasprintf`, `malloc`,
