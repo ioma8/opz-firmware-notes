@@ -385,7 +385,14 @@ with the offline render byte-identical to the Phase 3 output for the same preset
 Goal: v1 closed out against the acceptance criteria, with the port process documented and proven
 repeatable on a fresh engine.
 
-- [ ] `render-to-wav` diagnostic mode (same `Engine`, no sound card) and a short A/B script.
+- [x] `render-to-wav` diagnostic mode: `opz-tui --render out.wav [--bars N]` builds the same
+      `Engine` the audio callback gets, programs a documented demo pattern and writes 16-bit PCM (one
+      exact Q31 → i16 shift, the only conversion in the project). Verified with an independent tool —
+      `afinfo` reads it as 1 ch / 44100 Hz / Int16 / 4.00 s — and 176 368 of 176 384 samples are
+      non-zero, so the drums *and* the synth are audible together. Rendering twice is byte-identical,
+      so the file doubles as a regression check. Done ahead of the other Phase 5 items because it was
+      independent of `AnalogA` and it supplies the human-listening step that Phases 1 and 2 still owe.
+      The A/B script is not written yet.
 - [ ] Port `Saw013a` as the first post-v1 engine to prove the pipeline is mechanical, not bespoke.
 - [ ] `PORT_METHOD.md` in this worktree: per-port source symbols, harness results, every
       invariant-instead-of-golden case, and the open unknowns that remain.
