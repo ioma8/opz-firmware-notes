@@ -397,11 +397,36 @@ repeatable on a fresh engine.
       failing with the first differing byte offset. Verified in all three modes, including that a
       tampered reference exits non-zero rather than passing silently.
 - [ ] Port `Saw013a` as the first post-v1 engine to prove the pipeline is mechanical, not bespoke.
-- [ ] `PORT_METHOD.md` in this worktree: per-port source symbols, harness results, every
-      invariant-instead-of-golden case, and the open unknowns that remain.
-- [ ] `README.md` in the clone repo: setup, keys, what v1 is and is not.
-- [ ] Walk the acceptance criteria below one by one and record the result; only then plan the next
-      engine batch (`Volt`, `Electric`, `Fm003b`, `Organ`, `EP`) or a v2 feature (p-locks, step
+- [x] `PORT_METHOD.md` in this worktree: per-port source symbols, the harness proof, the
+      golden-verified table (both engines, byte-exact, with the regeneration hashes), the open items
+      with measured sizes, and the two method lessons that cost real time. Kept current as ports land.
+- [x] `README.md` in the clone repo: what the crates are, the provenance rule, the exactness status,
+      `tools/setup-packs.sh`, `cargo run -p opz-tui` with a pointer to `docs/KEYS.md`, and the offline
+      render.
+- [x] **Acceptance-criteria walkthrough** (each row is what was actually run, not a plan):
+      1. *`cargo test` passes with no Unicorn dependency at test time* — ✅ **57 tests pass** from
+         committed files; `grep` finds no `unicorn` reference in any source or manifest outside
+         comments and docs, and no such dependency in `Cargo.toml`.
+      2. *Clone + setup + `cargo run -p opz-tui` gives sound on four drum tracks and two synth
+         tracks* — ❌ **not met**: four drum tracks and **one** synth track, because `AnalogA` is not
+         ported (Phase 3). The offline render proves the drums and the synth are audible together
+         (`afinfo`-verified WAV), but the second synth is the missing half.
+      3. *The four drum tracks load the named packs and their slices map as the ported
+         `SamplePlayerGain` says* — ✅ the pack reader and slice table are golden-verified, and the
+         engine's descriptor contract (whole-pack length, per-slice data pointer) is what the
+         fixtures pin. Which slice a note plays is host-side by design, and that is recorded in
+         `crates/opz-dsp/tests/golden/README.md`.
+      4. *Every ported function is golden-verified or explicitly excepted* — ✅ `SamplePlayerGain`
+         (10 fixtures byte-exact + exact `onNoteOn` state) and `Digital` (35 fixtures byte-exact);
+         the exceptions are recorded, not glossed: the app-side envelope callbacks are stubbed in the
+         harness, and the host-owned tables (wavetable, octave table, gain globals, rate tables) are
+         harness calibration rather than recovered device data.
+      5. *No device interaction of any kind* — ✅ no serial/USB/BLE/HID dependency (0 hits), and
+         `git ls-files` contains **no** `.so`/`.engine`/`.apk`/`.zfw`/`.aif`/`.wav`: the packs are
+         local symlinks into gitignored directories.
+      **Verdict: 4 of 5 met; criterion 2 is blocked on Phase 3's `AnalogA`.** Only after that is
+      done is it worth planning the next engine batch (`Volt`, `Electric`, `Fm003b`, `Organ`, `EP`)
+      or a v2 feature (p-locks, step
       components, FX tracks, pattern banks, chain mode).
 
 **Playable check:** a fresh clone of the repo, setup command, `cargo run -p opz-tui`, six tracks,
