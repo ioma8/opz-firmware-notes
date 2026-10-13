@@ -51,15 +51,14 @@ tagged, Phase 3 deliberately untagged.
   Verify against the 144 `render_square` cases
   already in `tests/golden/analoga/oscillators.json` (its `renderSaw` sibling needed exactly one
   fixture-caught fix, an ordering of the two sub-branches).
-* **`_RFilter_fetch`** — **ported, but not verified yet, and the test says why.**
-  `AnalogAEngine::r_filter_fetch` in `crates/opz-dsp/src/analog_a.rs` implements the two-dimensional
-  fetch (row from `param_7 >> 0x1c`, fraction inside the row from `param_6`, one output word per
-  bank, plain `(a*b) >> 31` multiplies and saturating adds). Its test is `#[ignore]`d with the
-  measured reason: 40-odd of the 50 recorded calls match, but `param_6 = 0, param_7 = 0xe0000000`
-  (row 14, zero row fraction) returns 0 from the original and a non-zero value from the port, so the
-  row/offset arithmetic is not pinned. **Next step:** extend `r_filter_fetch_cases` in the fixture
-  generator to fill five *distinct* banks and record all five output words (it currently records only
-  the first word, which cannot show which bank lands where). The function is not wired into anything.
+* **`_RFilter_fetch`** — **ported and exact on all 50 recorded cases.** It is a two-dimensional
+  interpolated fetch: `param_7`'s top nibble selects the row and carries a row fraction, `param_6`
+  selects and interpolates inside a 65-entry row, and each of the five banks contributes one output
+  word. Two measured facts: **rows 0..=7 only** (from 8 up the engine writes an all-zero output - a
+  real branch, found by filling a 32-row bank with its own word indices), and the five outputs are one
+  per bank (the fixtures now fill five *distinct* banks and record all five words). Multiplies are
+  plain `(a*b) >> 31` with saturating adds, no sentinel check.
+
 * **`_RFilter_fetch` older note** — **its fixtures already exist** (50 calls, every row, 15 distinct outcomes,
   in `tests/golden/analoga/oscillators.json` under `r_filter_fetch`, built by
   `r_filter_fetch_cases` in the generator). It indexes each of the five banks as
