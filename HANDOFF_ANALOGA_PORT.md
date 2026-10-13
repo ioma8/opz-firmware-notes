@@ -48,7 +48,12 @@ tagged, Phase 3 deliberately untagged.
   variable itself (Ghidra's `PTR_x` means `&x`) — an *address-derived* term, not file data. So the
   port cannot hard-code it: the fixtures must record the two words the engine used (the harness's
   pointer halves) and the port takes them as host input, the way it takes the wavetable and octave
-  table. Add them when generating the `render_square` cases. Its first half repeats `renderSaw`'s four
+  table. **One measurement does not fit that story yet:** reading the `samples` symbol's two words
+  after a call gives `0x60000000` and `0xa0000000` — not a pointer — so either the harness resolves a
+  different address for the variable than Ghidra's `PTR_samples_002d6088`, or the term is something
+  else again. Settle it by hooking *reads* of the `samples` symbol's address during one call and
+  watching which offset is fetched; do that before implementing the tail rather than trusting either
+  reading. (Two wrong guesses about this term have already been recorded and corrected here.) Its first half repeats `renderSaw`'s four
   quadrant blocks verbatim, so `ratio`, `sine_cubed` and `quadrant` in `analog_a.rs` apply as they
   are; the tail then combines its four terms as a chain of *saturating* add/sub:
   `((samples[phase >> 31] - v5) + v6 + v7) - v9`. Verify against the 144 `render_square` cases
