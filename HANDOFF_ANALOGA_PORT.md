@@ -39,9 +39,9 @@ tagged, Phase 3 deliberately untagged.
 
 ## What is already known about the remaining three
 
-* **`renderSquare`** — its function-static `samples` (the one needing `__cxa_guard_*`) is just
-  `samples = DAT_0017b2a0`, a pointer into the library's own `.rodata`: copy the table from the file,
-  it is not a host input. **Settled by measurement — this term is not a table lookup.** Setting the bytes at
+* **`renderSquare`** — its function-static `samples` (the one needing `__cxa_guard_*`) is set to
+  `DAT_0017b2a0`, but only the *pointer value* matters (see the measurement below). **Settled by
+  measurement — the term is not a table lookup.** Setting the bytes at
   0x17b2a0 to all-`0x11111111` and then to all-`0x99999999` and calling the original with seven
   phases gives **byte-identical results**, and a read hook over that region records zero reads. What
   the C shows as `samples[phase >> 31]` is therefore reading the two 32-bit halves of the `samples`
