@@ -351,9 +351,20 @@ port is analysed but **not written**, so this phase cannot be tagged yet.
         **20 golden fixtures exist** (`crates/opz-dsp/tests/golden/analoga/cases.json`, deterministic,
         pitch-dependent, only `level_zero` silent) with the whole host contract written down in
         `tests/golden/analoga/README.md`.
-      - What remains for this phase is therefore the port itself, against ready ground truth: the
-        eight functions listed at the top of this item, ~1 435 instructions, verified case by case
-        exactly as `Digital` was. Nothing about the host needs discovering first.
+      - **The port is started, with the first slice verified.** `crates/opz-dsp/src/analog_a.rs`
+        holds `initModule`, `init`, `onNoteOn` and `onNoteOff`, and
+        `crates/opz-dsp/tests/analog_a.rs` checks them against the fixtures: every state field
+        `onNoteOn` writes — the pan-scaled gain pair, the note's octave encoding, the pitch curve, the
+        three interpolated coefficient records, the envelope bytes and the velocity — matches the
+        original on **all 20 cases**, `init` picks the same host gain global for every variant, and a
+        scratch buffer smaller than the four sub-buffers is refused rather than overrun.
+        Writing it found a real behaviour: the original reads the coefficient record *after* the
+        selected one **without a bound check**, so the last record reads past the table; the port
+        clamped and the test caught it, and it now reads zero past the end like the harness did.
+      - What remains for this phase is the rest of the translation against the same fixture set:
+        `render` (2 044 B), `renderSaw` (628 B), `renderSquare` (1 388 B), `_RFilter_fetch` (712 B),
+        `setEnvelopeState` (76 B) and `updateFilterEnvelope` (292 B). Nothing about the host needs
+        discovering first.
       - Harness bugs found and fixed on the way (they were hiding the above): the pthread shims
         returned "failure" from `pthread_mutex_lock`, which made the library's logging path abort with
         *"%s failed to acquire mutex"*; and the library's C++ logging needs `vasprintf`, `malloc`,
