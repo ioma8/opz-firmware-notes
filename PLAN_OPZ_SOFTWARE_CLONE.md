@@ -271,15 +271,24 @@ port is analysed but **not written**, so this phase cannot be tagged yet.
         * `init` carves the scratch argument into four 0x100-byte sub-buffers (`g_scratchpads`):
           [0] saw, [1] square, [2] the LCG noise, [3] the amplitude-scaled mix. Watching those
           buffers is the quickest way to see how far `render` got.
-        * two 256-entry `i32` **envelope rate tables** at 0x124b370 (indexed by attack's top byte) and
-          0x124b570 (decay/sustain/release, whose `[1]` is also a floor used as a default). Zeroed in
-          the library, app-supplied; with them zero the filter envelope never opens.
+        * two **128-entry** `i32` **envelope rate tables**, at 0x124b370 (indexed by attack's top byte)
+          and 0x124b570 (decay/sustain/release, whose `[1]` is also a floor used as a default). Zeroed
+          in the library, app-supplied; with them zero the filter envelope never opens. The size is
+          not a guess: the `.bss` layout leaves 0x124b370..0x124b790 for them, and the neighbours are
+          `AnalogA::interface` (0x124b790), `AnalogA::g_scratchpads` (0x124b798) and
+          `AnalogA::presets` (0x124b7b8). Writing 256 entries instead runs straight over
+          `g_scratchpads` and the octave table, after which the engine follows those numbers as
+          pointers and faults — which is how the real size was found.
         * the filter envelope lives at `state + 0x30` (`+4` level, `+8` rate, `+0xc` and `+0x10`
           targets, `+0x14` state byte, `+0x15` a flag), and `onNoteOn` only sets its state to 1
           (attack). Its level still stayed zero with the rate tables filled and the state machine
           advancing to sustain (state byte 2), so the *remaining* unknown is which host value feeds
-          the level/target pair — that is where the next session should start, with the harness
-          printing `state+0x30..0x44` per block.
+          the level/target pair. Latest measurement with the tables at their real size: after four
+          blocks the envelope reads `level(+4) = 0`, `rate(+8) = 0x8101820`, target(`+0xc`) =
+          `0x7fffffff`, `+0x10 = 0`, state byte = 1 — so the state-1 branch should advance to state 2
+          and set `+0x10 = 0x7fffffff`, and it does not. The next step is to watch
+          `updateFilterEnvelope` itself (called from `render` at 0x12f1e4 with `state + 0x30`) rather
+          than its results, because `render` also writes that struct in the same block.
       - Harness bugs found and fixed on the way (they were hiding the above): the pthread shims
         returned "failure" from `pthread_mutex_lock`, which made the library's logging path abort with
         *"%s failed to acquire mutex"*; and the library's C++ logging needs `vasprintf`, `malloc`,
