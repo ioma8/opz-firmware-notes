@@ -47,8 +47,7 @@ tagged, Phase 3 deliberately untagged.
   `[0x60000000, 0xa0000000]` table (the same ±0.75 constants `renderSaw` uses as its bias) and no
   host input at all. The tail combines it as
   `((samples[phase >> 31] − v5) + v6 + v7) − v9`, saturating. Its first half repeats `renderSaw`'s four
-  quadrant blocks verbatim, so `ratio`, `sine_cubed` and `quadrant` in `analog_a.rs` apply as they are.rs` apply as they
-  are; the tail then combines its four terms as a chain of *saturating* add/sub:
+  quadrant blocks verbatim, so `ratio`, `sine_cubed` and `quadrant` in `analog_a.rs` apply as they are.
   `((samples[phase >> 31] - v5) + v6 + v7) - v9`. Verify against the 144 `render_square` cases
   already in `tests/golden/analoga/oscillators.json` (its `renderSaw` sibling needed exactly one
   fixture-caught fix, an ordering of the two sub-branches).
