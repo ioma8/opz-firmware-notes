@@ -218,8 +218,8 @@ is the ported `Sequencer`/`InstrumentManager`'s job in Phase 4.
 
 Goal: two synths, and param UI that only shows what each engine actually reads.
 
-Status 2026-10-13: **partly done.** The mixer and parameter-UI half is in and verified; the `AnalogA`
-port is analysed but **not written**, so this phase cannot be tagged yet.
+Status: **done, tagged `phase-3`.** Both synths are ported and wired, the per-engine parameter maps
+are established by mutation, and the six-track groove renders byte-reproducibly.
 
 - [x] Mute per track and a master level. Mute is a mixer gate that keeps the voice running (the
       device's mute does the same, so unmuting does not restart a note); the master level is one Q31
@@ -236,178 +236,38 @@ port is analysed but **not written**, so this phase cannot be tagged yet.
       `params[2..=5]` go to the app-side envelope callback, which the harness stubs out, so mutation
       cannot see them (they are marked host-side in the evidence). The TUI's strip now shows each
       engine's own list with its own names, `p1…p18` for plugs the catalogue cannot name, and a Rust
-      test fails if the constants drift from the evidence.
+      test fails if the constants drift from the evidence. `AnalogA` was added to that run when it
+      landed: it reads `[0, 1, 8, 9, 10, 11]`, and its four envelope indexes (`2..=5`) reach its own
+      `updateFilterEnvelope` but only enter the output through a split of `params[1]` the baseline
+      leaves closed, so they are recorded as host-side rather than claimed as reads.
 - [x] One real bug fixed on the way, found by the mute work: both engines *add* into the buffer they
       are handed, and the mixer reused one buffer without clearing it, so every voice was re-mixing
       the previous voice's samples (a two-voice mix was exactly double).
-- [ ] **Port `AnalogA` (5 872 B), golden vectors passing.** Analysed, not written. What is known and
-      recorded here so the port is mechanical next time (all from the disassembly + Ghidra's C, the
-      steps that worked for `Digital`):
-      - Functions: `initModule` 32 B, `init` 92 B, `setEnvelopeState` 76 B, `updateFilterEnvelope`
-        292 B, `_RFilter_fetch` 712 B (a 65-slot filter state fetch), `renderSaw` 628 B,
-        `renderSquare` 1 388 B (with a lazily-built function-static sample table), `render` 2 044 B,
-        `onNoteOn` 600 B, `onNoteOff` 8 B. **No host callbacks at all**: the only calls are its own
-        `renderSaw` / `renderSquare` / `updateFilterEnvelope` / `_RFilter_fetch`, reached through PLT
-        stubs at 0x1cae80/0x1cae90/0x1caea0/0x1caeb0 that resolve in-library (they are *not* external
-        shims, which is what the earlier notes assumed).
-      - `init(state, variant, _, _, scratch)` zeroes the state and splits the host's scratch buffer
-        into four 0x100-byte sub-buffers stored in the global `g_scratchpads` (0x124b798) — so the
-        host must hand over at least 0x400 bytes. `state + 0x10` is the host gain: `variant` 4..7 read
-        0x124a5d0/5d4/5d8/5dc (via the pointer table at 0x1cebd0) and anything else reads 0x124a5cc,
-        all **without** the attenuation `Digital` applies.
-      - Two host-filled tables, both zero in the shipped library (`.bss`) and therefore inputs:
-        `AnalogA::presets` (0x124b7b8, 60 B = five 12-byte records of three filter coefficients,
-        interpolated by `params[0] >> 29` into the next record and by the low bits within it) and a
-        16-entry `i16` per-octave table at 0x124b770, used by `onNoteOn` for its pitch curve exactly
-        the way `Digital` uses 0x124a658.
-      - `render`'s second argument behaves like `Digital`'s: a running oscillator increment that
-        advances by the third argument per frame.
-      - The `renderSquare` static is why the harness needs `__cxa_guard_acquire/release` shims; it
-        already has them.
-      - **The host also owns the filter's memory and the envelope's rates**, which cost a session to
-        find because the engine does not complain — it just renders zeros:
-        * `interface + 0x28` is a pointer to **five** `fract32_t[65]` buffers, which `render` hands to
-          `_RFilter_fetch`. Without them the engine dereferences null and (via bionic) aborts.
-        * `init` carves the scratch argument into four 0x100-byte sub-buffers (`g_scratchpads`):
-          [0] saw, [1] square, [2] the LCG noise, [3] the amplitude-scaled mix. Watching those
-          buffers is the quickest way to see how far `render` got.
-        * two **128-entry** `i32` **envelope rate tables**, at 0x124b370 (indexed by attack's top byte)
-          and 0x124b570 (decay/sustain/release, whose `[1]` is also a floor used as a default). Zeroed
-          in the library, app-supplied; with them zero the filter envelope never opens. The size is
-          not a guess: the `.bss` layout leaves 0x124b370..0x124b790 for them, and the neighbours are
-          `AnalogA::interface` (0x124b790), `AnalogA::g_scratchpads` (0x124b798) and
-          `AnalogA::presets` (0x124b7b8). Writing 256 entries instead runs straight over
-          `g_scratchpads` and the octave table, after which the engine follows those numbers as
-          pointers and faults — which is how the real size was found.
-        * the filter envelope lives at `state + 0x30` (`+4` level, `+8` rate, `+0xc` and `+0x10`
-          targets, `+0x14` state byte, `+0x15` a flag), and `onNoteOn` only sets its state to 1
-          (attack). Its level still stayed zero with the rate tables filled and the state machine
-          advancing to sustain (state byte 2), so the *remaining* unknown is which host value feeds
-          the level/target pair. Latest measurement with the tables at their real size: after four
-          blocks the envelope reads `level(+4) = 0`, `rate(+8) = 0x8101820`, target(`+0xc`) =
-          `0x7fffffff`, `+0x10 = 0`, state byte = 1 — so the state-1 branch should advance to state 2
-          and set `+0x10 = 0x7fffffff`, and it does not. The next step is to watch
-          `updateFilterEnvelope` itself (called from `render` at 0x12f1e4 with `state + 0x30`) rather
-          than its results, because `render` also writes that struct in the same block.
-
-      - Measured since, and enough to pick this up quickly:
-        * `updateFilterEnvelope` is entered **once** in the first three blocks, with
-          `(attack, decay, sustain, release)` = the params and the envelope reading
-          `state byte = 1`, `flag(+0x15) = 1`, `target(+0xc) = 0`, `+0x10 = 0`, `level = 0`,
-          `rate = 0`. State 1 with a target that is not `0x7fffffff` is the *hold* branch: it sets
-          `level = 0`, `rate = attack_table[attack >> 24]` and returns **without changing the state
-          byte**, so the voice stays silent for as long as the target is not `0x7fffffff` on entry.
-          The engine itself writes `0x7fffffff` into the target later in the block, which is why the
-          value read *after* a block looks right while the call still saw zero.
-        * No parameter combination changes that: filter/resonance at maximum, envelope stages at
-          maximum, velocity 127 and every parameter at maximum all render exactly zero, so this is a
-          missing host input or host ordering, not a parameter setting.
-        * The output path is visible now: `render`'s tail (0x12f79c..0x12f7dc) does
-          `out[i] += sat( (gain_pair × scratchpad[3][i]) >> 31 )`, so **scratchpad[3] carries the
-          signal** and it is the amplitude stage above that writes zeros into it.
-        * The amplitude loop's gains saturate to `i32::MIN` and `0` (`w9`, `w21` at 0x12f680), which
-          is a saturated gain rather than a small one — a good place to instrument next, together
-          with the target write that happens after the envelope call.
-      - Fastest way to continue: hook `0x12f1e4` (the envelope call), `0x12f6ac` (the amplitude loop)
-        and the write to `state + 0x3c` in one run and read them in program order, using the harness's
-        per-block `state_fields()` to see which value is zero *first*.
-      - Since then, one more result narrows it a lot: **the host must set the filter envelope's target
-        (`state + 0x3c`) to `0x7fffffff` when it starts a note.** With that write the envelope leaves
-        its hold branch, advances to state 2, and its level becomes non-zero and scales with the rate
-        tables (`0x2020201f` at full-scale tables, `0x4040` at 0x10000) — so the tables and the
-        envelope are doing their job. The output is *still* zero, and the reason is now localised to
-        the amplitude loop at `0x12f6a8..0x12f6d4`: it read `w9 = 0x80000000` and `w21 = 0`, i.e. a
-        saturated gain pair, from a scratch pad whose samples it then multiplies. Next step is to read
-        that loop's *source* pointer and the samples at the offsets it uses (`x22` and `x8` at
-        `0x12f6ac`), because a saturated gain times a non-zero sample cannot store zero — so the source
-        samples are the remaining suspect, not the envelope.
-      - The negative rate seen there (`0xffc04040`) is *correct*, not a bug: the level (0.875) starts
-        above the sustain parameter (0.502), so the envelope decays toward it, exactly as the device
-        does.
-      - **Where AnalogA's silence actually is, precisely.** The amplitude loop at
-        `0x12f6a8..0x12f6d4` transforms `scratchpad[3]` **in place** (`ldrsw x11, [x22, x8]` …
-        `str w12, [x22, x8]` with `x22` = scratchpad[3]). Its samples are non-zero (the previous
-        block's output, decaying) but the gain it multiplies them by is **zero**, so it writes zeros
-        back. The gain is `w9 = [x29, -0x48]` (= `sp + 0xa8`) plus `w21`; `w21` is only ever set by
-        `fmov w21, s4` at `0x12f780`, i.e. at the *end* of a second loop that runs after the first —
-        so the pairs are a two-pass structure inside `render`, and the first pass of a block uses the
-        gains the previous pass computed.
-      - The last gap: `0xa8` appears **nowhere** in `render`'s listing, so the store that fills that
-        slot goes through an aliased base register (something like `ldr x8, [sp, …]` then `str w9,
-        [x8, N]`). Reading `render` with that aliasing resolved — or reading Ghidra's `local_a8` /
-        `uStack_d8`/`local_e0` cross-references — is the single remaining step before AnalogA makes
-        sound, and it is the right first move in a fresh session rather than more probing at the end
-        of a long one.
-      - Everything else is mapped and in the harness: the four scratch sub-buffers, the five filter
-        banks behind `interface + 0x28`, the 128-entry rate tables, the octave table, the coefficient
-        records, the gain globals, the envelope target rule, and the libc/logging shims the library's
-        C++ helpers need.
-      - **It now makes sound.** The last three inputs were: each filter bank behind
-        `interface + 0x28` is **16 rows × 65 `fract32_t`** (`_RFilter_fetch` indexes
-        `base + row * 0x104 + {0,4}`), so a single 65-entry buffer is 15 rows short and the engine
-        reads past it; `render` **sustains the ADSR only in phases 5..7** (0 is silent, 1..4 sound for
-        one block and run out); and the filter envelope's target needs the host's write as above.
-        With those, `AnalogAHost` renders sustained audio with no manual pokes, and
-        **20 golden fixtures exist** (`crates/opz-dsp/tests/golden/analoga/cases.json`, deterministic,
-        pitch-dependent, only `level_zero` silent) with the whole host contract written down in
-        `tests/golden/analoga/README.md`.
-      - **The port is started, with the first slice verified.** `crates/opz-dsp/src/analog_a.rs`
-        holds `initModule`, `init`, `onNoteOn` and `onNoteOff`, and
-        `crates/opz-dsp/tests/analog_a.rs` checks them against the fixtures: every state field
-        `onNoteOn` writes — the pan-scaled gain pair, the note's octave encoding, the pitch curve, the
-        three interpolated coefficient records, the envelope bytes and the velocity — matches the
-        original on **all 20 cases**, `init` picks the same host gain global for every variant, and a
-        scratch buffer smaller than the four sub-buffers is refused rather than overrun.
-        Writing it found a real behaviour: the original reads the coefficient record *after* the
-        selected one **without a bound check**, so the last record reads past the table; the port
-        clamped and the test caught it, and it now reads zero past the end like the harness did.
-      - **`renderSaw` is ported and exact on 144 recorded cases.** It is a pure function, so
-        `tools/unicorn-harness/make_oscillator_fixtures.py` calls the original symbol directly for 144
-        (phase, increment) pairs — every quadrant boundary, the wrap-around values an accumulator
-        reaches, and increments from 1 to 0x7fffffff — and the port reproduces all of them. The
-        translation keeps the details that matter (a signed quadrant division, unsigned 64-bit sine
-        arithmetic, a signed cubic chain, a logical shift in the bias term); the fixtures caught my
-        one ordering mistake, where the first sub-branch applies the cubic and the second only the
-        sine term.
-      - What remains for this phase: `render` (2 044 B), `renderSquare` (1 388 B),
-        `_RFilter_fetch` (712 B), `setEnvelopeState` (76 B) and `updateFilterEnvelope` (292 B), all
-        against the same fixture sets (`render` against the 20 recorded outputs, `renderSquare`
-        against the same oscillator fixtures that already cover `renderSaw`).
-      - **The next slice already has its verification target:** `updateFilterEnvelope` fixtures exist
-        (36 cases — nine starting structs across every state and both flag values, times four argument
-        sets; all 36 change the struct, with 15 distinct outcomes), generated by the same script as
-        the oscillators and `setEnvelopeState`.
-      - **`updateFilterEnvelope` is ported and exact on 36 recorded cases** (every state byte, both
-        flag values, target set and unset).
-      - **`setEnvelopeState` is ported and exact on 21 recorded cases** (direct calls from three
-        starting structs for every state byte), and the fixture generator now covers it alongside the
-        two oscillators.
-      - `renderSquare` starts with the function-static `samples` that needs the `__cxa_guard_*` shims,
-        and reading it shows **it is not host data at all**: the guard body is
-        `samples = DAT_0017b2a0`, a pointer to the library's own `.rodata`. So the port copies that
-        table from the file like the octave-boundary table, rather than taking it as an input. Its
-        first half repeats `renderSaw`'s four quadrant blocks verbatim - the shaping helpers
-        (`ratio`, `sine_cubed`, `quadrant`) are already written and verified, so this is the next
-        slice to land, followed by `_RFilter_fetch` and then `render`.
-      - Harness bugs found and fixed on the way (they were hiding the above): the pthread shims
-        returned "failure" from `pthread_mutex_lock`, which made the library's logging path abort with
-        *"%s failed to acquire mutex"*; and the library's C++ logging needs `vasprintf`, `malloc`,
-        `free`, `fputs`, `fprintf`, `strlen`, `memcmp` and `__assert2` shims. The harness now decodes
-        and prints those messages instead of raising, which is how the abort text was read.
-      - Both existing fixture sets still regenerate **bit-identically** after those harness changes
-        (`make_fixtures.py`, `make_digital_fixtures.py`), and `selftest.py` still passes.
-- [ ] Wire the second synth track. The device's own default slot map (`13, 14, 15, 17, 21, 25, 28,
+- [x] **Port `AnalogA` (5 872 B), golden vectors passing.** All ten functions are translated and
+      verified: `renderSaw`/`renderSquare` on their 144 recorded `(phase, increment)` pairs each,
+      `setEnvelopeState` on 21 and `updateFilterEnvelope` on 36 recorded calls, `_RFilter_fetch` on
+      50, and `render` on all 20 recorded voices, every block, every sample (plus each block's four
+      scratchpad peaks, the ADSR level, the mix's first samples, the filter taps and both
+      `_RFilter_fetch` arguments). Eight behaviours the decompiler's C hid were found this way and
+      are recorded in `HANDOFF_ANALOGA_PORT.md`; the two that mattered most for `render` are that its
+      gain ramps step by `>> 6` and that it scales each frame by the ADSR level that frame *starts*
+      with, because the original reuses the register its own envelope update overwrites.
+- [x] Wire the second synth track. The device's own default slot map (`13, 14, 15, 17, 21, 25, 28,
       31` for tracks 1..=8) puts a *device-only* plug 21 on track 5 and `digital.engine` on track 6,
       and `analoga.engine` is plug 10 — one of the four synth plugs the device ships as slots 2–4 of
       every synth pack, not a default track. So the clone's two synth tracks are a documented
       substitution: index 4 gets `analoga.engine`, index 5 keeps `digital.engine` (which the device's
-      own `slotConfiguration.json` also puts there). The UI already labels each track by the engine
-      its plug names, so this is a change in one table plus the port.
+      own `slotConfiguration.json` also puts there). The UI labels each track by the engine its plug
+      names, so this was a change in one table plus the port (and the host data the engine reads, plus
+      the two host-side values the fixtures pinned: the ADSR armed in its sustain phase and the filter
+      envelope's target at `state + 0x3c`).
 
 **Playable check:** a six-track groove — four drum tracks plus two distinct synths — programmed and
 played entirely from the TUI, with per-engine param pages behaving differently where the engines
 differ.
-*Not yet: the second synth is not ported, so today the groove is four drums plus one synth.*
+*Met: `cargo run -p opz-tui` labels tracks 5 and 6 `synth`, one per engine, and programs notes on the
+analogue track; `--render` writes both voices into one bar (peak 21154), byte-identical across runs.
+A Rust test asserts each synth track is audible on its own.*
 
 ### Phase 4 — Replace the interim host with the ported chain
 
@@ -451,30 +311,35 @@ repeatable on a fresh engine.
       `tools/setup-packs.sh`, `cargo run -p opz-tui` with a pointer to `docs/KEYS.md`, and the offline
       render.
 - [x] **Acceptance-criteria walkthrough** (each row is what was actually run, not a plan):
-      1. *`cargo test` passes with no Unicorn dependency at test time* — ✅ **57 tests pass** from
+      1. *`cargo test` passes with no Unicorn dependency at test time* — ✅ **69 tests pass** from
          committed files; `grep` finds no `unicorn` reference in any source or manifest outside
          comments and docs, and no such dependency in `Cargo.toml`.
       2. *Clone + setup + `cargo run -p opz-tui` gives sound on four drum tracks and two synth
-         tracks* — ❌ **not met**: four drum tracks and **one** synth track, because `AnalogA` is not
-         ported (Phase 3). The offline render proves the drums and the synth are audible together
-         (`afinfo`-verified WAV), but the second synth is the missing half.
+         tracks* — ✅ **met**: the four drum tracks are the sample player, and the two synth tracks are
+         `analoga.engine` (track 5, the device's own slot configuration) and `digital.engine` (track
+         6). The TUI labels both `synth`, programs notes on both, and the offline render puts both
+         voices in one bar (peak 21154, byte-identical across runs, `afinfo`-verified WAV); a Rust
+         test asserts each synth track is audible on its own.
       3. *The four drum tracks load the named packs and their slices map as the ported
          `SamplePlayerGain` says* — ✅ the pack reader and slice table are golden-verified, and the
          engine's descriptor contract (whole-pack length, per-slice data pointer) is what the
          fixtures pin. Which slice a note plays is host-side by design, and that is recorded in
          `crates/opz-dsp/tests/golden/README.md`.
       4. *Every ported function is golden-verified or explicitly excepted* — ✅ `SamplePlayerGain`
-         (10 fixtures byte-exact + exact `onNoteOn` state) and `Digital` (35 fixtures byte-exact);
+         (10 fixtures byte-exact + exact `onNoteOn` state), `Digital` (35 fixtures byte-exact) and
+         `AnalogA` (all ten functions: 20 end-to-end voices sample for sample, 50 `_RFilter_fetch`
+         calls, 144 `(phase, increment)` pairs per oscillator, 21 and 36 recorded envelope calls);
          the exceptions are recorded, not glossed: the app-side envelope callbacks are stubbed in the
-         harness, and the host-owned tables (wavetable, octave table, gain globals, rate tables) are
-         harness calibration rather than recovered device data.
+         harness, and the host-owned tables (wavetable, octave table, gain globals, rate tables,
+         `AnalogA`'s filter banks and coefficient records) are harness calibration rather than
+         recovered device data.
       5. *No device interaction of any kind* — ✅ no serial/USB/BLE/HID dependency (0 hits), and
          `git ls-files` contains **no** `.so`/`.engine`/`.apk`/`.zfw`/`.aif`/`.wav`: the packs are
          local symlinks into gitignored directories.
-      **Verdict: 4 of 5 met; criterion 2 is blocked on Phase 3's `AnalogA`.** Only after that is
-      done is it worth planning the next engine batch (`Volt`, `Electric`, `Fm003b`, `Organ`, `EP`)
-      or a v2 feature (p-locks, step
-      components, FX tracks, pattern banks, chain mode).
+      **Verdict: 5 of 5 met.** Phases 1, 2 and 3 are tagged; Phase 4 (the ported host chain) and
+      Phase 5's `Saw013a` remain, and after those it is worth planning the next engine batch
+      (`Volt`, `Electric`, `Fm003b`, `Organ`, `EP`) or a v2 feature (p-locks, step components, FX
+      tracks, pattern banks, chain mode).
 
 **Playable check:** a fresh clone of the repo, setup command, `cargo run -p opz-tui`, six tracks,
 `Saw013a` available on a track, and the whole thing still playing after the host swap.

@@ -57,6 +57,7 @@ written down with its measured size.
 | `note_on_state_matches_the_original` | **exact**: every state field `noteOn` computes (gains, window bounds, increment, counters) equals the original's, field for field |
 | `golden_cases_match` (sample player) | **byte-exact** on all ten cases, no tolerance |
 | `golden/digital/cases.json` + `tests/digital.rs` | **byte-exact** on all 35 `Digital` cases, no tolerance, with anti-vacuity assertions |
+| `golden/analoga/cases.json` + `tests/analog_a.rs` | **byte-exact** on all 20 `AnalogA` voices, every block: all 128 stereo samples and each block's four scratchpad peaks, ADSR level, mix samples, filter taps and `_RFilter_fetch` arguments |
 | `render_audio_integration` (`opz-core`) | the whole chain — AIFF pack → `Engine` → ported DSP → Q31 audio — produces sound |
 
 ## Engines ported so far
@@ -65,12 +66,14 @@ written down with its measured size.
 |---|---|---|
 | `SamplePlayerGain` | `crates/opz-dsp/src/sample_player_gain.rs` | 10 fixtures byte-exact + exact `onNoteOn` state |
 | `Digital` | `crates/opz-dsp/src/digital.rs` | 35 fixtures byte-exact |
-| `AnalogA` (planned) | — | analysed: no host callbacks, four scratch sub-buffers, two host tables; see `PLAN_OPZ_SOFTWARE_CLONE.md` Phase 3 |
+| `AnalogA` | `crates/opz-dsp/src/analog_a.rs` | 20 end-to-end voices sample for sample, plus 50 `_RFilter_fetch` calls, 144 `(phase, increment)` pairs per oscillator, 21 `setEnvelopeState` and 36 `updateFilterEnvelope` calls |
 
-Both were translated from the disassembly with the decompiler's C as a guide, and both needed the
-*assembly* to settle questions the C obscured: for the sample player the read loop's two position
-accumulators, for `Digital` the pan matrix, `onNoteOn`'s four gain stores and the envelope fold
-(Ghidra reuses variable names across reused registers).
+All three were translated from the disassembly with the decompiler's C as a guide, and all three
+needed the *assembly* to settle questions the C obscured: for the sample player the read loop's two
+position accumulators; for `Digital` the pan matrix, `onNoteOn`'s four gain stores and the envelope
+fold (Ghidra reuses variable names across reused registers); for `AnalogA` the gain-ramp shift
+(`>> 6`, not the `>> 8` the C suggested), the per-frame ADSR level and the logical narrowing of the
+lane multiplies. `HANDOFF_ANALOGA_PORT.md` lists all eight of those `AnalogA` behaviours.
 
 ## A method note worth keeping
 

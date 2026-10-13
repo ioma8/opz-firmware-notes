@@ -1,125 +1,87 @@
-# Handoff: finishing the `AnalogA` port
+# Handoff: `AnalogA` — port complete and exact
 
-Written at the end of a session that ran out of context mid-port. Everything below is verified
-state, not a plan. The clone repository is `~/projects/customs/opz-clone`; `TESTED` means a command
-was run.
+Written at the end of the session that finished it. Everything below is verified state, not a plan.
+The clone repository is `~/projects/customs/opz-clone`; `TESTED` means a command was run.
 
 ## Where the port stands
 
-`crates/opz-dsp/src/analog_a.rs` (522 lines) plus `crates/opz-dsp/tests/analog_a.rs` (276 lines).
-`cargo test --workspace` → **63 tests passing** (`TESTED`), tree clean, `phase-1` and `phase-2`
-tagged, Phase 3 deliberately untagged.
+`crates/opz-dsp/src/analog_a.rs` plus `crates/opz-dsp/tests/analog_a.rs`. **All ten functions are
+translated and verified**, and the engine is wired into `opz-core`'s `Engine` on track 5 (1-based),
+the track the device's own slot configuration gives `analoga.engine`.
 
-| Function | Bytes | Status | Verified by |
-|---|---|---|---|
-| `initModule` | 32 | ported | host-gain variant mapping |
-| `init` | 92 | ported | variant → global, scratch guard |
-| `onNoteOn` | 600 | ported | every state field × all 20 cases |
-| `onNoteOff` | 8 | ported | returns its argument |
-| `renderSaw` | 628 | ported | 144 recorded `(phase, increment)` pairs |
-| `setEnvelopeState` | 76 | ported | 21 recorded calls |
-| `updateFilterEnvelope` | 292 | ported | 36 recorded calls |
-| `renderSquare` | 1 388 | **not ported** | 144 cases already recorded |
-| `_RFilter_fetch` | 712 | **not ported** | needs fixtures (make them first) |
-| `render` | 2 044 | **not ported** | 20 recorded outputs |
+| Function | Bytes | Verified by |
+|---|---|---|
+| `initModule` | 32 | host-gain variant mapping |
+| `init` | 92 | variant → global, scratch guard |
+| `onNoteOn` | 600 | every state field × all 20 cases |
+| `onNoteOff` | 8 | returns its argument |
+| `renderSaw` | 628 | 144 recorded `(phase, increment)` pairs |
+| `renderSquare` | 1 388 | 144 recorded `(phase, increment)` pairs |
+| `setEnvelopeState` | 76 | 21 recorded calls |
+| `updateFilterEnvelope` | 292 | 36 recorded calls |
+| `_RFilter_fetch` | 712 | 50 recorded calls, five distinct banks |
+| `render` | 2 044 | all 20 recorded voices, every block, every sample |
+
+`render`'s test (`render_matches_the_recorded_output`, TESTED) checks per block: all 128 interleaved
+stereo samples, all four scratchpad peaks, the ADSR level the engine left, the mix's first eight
+samples, the filter banks against the recorded taps, and the two `_RFilter_fetch` arguments.
 
 ## The loop that works
 
-1. If the function is pure, record fixtures by calling the original symbol directly — that is how
-   `renderSaw`, `setEnvelopeState` and `updateFilterEnvelope` each took one pass. The generator is
-   `tools/unicorn-harness/make_oscillator_fixtures.py`; add a function to its `SYMBOLS`/case builders
-   and re-run it. For `_RFilter_fetch`, do this first: five buffer pointers, two ints, one out
-   pointer.
-2. Translate statement by statement from `/tmp/opz-decomp-analoga.txt` (49 KB, regenerable with
-   `tools/ghidra-scripts/DecompileTo.java`, see `PORT_METHOD.md`) — but **check every shift and
-   clamp against the radare2 listing**, because the decompiler's C hid three real behaviours already:
-   the record read past the table end, the sub-branch ordering in `renderSaw`, and the state-machine
-   jump in `updateFilterEnvelope`.
-3. Run the test; the four defects found so far were all caught within one or two runs.
+1. If the function is pure, record fixtures by calling the original symbol directly under Unicorn —
+   that is how `renderSaw`, `renderSquare`, `setEnvelopeState` and `updateFilterEnvelope` each took
+   one pass. Generators: `tools/unicorn-harness/make_oscillator_fixtures.py` (oscillators, the two
+   envelopes, `_RFilter_fetch`) and `make_analoga_fixtures.py` (the 20 end-to-end voices).
+2. For a big function, record **stage-level** ground truth first. `render` is 2 KB of interlocking
+   loops; the fixture's per-block scratchpad peaks, mix samples, ADSR level, filter taps and filter
+   arguments are what localise a wrong stage to one loop.
+3. Translate statement by statement from the radare2/objdump listing, not from the decompiler's C,
+   and re-check every shift, clamp and narrowing. Run the test; iterate.
+4. `tools/unicorn-harness/param_mutation.py` settles which parameters an engine reads (evidence in
+   `crates/opz-dsp/tests/golden/param_map.json`, cross-checked by a Rust test).
 
-## What is already known about the remaining three
+## Behaviours the decompiler's C hid (each is pinned by a fixture)
 
-* **`renderSquare`** — **ported and exact on all 144 recorded cases.** Four copies of the same
-  quadrant block (the phase, `!phase`, `phase ^ 0x80000000`, `phase ^ 0x7fffffff`) combined by a
-  saturating chain against a two-entry sample table selected by the phase's sign bit:
-  `((samples[phase >> 31] - b0) + b1 + b2) - b3`, with `samples = [0x60000000, 0xa0000000]` taken
-  from the variable at 0x124c320 (the same +/-0.75 constants `renderSaw` uses as its bias; nothing at
-  0x17b2a0 is read).
-
-* **`_RFilter_fetch`** — **ported and exact on all 50 recorded cases.** It is a two-dimensional
-  interpolated fetch: `param_7`'s top nibble selects the row and carries a row fraction, `param_6`
-  selects and interpolates inside a 65-entry row, and each of the five banks contributes one output
-  word. Two measured facts: **rows 0..=7 only** (from 8 up the engine writes an all-zero output - a
-  real branch, found by filling a 32-row bank with its own word indices), and the five outputs are one
-  per bank (the fixtures now fill five *distinct* banks and record all five words). Multiplies are
-  plain `(a*b) >> 31` with saturating adds, no sentinel check.
-
-* **`_RFilter_fetch` older note** — **its fixtures already exist** (50 calls, every row, 15 distinct outcomes,
-  in `tests/golden/analoga/oscillators.json` under `r_filter_fetch`, built by
-  `r_filter_fetch_cases` in the generator). It indexes each of the five banks as
-  `base + row * 0x104 + {0, 4}` with
-  `row = param_7 >> 0x1c`, i.e. 16 rows of 65 `fract32_t` per bank (that size was the last cause of
-  silence before the host was fixed). It writes its result through the last argument.
-* **`render`** — 2 044 B, the last function. **Reading state** (decompilation at
-  `/tmp/opz-decomp-analoga.txt`, regenerate per `PORT_METHOD.md`): read 320–400 (the gates, the
-  velocity/level/host-gain chain), 505–660 (the `_RFilter_fetch` call, the oscillator loops, the
-  amplitude loop and the engine's own envelope update) and 660–828 was **not** read; 400–505 is a
-  fragment seen. Sections still to read: **400–505** and **660–828** (the tail: the filter calls and
-  the output mix). What is already known:
-  * it gates on `adsr.phase` only (0 → return; there is **no** kill countdown in `AnalogA`, unlike
-    adjacent engines);
-  * the **gain ramp** feeding the oscillator mix, read literally (0x11f4xx): the target pair is the
-    *interpolated third preset coefficient* (`presets[params[0] >> 29][2]` and `presets[...+1][2]`,
-    combined by a `>> 31` multiply each and a saturating add, then `>> 2`), the stored pair is
-    `state + 0x1c`/`+0x24`, and the per-frame step is `(target - stored) >> 8` per lane
-    (the C's `NEON_sqsub` then a `>> 6` after an earlier `>> 2`) — **the preset values glide**, which is
-    why the fixtures' `stages[i]` include the filter taps and the mix's first samples;
-  * the amplitude chain at the top is exactly
-    `amp = mul31(mul31(mul31(vel_fract32(state+0x48) * params[11]) * state+0x10) * state+0x18)`
-    (`state+0x48` velocity, `+0x10` the host gain `init` picked, `+0x18` the curve<<16 `onNoteOn`
-    stored), then the pan matrix from `params[10]` produces the four smoothed gains;
-  * it calls `updateFilterEnvelope(state + 0x30, params[2..6])` and fetches a coefficient record from
-    `presets[params[0] >> 29]` (and the record after it) at `+8`, like `onNoteOn` does;
-  * the oscillator loops call `renderSaw(state+0x00, param_2)` into `g_scratchpads[0]` and
-    `renderSquare(state+0x04, param_2 >> 1)` into `[1]`, with an LCG (`* 0xbb38435 + 0x3619636b`,
-    seed at the `randSeed` global) into `[2]`;
-  * the amplitude loop writes `g_scratchpads[3]` and updates `adsr.level` every frame
-    (`level = sat(mul31(mul*level) + ((0x7fffffff - cube) * add >> 31))`);
-  * every case also records `filter_args`: the two int arguments of each `_RFilter_fetch` call
-    (**two calls per block**), captured by hooking the call during fixture generation. For the MID
-    preset the mode word is `0x40404040` (= `params[9]`) and the cutoff `0x3e404040`, constant across
-    blocks, which is the fiddliest arithmetic in `render` and is now pinned;
-  * after the amplitude loop it fills an output struct and calls
-    `_RFilter_fetch(bank0..bank4, cutoff & mask, mode, out5)` (the cutoff comes from the same
-    velocity/level/state chain, the `mode` word from `params[9]`), then mixes in a 64-sample loop:
-    `pad3[i]` (the amplitude mix) is scaled by the filter output and saturating-added into `out`;
-  * the tail is `out[i] += sat((gain_pair × scratchpad[3][i]) >> 31)`;
-  * **the ADSR phase must be 5..7** for the voice to sustain (0 is silent, 1..4 run out after a
-    block) and the host sets the filter envelope target at `state + 0x3c`.
-  Checked against the 20 recorded outputs in `tests/golden/analoga/cases.json`, each of which also
-  records `state_after_note_on` **and, per render call, `stages`**: the four scratchpads' peaks
-  (saw, square, LCG noise, amplitude mix), the mix's first eight samples, the ADSR level the engine
-  left, and the first filter taps. Verify stage by stage against those rather than only the final
-  mix - that is what makes a wrong stage cheap to find. Example (`four_blocks`): pad peaks
-  `[1591502648, 1610612736, 2022170538, 372018194]` then `[999089904, ...]`, ADSR level
-  `0x7fffffbf -> 0x7fffff7f -> 0x7fffff3f -> 0x7ffffeff` (a slow decay toward the sustain). Its output tail (`0x12f79c..0x12f7dc`) is
-  `out[i] += sat((gain_pair × scratchpad[3][i]) >> 31)`, so scratchpad[3] carries the signal. The
-  ADSR phase must be 5..7 for the voice to sustain, and `render` writes `adsr.level` every frame. It
-  is checked against the 20 recorded outputs in `tests/golden/analoga/cases.json`, each of which
-  also records `state_after_note_on`.
+* **The coefficient record is read past the end of the table.** `onNoteOn` takes
+  `presets[params[0] >> 29]` and the record *after* it with no bound check, so a parameter selecting
+  record 7 reads a ninth record past the eight the host fills and gets zeros. Clamping it changes the
+  output (measured: `coeff_1` 52 428 799 → 209 715 199), so the port reads zeros.
+* **`renderSaw`'s sub-branch order.** Within each half the first sub-branch (`phase < increment`)
+  applies the cubic and the second (`phase < 2 * increment`) only the sine term.
+* **`updateFilterEnvelope`'s state-machine jump.** States other than 1/2/3 jump straight to the rate
+  store (`LAB_ec60`, writing only `+4`) and leave the rest of the envelope alone.
+* **`render`'s gain ramps step by `>> 6`, not `>> 8`,** and the amplitude pair is the freshly
+  interpolated third preset coefficient, not the record `onNoteOn` stored.
+* **`render` scales each frame by the ADSR level that frame *starts* with.** The original reuses the
+  register its own envelope update overwrites, so the level walks down inside the amplitude loop
+  (`0x7fffffff`, `0x7ffffffe`, …). Using a block-constant level is off by 1–3 LSB and grows.
+* **The lane multiplies narrow with a *logical* shift** (`lsr` / `shrn`) throughout `render`; only the
+  ADSR update and `onNoteOn` use an arithmetic one. For the products that occur this usually agrees,
+  but not near ±2⁶².
+* **`renderSquare`'s samples table** is a two-entry literal at 0x124c320 holding `0x60000000` and
+  `0xa0000000`, read as `samples[phase >> 31]`; nothing at 0x17b2a0 is ever consumed.
+* **`_RFilter_fetch` reaches rows 0..7 only** — from 8 up it writes an all-zero output (a branch in
+  the engine, not a short bank) — and each of the five banks contributes one output word.
 
 ## Host contract (complete; do not re-derive)
 
 In `tools/unicorn-harness/opzso.py` → `AnalogAHost`, and explained in
-`crates/opz-dsp/tests/golden/analoga/README.md`: five filter banks of 16×65 behind
-`interface + 0x28`; a scratch buffer `init` carves into four 0x100-byte sub-buffers (saw, square, LCG
-noise, amplitude mix — the quickest way to see how far a render got); two **128**-entry rate tables at
-0x124b370/0x124b570 (the `.bss` layout fixes that size); a 16-entry `i16` octave table; coefficient
-records at 0x124b7b8; five gain globals; ADSR phase 5..7; and the filter envelope target at
-`state + 0x3c`, which the host must set for `render` to open the filter.
+`crates/opz-dsp/tests/golden/analoga/README.md`:
 
-## After the port
+* five filter banks of 16×65 `fract32_t` behind `interface + 0x28`;
+* a scratch buffer `init` carves into four 0x100-byte sub-buffers (saw, square, LCG noise, amplitude
+  mix — watching them is the quickest way to see how far a render got);
+* two **128**-entry rate tables at 0x124b370/0x124b570, a 16-entry `i16` octave table, eight
+  three-`i32` coefficient records at 0x124b7b8, five gain globals;
+* the ADSR must be armed in **phase 5..7** to sustain, and the filter envelope's target
+  (`state + 0x3c`) has to be set on note-on or `render` holds the voice in its attack branch.
 
-Wire the second synth track (index 4, `analoga.engine` — the device's own default map puts a
-device-only plug there, so this is a documented substitution) which completes the one unmet
-acceptance criterion, then Phase 4's host chain and Phase 5's `Saw013a`.
+The device's own values for all of that are app data and are not in the library; the clone supplies
+documented stand-ins (a Q31 sine per filter row, a quadratic rate curve, a flat/hermite octave table)
+and says so where it uses them.
+
+## What is left
+
+Nothing for this engine. The two remaining plan items are outside it: Phase 4 (replace the interim
+host with the ported `ADSR` → `InstrumentManager` → `Synth` → `Compressor` chain) and Phase 5's
+`Saw013a` port.
