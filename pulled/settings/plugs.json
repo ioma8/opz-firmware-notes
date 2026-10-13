@@ -1,0 +1,274 @@
+{
+	"engines" : 
+	[
+		{
+			"memoryslot" : 27,
+			"path" : "engines/analoga.engine",
+			"version" : 2
+		},
+		{
+			"memoryslot" : 59,
+			"path" : "engines/chord.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 60,
+			"path" : "engines/chorus.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 88,
+			"path" : "engines/chorus2.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 83,
+			"path" : "engines/cluster.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 79,
+			"path" : "engines/crush.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 61,
+			"path" : "engines/delay.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 62,
+			"path" : "engines/digital.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 78,
+			"path" : "engines/dist.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 77,
+			"path" : "engines/electric.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 4,
+			"path" : "engines/ep.engine",
+			"version" : 4
+		},
+		{
+			"memoryslot" : 89,
+			"path" : "engines/fdnreverb.engine",
+			"version" : 2
+		},
+		{
+			"memoryslot" : 13,
+			"path" : "engines/fm003b.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 82,
+			"path" : "engines/ministringshort.engine",
+			"version" : 2
+		},
+		{
+			"memoryslot" : 18,
+			"path" : "engines/organ.engine",
+			"version" : 3
+		},
+		{
+			"memoryslot" : 66,
+			"path" : "engines/reverb.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 10,
+			"path" : "engines/sampleplayergain.engine",
+			"version" : 2
+		},
+		{
+			"memoryslot" : 16,
+			"path" : "engines/saw013a.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 68,
+			"path" : "engines/synthsampler.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 9,
+			"path" : "engines/tapetwo.engine",
+			"version" : 1
+		},
+		{
+			"memoryslot" : 70,
+			"path" : "engines/volt.engine",
+			"version" : 1
+		}
+	],
+	"plugs" : 
+	[
+		{
+			"engine" : "engines/analoga.engine",
+			"flags" : 20,
+			"id" : 10,
+			"samples" : "",
+			"version" : 25
+		},
+		{
+			"engine" : "engines/sampleplayergain.engine",
+			"flags" : 0,
+			"id" : 15,
+			"samples" : "samplepacks/redmountPerc.aif",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/cluster.engine",
+			"flags" : 0,
+			"id" : 21,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/digital.engine",
+			"flags" : 0,
+			"id" : 25,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/saw013a.engine",
+			"flags" : 0,
+			"id" : 28,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/chord.engine",
+			"flags" : 0,
+			"id" : 31,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/delay.engine",
+			"flags" : 0,
+			"id" : 34,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/reverb.engine",
+			"flags" : 0,
+			"id" : 36,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/fdnreverb.engine",
+			"flags" : 0,
+			"id" : 37,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/tapetwo.engine",
+			"flags" : 0,
+			"id" : 38,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/chorus.engine",
+			"flags" : 0,
+			"id" : 39,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/fdnreverb.engine",
+			"flags" : 0,
+			"id" : 43,
+			"samples" : "",
+			"version" : 7
+		},
+		{
+			"engine" : "engines/volt.engine",
+			"flags" : 0,
+			"id" : 60,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/fm003b.engine",
+			"flags" : 0,
+			"id" : 70,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/dist.engine",
+			"flags" : 0,
+			"id" : 80,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/synthsampler.engine",
+			"flags" : 0,
+			"id" : 100,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/crush.engine",
+			"flags" : 0,
+			"id" : 109,
+			"samples" : "",
+			"version" : 1
+		},
+		{
+			"engine" : "engines/ministringshort.engine",
+			"flags" : 0,
+			"id" : 112,
+			"samples" : "",
+			"version" : 0
+		},
+		{
+			"engine" : "engines/sampleplayergain.engine",
+			"flags" : 0,
+			"id" : 150,
+			"samples" : "samplepacks/redmountKicks.aif",
+			"version" : 20
+		},
+		{
+			"engine" : "engines/sampleplayergain.engine",
+			"flags" : 0,
+			"id" : 151,
+			"samples" : "samplepacks/redmountSnares.aif",
+			"version" : 20
+		},
+		{
+			"engine" : "engines/sampleplayergain.engine",
+			"flags" : 0,
+			"id" : 152,
+			"samples" : "samplepacks/redmountPerc.aif",
+			"version" : 20
+		},
+		{
+			"engine" : "engines/sampleplayergain.engine",
+			"flags" : 0,
+			"id" : 153,
+			"samples" : "samplepacks/redmountFX.aif",
+			"version" : 20
+		},
+		{
+			"engine" : "engines/sampleplayergain.engine",
+			"flags" : 2,
+			"id" : 492239819,
+			"samples" : "samplepacks/user/CuckooKicks.aif",
+			"version" : 1
+		}
+	]
+}

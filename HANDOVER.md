@@ -1,10 +1,39 @@
 # OP-Z – předávací dokument pro dalšího agenta
 
 > Tento soubor je v češtině záměrně (na přání zadavatele). Všechny identifikátory, cesty, příkazy a názvy
-> souborů zůstávají v původním tvaru. Hloubkové detaily jsou v `FIRMWARE_ANALYSIS.md` (sekce 1–66);
-> výtěžek hypotéz v `HYPOTHESES.csv` (4 sloupce: hypothesis, test, conclusion, notes).
+> souborů zůstávají v původním tvaru. Aktuální stav je v bloku níže; podrobnosti jsou v `FIRMWARE_ANALYSIS.md`
+> (zejména §§66.90–66.93) a výsledky hypotéz v `HYPOTHESES.csv`.
 
-## Nejnovější transportní zjištění (2026-10-11) — čti před staršími oddíly
+## AKTUÁLNÍ PŘEDÁNÍ (2026-10-13) — oracle pro bootloader
+
+**Aktivní cíl:** dokončit obnovu komprimovaného členu `firmware/blackfin/bin/bootloader.ldr` z `.zfw` oracle a
+prohledat jeho plaintext na AES-256 klíč. Nejde o obnovu celého `opz.ldr` OS obrazu.
+
+- ZIP člen začíná na payload offsetu **467,507**; DEFLATE data na **467,573**, délka **156,306 B**, délka po
+  rozbalení **257,644 B**, CRC-32 `5087bc54`.
+- Kontinuální prefix má **811 komprimovaných B**, které dávají **1,211 plaintextových B** (`eof=false`). Tři
+  BF70x LDR hlavičky na plaintext offsetech 0, 16 a 124 mají správný podpis/checksum; třetí payload je neúplný.
+- Otestováno všech **1,180** posuvných 32B oken prefixu proti dvěma známým plaintextům; **bez shody**. Závěr platí
+  jen pro prvních 1,211 rozbalených bajtů, ne pro zbytek loaderu.
+- `toolkit/opzbootprobe.py` ukládá capture/state pod `~/.opz-decode/bootloader-probes/`, obnovuje rozsah při
+  opakovaném spuštění a automaticky čeká na update volume. Stále ale **neovládá napájecí relé** a po jednom
+  oracle čtení je potřeba skutečný power cycle. Farmu `com.opz.decode` nespouštět souběžně.
+- Uživatel potvrzuje, že navržené relé zařízení skutečně vypne i při připojeném USB. Obnovení napájení,
+  automatický návrat do `OP-Z Boot`, nové připojení volume a úplný čas cyklu zatím ověřeny nejsou; **20 s/cyklus
+  je předpoklad, ne měření**. Při naměřeném výtěžku 42.7 B/probe zbývá asi 3,645 probe, tedy ~20.25 h při 20 s/cyklus.
+- Capture nyní čeká na celý 20s timeout; průměrně první leak dorazil za 5.120 s, ale capture od detekce volume
+  do konce trval průměrně 20.510 s. Pro 20s celý cyklus je nutné zastavit capture po kompletním leak framu.
+- Plán integrace a pilotu: [`PLAN_OPZ_BOOTLOADER_ORACLE_AUTOCYCLE.md`](PLAN_OPZ_BOOTLOADER_ORACLE_AUTOCYCLE.md).
+  Zatím nebylo upraveno Arduino, připojeno relé k PCB ani provedeno automatické vypnutí/zapnutí.
+
+**Guardrails:** nikdy neposílat konzolový typ `0x15` (formátuje NAND); neinstalovat ani neupravovat engine/firmware.
+  Relé použít pouze jako skutečný power cut; nejprve pilotně ověřit opětovný boot a remount. Nezaznamenávat 20s
+  odhad jako naměřenou vlastnost.
+
+> Starší oddíly níže jsou historické poznámky a obsahují zastaralý stav, počty bajtů i plán obnovy. Před dalším
+> oracle pokusem se řiď tímto blokem a aktuálními §§66.90–66.93, nikoli starými kroky 0–9.
+
+## Nejnovější transportní zjištění (2026-10-11) — historický kontext
 
 **USB SysEx funguje.** Chyběl `$00` StateSync client hello s verzí protokolu 6 před `$51`.
 Během delší relace je nutné opakovat **oba** keepalive: `$00` i `$52(active=0)`.
@@ -117,25 +146,12 @@ zařízení začne inzerovat BLE), nebo zapnout jednotku s podrženým TRACK (co
 Bluetooth terminálu / spárovat BLE-MIDI v Audio MIDI Setup, případně odpojit USB (hypotéza: advertising
 může být při USB potlačený).
 
-## 0. Úkol a stav v jedné minutě
+## 0. Starý stav projektu — nahrazen aktuálním předáním nahoře
 
-Dva cíle, které se navzájem podmiňují:
-
-1. **Opravit bricknutou OP-Z** – jednotka naběhne jen do update módu, OS při každém normálním bootu spadne.
-2. **Dekódovat firmware** (`.zfw`) – běží přes console oracle, zatím 327 z 1 490 575 bajtů.
-
-Stav při předání:
-
-| Co | Hodnota |
-|---|---|
-| Zařízení | **není na USB busu** (žádný `/dev/cu.usbmodem*`, žádný `/Volumes/OP-Z`) |
-| Dekódováno | **327 B** z 1 490 575, `cycles=3`, `pending=4` intervaly |
-| Farma | běží pod launchd (`com.opz.decode`), čeká na medium |
-| Ground truth | 142 bajtů ověřených hardwarem, všechny sedí |
-| Jednotka | X3CJN79E, fw 1.2.45, os 1.2.43, bootloader 1.1.35, kb 1.2.26, ble 1.1.9 |
-
-**Medium se vrací jen bootem zařízení** (tlačítko PLAY / odpojit-připojit). Žádná host-side operace ho
-nevrátí – což je ověřené, ne předpoklad.
+Následující tabulka a kroky v oddílech 0–9 pocházejí ze starší fáze; neříkají aktuální počet bajtů ani další krok.
+Aktuální oracle target je samostatný `bootloader.ldr` člen, jeho pokrytí je **811 komprimovaných / 156,306 B** a
+stav relay automatizace je uveden v aktuálním bloku na začátku souboru. Zařízení ani jeho USB připojení nebylo
+v tomto handoveru znovu ověřeno.
 
 ## 1. Guardrails (přečti před prvním příkazem na zařízení)
 
@@ -279,7 +295,10 @@ kupuje `log(X)/log(95)` znaků, tedy tisíc-GPU farma kupuje méně než 3 znaky
   chybí `19,20,21,82,83,84,1490323-1490325`.
 - **Plochý engine image neplatí** (§66.6) a **method 4 není deflate** (§66.7).
 
-## 5. Zbývající cesty a pořadí prací
+## 5. HISTORICKÁ ROADMAPA — NEPOUŽÍVAT; nahrazena plánem pro bootloader oracle
+
+Následující stará cesta k OS image/central directory je zastaralá. Aktuální cíl a kroky jsou v úvodním předání a
+`PLAN_OPZ_BOOTLOADER_ORACLE_AUTOCYCLE.md`.
 
 Cesty A (zachytit zapisovaný archiv) a C (root media-load) jsou **mrtvé** (§65.1, §65.8), multi-window neexistuje
 (§65.3) a **každý únik má strop ~65 B na jedno power cycle** (§66.3) – maskování IV nepomůže. Cena plného decode je
@@ -300,7 +319,10 @@ archiv – stačí central directory (~desítky oken) a pak jeden member (OS) c�
 Detail: `FIRMWARE_ANALYSIS.md` §66.10. Decode sám jednotku neopraví – opravu řeší TE service nebo bench/NAND
 restore; decode slouží k pojmenování faultující instrukce.
 
-## 6. Jak provést experiment na zařízení
+## 6. HISTORICKÝ experimentální runbook — aktuální collector je `toolkit/opzbootprobe.py`
+
+Před oracle cyklem použij aktuální collector a plán v úvodním bloku; následující příkazy (`opzfarm`, starý CAP_SECS
+runbook) patří k předchozí iteraci a nejsou aktuálním postupem.
 
 Postup je vždy: nastage → eject → odposlechnout konzoli → přečíst crash log. Farma to dělá automaticky,
 ruční varianty jsou v `~/.opz-decode/known_structure.md` a v poznámkách k `opzq.py` / `opzmask.py`.
@@ -341,7 +363,7 @@ Pravidla, která se nevyplácí obejít:
   proces + hash stamp). Simulace (e2e, deliverable, success) a codec self-test procházejí. **Zařízení to ale
   ještě nevidělo** – první reálné zarovnané čtení je i test §66.8.
 
-## 7. Interakce s uživatelem (co od něj čekat a co mu dát)
+## 7. Staré interakční poznámky (historické)
 
 - Uživatel **řídí projekt ručně** a očekává konkrétní důkazy: počty bajtů a řádky logu, ne vyprávění o procesu.
 - Fyzické úkony, které za něj nejde udělat: stisknout PLAY (probudí medium), držet power (zabití upgradu),

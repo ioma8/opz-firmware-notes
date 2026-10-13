@@ -615,7 +615,9 @@ first-class RE material even though the unit needs service.
 Artifact: `OP-Z_1.3.0_APKPure.apk` (`com.teenageengineering.te012`, versionCode 245117), extracted
 **offline** to `/tmp/opz-official-apk`. The app never touched the device. Its native
 `lib/arm64-v8a/libSnakePlugin.so` is the *same* C++ classes as the device OS with symbols intact, so
-it is a readable reference implementation of the crashing boot path.
+it provides a partial reference for shared control logic. **Correction (§66.77):** this APK has
+literal no-op instrument/FX initialization and metronome/sample-update functions, so it is not a
+faithful implementation of the device's crashing audio path.
 
 ### 11.1 Factory plug table — recovered in full
 
@@ -4571,12 +4573,14 @@ filesync: Ignore File request 'engines/organ.engine' (222590747), same crc: 403f
 fileclient: invalid file crc, can't finalize /yaffs2/user/engines/organ.engine (0 != 403f126c)
 ```
 
-**A CRC of 0 means the engine files are empty.** The device's client state claims each engine already
-matches (`same crc`), so the app never re-sends the data — and `finalize` then finds a 0-byte file and
-refuses it. The same line appears for essentially every engine: `organ`, `ep`, `sampleplayergain`,
-`analoga`, `ministringshort`, `cluster`, `saw013a`, `fm003b`, `fdnreverb`, `crush`, `dist`, `chorus2`,
-`tapetwo`. So a state/contents mismatch emptied the engine directory, and the app cannot repair it
-because it believes the files are already correct.
+**Historical inference, corrected by §66.77:** these messages were interpreted as proof that the
+installed engines were empty. The APK instead computes the skip CRC from the installed path, then
+computes the finalize CRC from the **inbox** path while printing the installed destination's name.
+Its CRC helper also returns zero on open failure. Thus the log pair alone proves neither truncation
+nor absence of the installed engine. The same pair appeared for `organ`, `ep`, `sampleplayergain`,
+`analoga`, `ministringshort`, `cluster`, `saw013a`, `fm003b`, `fdnreverb`, `crush`, `dist`, `chorus2`
+and `tapetwo`; the independent engine-load failures remain observations, but their cause needs
+separate evidence. Firmware equivalence with this APK has not been established.
 
 **The same log names the expected CRC of every engine**, which turns the repair into arithmetic — and
 **all 13 named by the log match the official binaries in `engines-official/` byte-for-byte**:
@@ -4936,7 +4940,11 @@ The repair payload is now **the 21 engine binaries plus `config/dmx.json` and no
 `plugs.json`, no `slotConfiguration.json`, no sample files — because the engines are the one thing the
 content-disk eject sync strips and the one thing the device cannot rebuild by itself.
 
-### 66.53 Why sample uploads from the app never register (the sync job aborts before its apply phase)
+### 66.53 Historical sample-upload diagnosis (whole-job abort inference corrected in §66.77)
+
+**Later correction:** the inspected APK's finalize CRC failure skips one entry and continues;
+it does not abort the whole apply loop. The following logged transfer observations remain valid,
+but the claim that this error necessarily prevents every inbox promotion is not established.
 
 The archived app-session log shows the app handling each content item identically, and the sample
 transfer itself succeeding:
@@ -5304,7 +5312,12 @@ Also worth recording: my earlier raw `cp` + `eject` produced **zero** `[extract]
 device log, so that payload may never have extracted at all. Staging through `opzfix.py`, which waits for the
 progress counter and captures the console, is the only way to *know* a payload landed.
 
-### 66.62 Why neither mode boots: the unconditionally-initialised tapetwo engine was missing
+### 66.62 Historical missing-tapetwo boot diagnosis (APK causal argument corrected in §66.77)
+
+**Later correction:** the APK hashes the engine pathname to register **built-in TapeTwo callbacks**,
+not to open that engine file in `PlugManager::init`. Its unconditional `initModule` call therefore
+does not prove that a missing device engine file caused the observed fault. The historical logs and
+staging observations below are retained, but that causal inference is not a verified diagnosis.
 
 Five crash records in a row share one signature, at one position, in **both** normal and content mode:
 
@@ -5900,7 +5913,11 @@ Also re-checked `teenage.engineering/downloads/op-z` — it lists **only `.zfw` 
 `CuckooKicks/Snares/Perc/FX/C_keypawn`, `SebaKicks/Snares/Perc/FX`, `GrantFX`, `AlainKicks/Snares/Perc/FX`,
 `TeKicks/TeSnares/TePercs/TeFX`, `zVinyl`.
 
-**Remaining download: the device's own tree.** The clean-room file service (`$51`→`$34`, `$35`→`$53`,
+**Later correction:** §66.76 supersedes the general-filesystem-read assumption below. USB settings
+pulls now work, but arbitrary-path silence does not establish file absence; the APK lookup has both
+an active-sync gate and an ID-to-path registry.
+
+**Remaining download: the device's own tree (historical assumption).** The clean-room file service (`$51`→`$34`, `$35`→`$53`,
 fileId = crc32(lowercase(path))) is the way to fetch `settings/plugs.json`, `settings/slotConfiguration.json`,
 `settings/plugPresets.dat`, the configs, and whatever sample bodies the unit still holds. Tooling is written
 and ready: `~/.opz-decode/toolkit/opzpull.py` (read-only: sends only `$51`/`$33`/`$35`; saves under
@@ -6010,3 +6027,709 @@ configs, logs, projects (nothing further).
 **Canonical status page added:** `~/.opz-decode/STATUS.md` — one page with the verified download inventory,
 the three outstanding items, the measured blocker on each transport, the tooling table (with the passing offline
 verifier) and the single action that completes the pull.
+
+### 66.76 Offline FileSync lookup audit: registered paths, sync-mode gate, and inconclusive sample probes
+
+**Artifact and method.** Extracted `lib/arm64-v8a/libSnakePlugin.so` from the local
+`OP-Z_1.3.0_APKPure.apk` and decompiled the targeted functions with **Kuna 1.130**.
+Library SHA-256: `c0bb8bffbcc22354b20a6a68e60f3f17db1f89fa35dd96a2a90595988f049679`.
+Addresses below are virtual addresses in this AArch64 library, **not Blackfin firmware addresses**.
+All seven targeted decompilations returned no reported error; recovered types and helper boundaries
+remain decompiler interpretations. No app execution or device interaction was performed.
+
+| Function / address | Observed APK implementation |
+|---|---|
+| `FileSync::getFilePath`, `0x1179e0` | IDs 0/1/2 select `settings/slotConfiguration.json`, `settings/plugs.json`, and `syncjob.json`, joined to the instance root. IDs 3–12 take a project-file formatting branch. IDs above 12 search an ID-to-path tree; an unknown ID logs the available entries and returns an empty string. |
+| Formatting helper, `0x117bb8` | Uses `projects/project%02d.opz`. The exact ID-to-project-number arithmetic was not established in this brief pass. |
+| `FileSync::addHostedFile`, `0x11794c` | Inserts an ID/path entry into the hosted-file tree used by the lookup. Registration callers and all possible registry contents were not audited. |
+| `FileSync::handleMessage`, `0x116f8c` | For an eight-byte `$35` request, IDs **>=100** are ignored when the sync-mode flag is clear; the diagnostic is `FileSync: ignore file request when not in sync mode, id %d`. |
+| `FileSync::sendFilePart`, `0x116c50` | Calls `getFilePath`, then `fopen(path, "rb")`; successful reads are compressed and emitted as `$53` parts. A failed open produces no file data. |
+| `FileClient::init`, `0x1111c4` | Sets the instance root from the file manager and derives an `inbox/` path; this is not evidence of unrestricted filesystem export. |
+| `FileClient::onServerHeartbeat`, `0x111870` | An active heartbeat received while not already syncing triggers a request for ID 2 (`syncjob.json`). Enabling active sync is therefore not merely a read-permission toggle. |
+
+**Correction to our live probes.** Normal-mode USB settings pulls now work with
+`$00` hello → `$51` → `$34` → `$52(active=0)` → `$35`/`$53`. The recent preserved files are:
+
+- `pulled/settings/plugs.json`: 4,742 bytes, SHA-256
+  `e417ae6f261bf77501bfea9b68c91d7a94a0c7dafac3a980d7755a9bd4263996`.
+- `pulled/settings/slotConfiguration.json`: 1,619 bytes, SHA-256
+  `5094738f5dfc13c90c6d4bf30da2cbb5a037582e95156d8de814e84938165b35`.
+
+Both completed with final flags and parse as JSON. The subsequent requests for
+`system/content/samplepacks/sfx.aif`, the 19 catalogued factory packs and `CuckooC_open.aif`
+returned no part 0. **That is not evidence that those files are absent.** Under the APK logic,
+a hashed-path request can be rejected by the inactive-sync gate before lookup; even in sync mode,
+an unregistered ID has no path to open. CRC32 transmits an identifier, not a reversible filename.
+This also qualifies the whitelist interpretation in
+[the clean-room transport notes](refs/op-z-sysex/docs/clean-room-file-transport.md): silence alone
+does not distinguish the sync gate, missing registration, failed open or transport failure.
+
+**No audio recovered from the APK in this bounded check.** Its ZIP member names contained neither
+`sfx` (case-insensitive) nor `.aif`/`.aiff` extensions. The extracted arm64 library contained no
+printable `sfx.aif` string and no ordinary `FORM....AIFF` / `FORM....AIFC` header. This does **not**
+exclude compressed, encoded or differently named audio elsewhere in packaged assets, and does not
+establish whether the device contains the file.
+
+**Limits and safety.** These are app/simulator implementation findings, not proof of identical
+firmware behavior. This audit did not establish how to register arbitrary device-side paths or
+read system content, and did not identify the PLAY crash's null object. Do not enable active sync
+as a speculative read workaround, overwrite device-generated settings, synthesize `sfx.aif`, or
+send console command `0x15`. No files were written to the OP-Z.
+
+### 66.77 Playback dependencies and FileSync ownership: deeper offline audit
+
+**Scope and evidence.** Same APK/library SHA-256 as §66.76, Kuna 1.130 followed by
+`llvm-objdump -d --demangle` instruction checks. The raw-disassembly pass was needed because Kuna
+misrenders some large object offsets as references to unrelated strings and loses some variadic
+arguments. Neither issue is evidence of device memory corruption. Unless explicitly labeled iOS,
+addresses here are APK AArch64 virtual addresses. No device commands, content imports or setting changes were performed;
+there is no offline reproduction of the Blackfin fault, and no recovery is claimed.
+
+#### Checkpoint 1: shared start path and a concrete simulator limitation
+
+- `Sequencer::onMidiStart` (`0xec984`) calls `resetPlaybackState(this, true, false)`;
+  `startPlayback` (`0xec568`) does likewise. `onMidiContinue` (`0xeca18`) passes `true` to
+  `continuePlayback` (`0xec3e8`), which can also call that reset depending on current state.
+  Continue therefore is **not guaranteed to bypass reset**. This is consistent with the historical
+  failed Continue experiment, but does not locate the device fault.
+- `resetPlaybackState` (`0xe4360`) resets arpeggio/chord state, reads the current pattern's track
+  metadata, calls `nextPattern`, resets step components, clears active notes, sets gain/mute for
+  16 tracks and stops parameter sweeps. `Sequencer::init` (`0xe3e08`) also calls it, with different
+  arguments (`true, true`), after pattern-container initialization. It is not exclusively a PLAY path.
+- The first playback tick remains a separate candidate boundary: `Sequencer::tick` (`0xe52dc`)
+  gates step-component entry and `magicChordUpdate`/`playNotes` on playback state, and later advances
+  tracks. Seeing the fault after PLAY does not isolate the synchronous reset from subsequently
+  scheduled work. The inspected APK tick also observes active file sync and stops playback when
+  that state becomes active; sync is not a neutral diagnostic toggle.
+- `initArpeggio` (`0xc1c5c`) loops over six file reads; each non-positive read result falls back to
+  a built-in string before `parseCode`. `resetArpeggio(true, false)` (`0xc1e54`) only resets counters;
+  the note-kill branch requires the second argument. Missing arpeggiator files alone do not imply
+  an uninitialized arpeggiator in this APK. This does not reverse the prior device tests or prove
+  identical fallback behavior in firmware.
+- `DmxController::restartPattern` (`0xc5a30`) is exactly `str wzr, [x0, #0xc]; ret`.
+  `Synth::setMasterGain` (`0xfa614`) and `setMasterMute` (`0xfa650`) write numeric fields in the Synth
+  object, with no file opens or plug lookups in those functions. `magicChordReset` (`0xc99ac`) clears
+  a state byte; `StopAllSweeps` (`0xd0a34`) clears an in-memory collection. None identifies a missing
+  persistent file to restore.
+- **Critical limitation, verified as literal AArch64 `ret` (`d65f03c0`):**
+  `Sequencer::updateRequestedSamplePacks` (`0xe5be0`), `updateMetronome` (`0xe5be4`),
+  `InstrumentManager::init` (`0x13c7dc`), `InstrumentManager::noteOn` (`0x13c934`),
+  `InstrumentManager::noteOff` (`0x13c938`) and `FxManager::init` (`0x13cde0`).
+  Shared symbol names do **not** mean the APK contains the device's implementations. This library
+  cannot settle the device's missing-system-sound or engine-initialization dependencies through
+  those stubbed paths, nor map Blackfin `RETX 0x80117baa` to an ARM instruction.
+
+#### Checkpoint 2: reserved project reads and hosted-file ownership
+
+- The exact project mapping omitted in §66.76 is now instruction-verified:
+  `getFilePath` computes `w4 = fileId - 2` at `0x117a08`; the helper at `0x117bb8` takes that value as
+  the first variadic argument for `projects/project%02d.opz`. Thus **IDs 3–12 map to projects 01–10**,
+  joined to the instance root. These IDs are below the `>=100` inactive-sync guard. This is a
+  candidate read-only backup channel, **not yet tested on this device**, not access to system files,
+  and not a reason to repeat the already-failed project-clear experiment.
+- `FileServer::addSyncFile` (`0x11627c`) computes the path's ID, CRC and size, adds a manifest entry,
+  joins the path to the **local server's root**, calls `addHostedFile` (call site `0x116468`), and
+  writes local `syncjob.json`. A scan of decoded direct `b`/`bl` references to the implementation
+  and its PLT entry found this one registration call site. Indirect/external calls were not excluded.
+  This registers a **sender-local file**; it does not register or expose an arbitrary path on the OP-Z.
+- `FileClient::startSyncJob` (`0x111bc0`) marks the client active and queues downloads for manifest
+  entries with absent operation, `write` or `import`. Nothing in that inspected function creates
+  a device-side hosted-file registration. Host upload manifests are not demonstrated read manifests.
+- `calcFileId` (`0x117c58`) lowercases ASCII A–Z and computes CRC32; it does **not** special-case
+  project paths. The reserved project IDs are explicit aliases in `getFilePath`, not what a generic
+  pathname hash produces. `FileClient::handleMessage` (`0x11167c`) and `FileServer::handleMessage`
+  (`0x115f10`) delegate file messages to `FileSync` and handle their respective connection/heartbeat
+  messages. No additional remote-path registration operation was identified in those dispatchers;
+  other protocol families and indirect calls are outside this bounded check.
+
+#### Checkpoint 3: CRC errors do not prove empty installed engines or a whole-job abort
+
+The following path distinction is visible in `requestFile` (`0x1176ac`), `FileClient::init`
+(`0x1111c4`) and `finalizeSyncJob` (`0x111ed8`), and the finalize branch was instruction-checked:
+
+```text
+requestFile:
+    CRC(userRoot + path) == nonzero expected CRC -> skip download
+    otherwise download into inboxRoot + path
+finalizeSyncJob, for each ordinary write entry:
+    CRC(inboxRoot + path) != expected CRC -> log error naming userRoot + path; continue
+    otherwise copy inboxRoot + path to userRoot + path, overwrite enabled
+```
+
+- **The diagnostic names a different path from the one checksummed.** At `0x11225c`, the CRC call
+  uses the inbox-derived string; the mismatch diagnostic at `0x1123a4` uses the final destination.
+  A skipped, already-matching installed engine can therefore lack an inbox copy and produce
+  `invalid file crc, can't finalize .../engines/... (0 != expected)` without proving that the
+  installed engine is empty. This is an APK explanation compatible with the historical log pair,
+  **not a device-side reproduction**.
+- `FileManager::calcFileCRC` (`0x113d84`) returns zero when `fopen` fails. With seed zero an empty
+  file also produces zero; CRC zero is not an existence/size test. Earlier CSV rows and the
+  engine-emptying diagnosis that equated it with an empty installed file must not be used as proof.
+- A mismatch branches from `0x1123a8` to cleanup at `0x112608`, then to iterator advancement at
+  `0x112080`. It **skips that entry rather than aborting the whole job**. Other entries can apply,
+  and the end of the function still recalculates state CRC and calls
+  `PlugManager::importSlotConfiguration` (`0x11200c` call site). This corrects §66.53's blanket
+  aborted-apply explanation; it does not establish which historical device files were promoted.
+- `FileManager::copyFile` (`0x113b7c`) opens the source `rb` and destination `w+b`, then copies bytes.
+  The successful finalize branch calls it at `0x1122a8` with overwrite enabled. It is **not an atomic
+  rename**, despite the failure diagnostic saying `Failed to rename file`. There is no demonstrated
+  whole-job rollback, so active synchronization is unsuitable as an unguarded recovery experiment.
+- The inspected finalizer has project-reload and `patch.json` import hooks, plus a later
+  `removeUserPlugAndSample` branch. It is a state-changing workflow, not a generic read session.
+  The missing factory audio is not regenerated by any operation established in this audit.
+
+#### Checkpoint 4: initialization data versus device-only behavior
+
+- `StepComponentManager::init` (`0x105674`) calls `StepComponents::registerComponents` (`0x1047d4`).
+  The latter registers eleven linked globals: pulse repeat/hold, timing, velocity, pitch ramp up/down,
+  random, glide, parameter sweep, tonality and transport. ELF relocations identify those globals.
+  `reset` (`0x105624`) clears its state buffer then invokes registered reset callbacks; `enterStep`
+  (`0x106178`) consults pattern play-style settings and dispatches matching component callbacks.
+  The registration routine does not load component definitions from a missing NAND file. Callback
+  bodies were not exhaustively audited and no component was identified as the physical crash cause.
+- `PatternContainer::init` (`0xd0da8`) stores a supplied backing-data pointer and index;
+  `Sequencer::init` allocates no external project resource in that helper. This does not prove
+  firmware pointers are valid, but gives no justification for another project-clear or fabricated
+  project-file experiment.
+- `PlugManager::init` (`0xd6d7c`) uses `crc32('engines/tapetwo.engine')` as a map key and installs
+  pointers whose ELF relocations resolve to the library's own `TapeTwo::init`, `renderFX`,
+  `onNoteOn` and `onNoteOff` (`0x1d5600`, `0x1d5608`, `0x1d5610`, `0x1d5618` GOT slots).
+  It then calls linked `TapeTwo::initModule` at `0xd6ea4`; it does **not** open that engine pathname
+  in this routine. This invalidates the APK-based causal argument in §66.62, not the independent
+  observations that device engines have gone missing after content operations.
+- `SampleLoader::init` (`0xdc65c`) and `initSamplePacks` (`0xdc738`) initialize in-memory pack
+  descriptors and backing-buffer references. These functions do not synthesize or recover
+  authentic factory audio. The stubbed request/update and instrument initialization paths remain
+  a hard limit on using this APK to explain the real transport fault.
+
+#### Checkpoint 5: existing iOS archive corroborates the limitation, not a recovery implementation
+
+A bounded cross-check used the already-local `~/.opz-decode/ios-apps/OP-Z-archived.ipa`, not a
+new download. Its `Info.plist` identifies **1.3.1, build 194**; archive SHA-256:
+`8be1231ada716389cdfd885d64dd411680adfe8ffffacffa8f23d9ffc2ef9103`.
+The extracted member `Payload/OP-Z.app/Frameworks/UnityFramework.framework/UnityFramework`
+is ARM64 Mach-O, 41,787,024 bytes, SHA-256:
+`f5ddfa272688b31c07b9654dbc4aa5d8b8bc3cf8f4b0e84c99683eb79bba9c90`.
+Its encryption load command reports `cryptid=0`; no decryption or app execution was attempted.
+
+Kuna's function-inventory command exceeded the 90-second budget without output. The bounded
+fallback used `llvm-nm --defined-only --demangle` to locate symbols and `llvm-objdump` on exact
+address ranges; this was **not** a successful whole-framework decompilation.
+
+- Six matching **iOS** functions are again literal `ret`: `updateRequestedSamplePacks`
+  (`0x10a9a50`), `updateMetronome` (`0x10a9a54`), `InstrumentManager::init` (`0x110485c`),
+  `noteOn` (`0x11049a8`), `noteOff` (`0x11049ac`) and `FxManager::init` (`0x1110c7c`).
+  This second shipped app does not supply the missing implementations through those symbols.
+- **iOS** `FileSync::handleMessage` (`0x109b8d4`) also compares file ID against 100 and rejects
+  IDs at/above that threshold if its sync flag is zero (`0x109b900`–`0x109b90c`).
+- **iOS** `getFilePath` (`0x109bed4`) likewise has the reserved project branch: subtract two
+  (`0x109bf00`), bound at 12, format `projects/project%02d.opz` (string VA `0x23ac019`),
+  then concatenate the root. Higher IDs enter an ID-to-path tree lookup (`0x109c15c`).
+  This independently supports the reserved-project-read candidate but still is not firmware proof.
+- No literal `sfx.aif` string was found in this framework's bytes. That bounded string search does
+  not exclude encoded assets, and is not evidence that the physical OP-Z lacks the file.
+
+**Reproduction anchors.** With the §66.76 hash-verified library extracted to `$LIB`, the main
+findings can be revisited without running vendor code or connecting the device:
+
+```sh
+kuna decompile-all "$LIB" --addr 0xe4360 --addr 0xe3e08 --addr 0xe52dc \
+  --addr 0xc1c5c --addr 0x1176ac --addr 0x111ed8 --addr 0x113d84 \
+  --addr 0x11627c --addr 0xd6d7c --json > playback-filesync-audit.json
+llvm-objdump -d --demangle "$LIB" > playback-filesync-arm64.asm
+llvm-readelf -r "$LIB" > playback-filesync-relocations.txt
+```
+
+**Outcome / next evidence boundary.** No verified full-recovery procedure or particular missing
+file causing PLAY was found. The concrete new device-test candidate is a bounded **inactive-sync
+read of a reserved project ID**, bracketed by known-good settings reads and saved to a new backup
+location. It would test the APK-derived read mapping, not fix PLAY; it has not been run. Restoring
+engines, registering system paths, toggling active sync or constructing settings remains unjustified
+without separate device evidence and an explicit rollback plan. Further causal attribution needs
+matching device OS instructions/runtime evidence, or another artifact demonstrably containing the
+non-stubbed device-equivalent audio implementation. No new crash, format, reflash or write was induced.
+
+### 66.78 Diagnostic-engine feasibility: concrete exports, but no safe deployment established
+
+**Bounded offline pass.** Inspected the genuine `engines-official/crush.engine` (1,012 bytes,
+SHA-256 `f1542de16fddca835c6becdb0d809f7e16d75c5e7c19bde2da31c1dca6da34f9`) as a small format
+specimen, **not a recommended engine to replace**. No engine was modified, staged or executed.
+No device requests or writes were made. The proposed memory-reader remains a research hypothesis.
+
+**Native-file evidence.** Walking all 21 official engines as loader records again ends exactly at
+EOF. All **138 headers** have upper code byte `0xad` and XOR of their sixteen bytes equal to zero.
+This is a reproducible header consistency property, **not proof that payloads are unsigned or that
+modified code will be accepted**. The firmware's loader/authentication logic is not available here.
+The first and last records in Crush have zero byte count; no code is loaded at their `0x11a00000`
+destination. Its four nonempty records map as follows:
+
+| File data offset | Destination | Bytes |
+|---|---|---:|
+| `0x20` | `0x81bfb400` | 56 |
+| `0x68` | `0x81bfb438` | 760 |
+| `0x370` | `0x81bfb730` | 92 |
+| `0x3dc` | `0x81bfb78c` | 8 |
+
+The first mapped block begins with words `0xfeed0ad1`, `0xad1facef`, followed by name/address pairs
+and a zero/zero terminator. Resolving the name pointers through the block map yields:
+
+| Export | Native address | File offset |
+|---|---|---|
+| `initModule` | `0x81bfb450` | `0x80` |
+| `init` | `0x81bfb4bc` | `0xec` |
+| `renderFX` | `0x81bfb4f0` | `0x120` |
+| `onNoteOn` | `0x81bfb444` | `0x74` |
+| `onNoteOff` | `0x81bfb438` | `0x68` |
+
+These are native engine addresses, not APK addresses. This recovers entry-point locations without
+assuming the obsolete flat-image model. The mapped data accounts for the file; that alone does not
+exclude authentication elsewhere or checks embedded within declared records.
+
+**Callback/output evidence and limits.** In the APK, `Crush::initModule` (`0x123460`) accepts version
+argument zero and saves the supplied `ModuleCallbackInterface` pointer. Its `renderFX` (`0x1234a4`)
+writes to a caller-supplied audio buffer. ELF relocation targets in the callback table passed by
+`PlugManager::init` include `sequencerSetValue`, `sequencerGetValue`, waveform/filter tables,
+ADSR helpers, `getPresetData` and IIR helpers. A general log, MIDI-send or file-write callback was
+**not established in this inspected table**. Audio is therefore a plausible result channel, not a
+proven byte-exact dump path; no marker, encoding, capture or native ABI was validated on hardware.
+ARM calling conventions and pointer widths must not be copied into Blackfin code.
+
+**Tool boundary.** Kuna 1.130 rejects the raw `.engine` as an unrecognized object format. Installed
+`rasm2 -L` did not list a Blackfin architecture, and no `bfin-elf-objdump` was available on PATH.
+Tried radare2 6.2.2 directly: `r2 -q -a bfin -b 16 -c 'i;pd 8' engines-official/crush.engine` returns
+`asm.arch: cannot find 'bfin'`; `pd` consequently prints raw bytes, not Blackfin instructions. The
+installed architecture list has no Blackfin plugin. The Blackfin function bodies were **not
+disassembled or decompiled** in this pass; only their export table and load mapping were decoded.
+APK `initModule`/`init`/`renderFX` and TapeTwo `initModule` were examined as cross-architecture hints,
+not substituted for native instruction evidence. The later Blackfin+ Binutils fallback and its limits
+are recorded in §66.79.
+
+**Feasibility verdict.** The native entry table makes a diagnostic module structurally plausible,
+but four prerequisites remain unproved: modified-module acceptance; a correct native ABI and
+memory-access privileges; a dependable result channel; and boot-independent rollback. File-placement
+capability does not establish any of them. A read-intended module can still fault, corrupt RAM or
+prevent boot, and preserving the original file on the host is not a verified rollback procedure.
+Do **not** replace Crush, TapeTwo or another engine on this evidence. §66.79 records a partial
+Blackfin+ disassembly; native ABI and callback validation remain open before designing even a
+fixed-marker experiment. No full-recovery method was proved.
+
+### 66.79 Blackfin+ Binutils fallback: partial engine assembly, not pseudocode
+
+The previous Kuna and radare2 routes could not decode raw engine code. A local fallback was built
+from `deanm1278/blackfin-plus-gnu` (revision `e4408a15b9be6cd911283f103a1a3f69e9a6b8c0`), an ADI
+GNU toolchain fork whose README says BF70x/Blackfin+ support is incomplete. Its `bfin-elf-objdump`
+was built on macOS for `--target=bfin-elf` (`--with-system-zlib`; `make MAKEINFO=true all-binutils`,
+to bypass an unavailable documentation generator). The executable is temporary at
+`/tmp/bfin-binutils-build/binutils/objdump`; source and generated blocks live under `/private/tmp`.
+Nothing was installed in the repo or on the device.
+
+Extracted the declared nonempty loader payload blocks from the verified Crush stream and disassembled
+them with `-D -b binary -m bfin --adjust-vma=<block destination>`. This yields useful native
+instruction text for ordinary Blackfin operations and some Blackfin+ forms. For example, the export
+table's `onNoteOff` at `0x81bfb438` and `onNoteOn` at `0x81bfb444` each decode as `LINK 0; UNLINK;
+RTS; NOP` (both are stubs in this engine). `init` at `0x81bfb4bc` calls the helper at `0x81bfb478`,
+then sets up two globals from the data buffer. `renderFX` at `0x81bfb4f0` decodes into DSP and buffer
+operations, as expected for an audio effect. Those observations are from the genuine engine bytes,
+not from APK ARM64 functions.
+
+**Hard limit:** this fork is explicitly incomplete for Blackfin+, and emits `ILLEGAL` at apparent code
+addresses including `0x81bfb454`, `0x81bfb468` in `initModule`, and `0x81bfb5c4`, `0x81bfb602` in
+`renderFX`. Some other `ILLEGAL` records fall in metadata/constants and are expected when linear
+sweeping data. Therefore instruction boundaries and function semantics around unsupported words are
+not established. The disassembly is a useful scout, **not a complete/verified decompilation**. Do not
+infer the `initModule` ABI or memory-read capability from the partial output. The engine remains
+unchanged and unexecuted; no hardware interaction occurred.
+
+A real pseudocode decompilation would need a Blackfin+ SLEIGH language in a full Ghidra runtime. The
+available `hekar-lab/Ghidra-BlackFinPlus` source (revision
+`380b86f1de8c69e3ce433f93a93cb771fc90d3dc`) is explicitly marked untested and does not ship a
+compiled language/runtime here. Kuna's bundled `slacomp` rejected its SLEIGH at sub-byte bitranges and
+an unsupported string expression; Kuna 1.130 cannot use this source as-is. Full Ghidra is not
+installed. Its public distribution is about 570 MB, so it was not downloaded as an unrequested
+large artifact. Thus a few functions can now be partially disassembled, but there is not yet a
+reliable full-engine decompiler available in this environment. Stop before treating a pseudocode
+reconstruction as evidence; full BF+ support or vendor CrossCore tools are required for that.
+
+### 66.80 Ghidra installed; Blackfin+ loader and pseudocode pass
+
+Installed Ghidra 12.1.4 at `~/Applications/Ghidra_12.1.4` from the official public ZIP (SHA-256
+`ddac49f903da9d5bac833e5cc79395098b9c33cfd3279be5f31bd00387d2d4db`). Built its native macOS ARM64
+components with Ghidra's Gradle wrapper (`buildNatives`); this was necessary because the release
+ZIP did not include the `mac_arm_64/decompile` binary. Build completed successfully.
+
+Built and installed the [HEKAR Blackfin+ Ghidra extension](https://github.com/hekar-lab/Ghidra-BlackFinPlus),
+source revision `380b86f1de8c69e3ce433f93a93cb771fc90d3dc`, in the Ghidra installation extension directory
+`~/Applications/Ghidra_12.1.4/Ghidra/Extensions/Ghidra-BlackFinPlus`. To build it against Ghidra
+12.1.4, adapted the extension's loader override to the current `ImporterSettings` API and the
+additional `getDefaultOptions` argument in a temporary source copy; the extension itself is still
+marked untested by its authors. The original install was untouched by this compatibility patch.
+Compiled its Blackfin+ SLEIGH processor with Ghidra's own `support/sleigh` (not Kuna's limited
+`slacomp`). The compiler reports 72 NOP-constructor and 20 local-operand-collision warnings.
+
+**Verified target import.** Headless Ghidra accepted `engines-official/crush.engine` with loader
+`Blackfin+ Boot Stream` and language `blackfinplus:LE:32:default`; the loader created mapped,
+initialized blocks at `0x81bfb400`, `0x81bfb438`, `0x81bfb730`, and `0x81bfb78c`, matching the
+independently walked container. Ghidra's native decompiler then produced pseudocode for the five
+name-table exports after seeding function entries from the validated table:
+
+- `onNoteOff` (`0x81bfb438`) and `onNoteOn` (`0x81bfb444`) each reduce to `return;`, consistent with
+their exact `LINK; UNLINK; RTS; NOP` bodies.
+- `initModule` (`0x81bfb450`) decompiles to a comparison of its first argument with a global, storing
+  its second argument to a global on match, and returning a boolean. The recovered signature/types
+  are provisional.
+- `init` (`0x81bfb4bc`) calls an internal helper with a 24-byte size and stores the returned buffer
+  and a `+0x100` pointer in globals.
+- `renderFX` (`0x81bfb4f0`) decompiles to extensive fixed-point DSP arithmetic and buffer accesses.
+
+The persistent project is at `~/Documents/GhidraProjects/OPZ-crush/engine-analysis.gpr`; captured
+headless pseudocode is in `~/Documents/GhidraProjects/OPZ-crush/ghidra.log`. Reprocessing that saved
+project reproduced successful decompilation of all five exports. Ghidra emitted a language-defined
+DDR memory-block conflict warning,
+but the four initialized loader blocks and export addresses were present in the imported program.
+The Blackfin+ language extension is explicitly untested; compiler warnings, inferred types (including
+an obviously spurious library type on `init`), and the prior objdump's unsupported words mean the
+pseudocode is **evidence for navigation, not a verified semantic reconstruction**. The trivial note
+handler stubs are the strongest output. No engine was modified or executed and no device was accessed.
+
+### 66.81 Offline decompilation sweep of the remaining official engines
+
+Imported the other 20 `engines-official/*.engine` files into the same persistent Ghidra project;
+Ghidra's `Blackfin+ Boot Stream` loader and `blackfinplus:LE:32:default` language were selected
+automatically. Revalidated all 21 streams: each parsed exactly to EOF, every 16-byte loader header
+passed its XOR check, and each engine export table had its two magic words and zero terminator.
+Each table contains the same five entry points: `initModule`, `init`, `onNoteOn`, `onNoteOff`, and
+`render` or `renderFX`. The script created functions from these validated table addresses and
+produced pseudocode for **104 of 105 exports**. The sole failure was `fdnreverb.renderFX` at
+`0x81c07fa0`, which timed out both at 60 seconds and again at 300 seconds; it is a decompiler
+limitation, not evidence of a firmware hang.
+
+The best cross-engine lead for the recovery goal is still an **ABI question, not an exploit**:
+`initModule` generally compares its first argument with an embedded ID, saves the supplied callback
+pointer, and returns a memory-size request. Nonzero requests in the pseudocode include chorus
+`0x4000`, chorus2 `0x8000`, delay and TapeTwo `0x200000`, FDN reverb `0x3a6c4`, and reverb `0xe3a0`.
+Several render/note paths dispatch indirectly through the stored interface pointer at offsets
+`+4`, `+0x1c`, `+0x20`, and `+0x24`; `delay` also reads a pointer at `+8` for a table lookup. The
+actual BF703 firmware callback meanings are not established by this pass. Other
+exports are audio/voice state code, not obvious control or file-service interfaces.
+
+A bounded scan of decompiler-named static globals found all of them inside each module's own mapped
+payload ranges; it found no explicit OS-memory, filesystem, or console-output primitive in the
+export pseudocode. That is **not proof of absence**: inferred C and pointers passed through the ABI
+are unreliable/unbounded, and extension warnings remain. No actionable route to read firmware
+memory or exfiltrate it has been demonstrated. Modifying/using an engine as a payload still requires
+the independent gates recorded above—modified-code acceptance, verified memory access/output, and
+rollback—and separate device approval. No device was accessed and no engine was modified or run.
+
+Per-engine headless C output and logs, plus the Ghidra database, are retained under
+`~/Documents/GhidraProjects/OPZ-crush/`; the export functions are named in each `decompile-<engine>.out`.
+
+### 66.82 APK callback-table cross-check: useful ABI leads, not firmware proof
+
+Continued the authorized **offline** audit against `OP-Z_1.3.0_APKPure.apk` (SHA-256
+`ce3b79ca85f6588a584a46ffdbe986ea5e350c16da45c1ce47d48ae514cfdf57`); its extracted ARM64
+`libSnakePlugin.so` is SHA-256
+`c0bb8bffbcc22354b20a6a68e60f3f17db1f89fa35dd96a2a90595988f049679`. Kuna 1.130 decompilation
+and ELF relocations show `PlugManager::init` passes `0x1cdff8` to `TapeTwo::initModule`. In this
+APK table, relocations identify `sequencerSetValue` at +0, `sequencerGetValue` at +8,
+`updateParametersADSR` at +0x38, `updateParametersAHD` at +0x40, and `getPresetData` at +0x50.
+This is a map of an Android simulator table only.
+
+There are useful internal width/signature cross-checks: APK `TapeTwo::init` calls its interface at
++8 with argument `4` to get a sequencer value; the genuine BF+ TapeTwo engine pseudocode calls its
+saved interface at +4 with `4`. Likewise, engine indirect calls at +0x1c use five arguments and
+those at +0x20 use seven, matching APK callbacks `updateParametersADSR` (five arguments) and
+`updateParametersAHD` (seven). These alignments make the APK useful for generating ABI hypotheses,
+but do **not** establish that the physical BF703 firmware uses the same table or functions. In
+particular, the engine's +0x24 callback remains unmapped.
+
+The APK's file-looking callback is not an arbitrary-path API: `getPresetData` chooses either the
+fixed `rendertone.preset` path or `engines/fmedit.preset`, then calls `FileManager::readFile` with a
+0x1000-byte limit. That helper opens the supplied path with `fopen(...,"rb")`; within this callback,
+the path is selected internally, not provided by the engine. The table's +0x50 entry would be
+byte-offset +0x28 in a 32-bit table with the same layout; no evidence here maps the BF engine's
++0x24 call to it. This establishes neither an OS-memory read nor a firmware filesystem primitive.
+
+**Result / blocker:** this cross-check narrows one inspected app ABI but produces no device exploit
+and cannot resolve callback permissions, engine acceptance, or output on hardware. The actual
+1.2.45 `firmware/blackfin/bin/opz.ldr` remains unavailable as plaintext: local `.zfw` packages
+still have key index `0xff`; the only similarly named local ZIP inspected here is a user-tree
+ablation containing settings and engine files, not the OS image. The OS entry in the encrypted
+update archive remains Deflate-compressed and would require the already-retracted full 466,903-byte
+oracle recovery (about 7,412 cycles at the measured 63 bytes/cycle). With device tests, engine installation, NAND-format command 0x15, and physical
+JTAG excluded, the next evidence-bearing step requires an independently available plaintext copy
+of the matching firmware loader/host binary or equivalent vendor ABI source. No device was
+accessed and no engine was modified or executed.
+
+### 66.83 Cross-product key lead: early OP-1 Field firmware shares the OP-Z key
+
+A newly checked public source changes the *lead* for obtaining plaintext, though not the current
+feasibility result. In an OP-Forums post dated January 25, 2024, the OP-Z firmware researcher says
+they possess the OP-Z AES key and that it was also used by early OP-1 Field firmware, before TE
+changed keys starting with OP-1 Field 1.1.6. In a later post (April 9, 2026), the same researcher
+explains the key was found by sliding a 32-byte window over the **already-decrypted OP-Z bootloader**;
+the key itself and a decrypted archive were not posted. Source:
+https://op-forums.com/t/custom-firmware-on-the-op-1/4283?page=44
+
+The public `op1hacks/op1-field-fw-archive` repository lists early 1.1.2 and 1.1.4 `.tfw` files,
+but its inventory contains firmware downloads and changelogs—not a plaintext bootloader, extracted
+key, or decrypted OP-Z archive. Thus the cross-product match does not independently recover the key
+or remove the OP-Z oracle bottleneck. It does identify a specific offline acquisition lead: ask the
+researcher for a lawful, privately shareable plaintext 1.2.45 loader/host copy or key, rather than
+repeat the 7,412-cycle oracle extraction. Public sources inspected do not establish that they will
+share either artifact. No contact was sent, no firmware was downloaded, and no device was accessed.
+
+**Correction from §66.84:** the 7,412-read estimate is specifically for the large `opz.ldr` OS member;
+it is not yet established as the cost of recovering the bootloader/key. See the next section before
+using that estimate for key extraction.
+
+### 66.84 The key search may need only the separate bootloader member
+
+The researcher's method requires scanning the decrypted **bootloader file**, not the whole firmware
+archive or necessarily the OS image. The local evidence identifies `firmware/blackfin/bin/opz.ldr`
+as the 466,903-byte compressed OS member, while the real updater separately reports an `os` and a
+`bootloader` component. Therefore the previous response's implication that recovering the key via
+the oracle necessarily costs 7,412 reads conflated the OS member with the bootloader component.
+
+At the time of this entry, the exact bootloader member path and size were unknown. The follow-up
+bounded reads in §§66.85–66.87 identified `firmware/blackfin/bin/bootloader.ldr` and its compressed
+size. Recovering the key still requires the complete compressed member, inflation, and a scan of
+32-byte windows as AES-256 key candidates; only the first 106 compressed bytes are currently
+recovered. The actual key match remains unverified. This is separate from recovering the 466,903-byte
+`opz.ldr` OS member, which remains relevant to the OS/host ABI audit.
+
+### 66.85 First next-entry probe and bounded collector
+
+The automatic decode farm was active as launchd job `com.opz.decode` (PID 755 running
+`/tmp/opzfarm.py 100000 1`) and was repeatedly ejecting the volume. Disabled/unloaded that job while
+preserving its durable state; no farm process remains. The first manual eject was dissented by that
+process, so no capture was obtained in that attempt. Subsequent probe was run only after the farm
+stopped.
+
+The aligned oracle probe at archive payload offset **467,280** returned a valid local ZIP header and
+19 plaintext bytes before a real NUL terminated the log:
+
+```
+50 4b 03 04 14 00 00 00 08 00 95 ae 3a 52 d2 c6 f2 2a 0b
+```
+
+This confirms a local entry header (`PK\x03\x04`), Deflate method 8, and only the low byte `0x0b` of
+its compressed size; the filename and full sizes are still unknown, so this does **not** identify the
+bootloader. The follow-up window at **467,296** shifts the size/name fields into the first, IV-masked
+block so their zero bytes need not terminate the C-string leak.
+
+Added `toolkit/opzbootprobe.py`, a bounded `uv run --script` collector. It waits for the update volume,
+refuses to run alongside the farm or when another `.zfw` exists, stages one probe without deleting
+existing files, safely ejects, captures/reopens the CDC stream, and durably records raw frames plus
+recovered bytes under `~/.opz-decode/bootloader-probes/`. Each further cycle requires the user to
+re-enter update mode; `--max-probes` is capped at 64 and defaults to one. It sends no console
+commands, including 0x15. Its offline self-test and Python compilation pass. At that point no
+bootloader member had yet been identified; the later ten-probe follow-up is in §66.87.
+
+### 66.86 `bootloader.version` is metadata, not the bootloader image
+
+The collector recovered payload bytes 467,296–467,359 in one update-mode cycle. Combined with the
+previous 19-byte prefix at 467,280, the local header parses as: method 8 (Deflate), CRC-32
+`0x2af2c6d2`, compressed size 11, uncompressed size 9, filename length 40, no extra field, and
+filename `firmware/blackfin/bin/bootloader.version`. Thus the hypothesis that this *next* entry is
+the bootloader image is disproved: it is a small version-metadata file. Its compressed data starts at
+467,350; the latest range contains its first 10 of 11 compressed bytes. The following local header
+begins at payload offset **467,361**.
+
+A subsequent 10-probe collection from 467,360 is recorded in §66.87 and supersedes that narrow
+follow-up: it reached and identified the actual `bootloader.ldr` entry, though only its first 106
+compressed bytes were captured.
+
+### 66.87 Ten-probe walk identifies the actual bootloader entry
+
+The collector's `state-467360-512.json` contains 319 contiguous, deobfuscated bytes for payload
+offsets 467,360–467,678 from ten cycles. Per-cycle leaks ranged from 16 to 63 bytes; the range was
+not completed. Combining the earlier 19-byte prefix at 467,280 and the 467,296 state yields a
+self-consistent chain of four local ZIP entries. The three small entries were raw-DEFLATE inflated;
+all declared uncompressed sizes and CRC-32 values match:
+
+| Local header | Member | Compressed / uncompressed | CRC-32 | Inflated content |
+|---:|---|---:|---|---|
+| 467,280 | `firmware/blackfin/bin/bootloader.version` | 11 / 9 | `2af2c6d2` | `1.1.35+0` (LF) |
+| 467,361 | `firmware/blackfin/bin/opz.crc32` | 12 / 10 | `b302a14e` | `2403806141` |
+| 467,434 | `firmware/blackfin/bin/os.version` | 11 / 9 | `8c515f83` | `1.2.43+0` (LF) |
+| 467,507 | `firmware/blackfin/bin/bootloader.ldr` | **156,306 / 257,644** | `5087bc54` | not yet recovered |
+
+Thus the actual loader member is now identified, distinctly from the small version metadata. Its
+compressed data begins at payload offset **467,573**. The collected range includes its first 106
+bytes (467,573–467,678); 156,200 compressed bytes remain. Header parsing and the three independent
+inflate/size/CRC checks strongly validate the offset map and leak decoding.
+
+The 10 cycles recovered 319 unique bytes (31.9 bytes/cycle), depressed by NULs in ZIP headers and
+metadata. Capped frames yield 63 bytes, but aligned retries then overlap 15 bytes and add 48 new
+bytes; a consistently capped stream would need about **3,255 more cycles**. Uncapped 64-byte reads
+can advance farther, while early NULs reduce throughput, so several thousand cycles is the defensible
+scale, not a precise forecast. The 10-cycle average is not representative of compressed payload.
+Recovering this member is far cheaper than the separate 466,903-byte `opz.ldr` member, but still
+thousands of manual update-mode cycles. No device writes, console commands, or engine operations
+occurred during this analysis.
+
+### 66.88 CCES loader manual: useful LDR structure, no key offset
+
+Read the supplied Analog Devices *CCES 2.9.0 Loader and Utilities Manual*, revision 2.3 (May 2019),
+`/Users/jakubkolcar/Downloads/cces-loaderutilities-manual.pdf`:
+
+- The supported ADSP-BF70x family explicitly includes BF703 (printed p. 6-1). The BF7xx loader guide
+  says `.ldr` is a boot stream formatted for the on-chip boot kernel (p. 6-4).
+- The general Blackfin loader description says an `.ldr` repackages the executable's code/data into
+  blocks whose tags carry information such as word count and destination address; debug and symbol
+  information is removed (p. 2-10). This makes the *inflated* bootloader image a load-block stream,
+  not a flat executable where one fixed file offset can be assumed to equal a runtime address.
+- The manual directs readers to the BF7xx Blackfin+ Processor Hardware Reference for exact block
+  headers and boot-stream details (pp. 6-2, 6-4). CCES does not provide the ADSP-BF7xx ROM source
+  (p. 6-6). This manual therefore does not give us an exact block parser or an AES-key location.
+- CCES secure-boot packaging first builds a binary `.ldr` and then uses `signtool` (p. 6-3). The
+  signtool section describes AES-128 keys (BLx keys in OTP, or BLw-wrapped keys) and ECDSA-224
+  signatures (pp. 13-11–13). Do not conflate that ADI secure-boot mechanism with the OP-Z updater's
+  reported AES-256-CBC key or conclude those are the same key/source.
+
+**Practical implication:** _bt's reported sliding 32-byte scan still points to scanning the complete
+inflated `bootloader.ldr`; the CCES manual suggests the loader blocks can later map candidate bytes
+to load addresses, but does not narrow the key to a particular block. The current 106-byte raw-DEFLATE
+prefix emitted no output when tested incrementally, so it is too short to inspect block structure.
+The exact Hardware Reference block format and key location remain unverified.
+
+### 66.89 BF70x hardware reference gives a concrete LDR parser signature
+
+The user supplied the official Analog Devices *ADSP-BF70x Blackfin+ Processor Hardware Reference*,
+2223-page PDF, downloaded as
+`/Users/jakubkolcar/Downloads/BF70x_BlackfinProcessorHardwareReference.pdf` (SHA-256
+`5f4a66dde933b5a716a9fa8171254742b4b4e66789a274497a415eb3f0a7b5d2`). Its Chapter 36 is the
+relevant BF70x boot-stream specification; the manual includes BF703 in this family.
+
+**Useful recognition and parsing facts (printed pp. 36-32–36-41):**
+
+- A standard loader stream consists of blocks, each beginning with a **16-byte header** comprising
+  four 32-bit words: `BLOCK_CODE`, `TARGET_ADDRESS`, `BYTE_COUNT`, and `ARGUMENT` (p. 36-34).
+- `BLOCK_CODE` has signature byte `0xAD` in bits 24–31; bits 16–23 are an 8-bit XOR checksum of
+  the other 24 bits. The low bits encode BCODE and flags including `FIRST` (bit 14), `FINAL` (bit
+  15), and `INIT` (bit 11) (pp. 36-34–36-35). This gives a strong candidate-header test; validate
+  checksum, block boundaries, first/final flags, and 4-byte constraints on target addresses/counts.
+- For a normal block, `BYTE_COUNT` specifies the payload length and `TARGET_ADDRESS` its load
+  destination; the next block follows its payload (pp. 36-36–36-37). Specialized blocks change field
+  meanings, so parse their flags before advancing.
+- A secure-boot image may instead begin with a **180-byte secure header**, followed by a standard
+  loader stream. Its 32-bit type values are `0x424c7001` (BLp), `0x424c7801` (BLx), or `0x424c7701`
+  (BLw); the BLw header's bytes 68–91 hold wrapped 128-bit key material and bytes 92–107 an IV
+  (pp. 36-50–36-51). These are ADI secure-boot keys, **not** evidence of the OP-Z updater's reported
+  AES-256 key. First inspect the inflated file's header for these types; otherwise test for an LDR
+  block header at offset zero.
+
+**Direction:** test the 180-byte secure-header possibility, then locate and validate block headers.
+A block parser can map offsets in the inflated file to Blackfin load addresses and narrow
+interpretation, but _bt's reported 32-byte sliding scan still calls for scanning the whole inflated
+image. This reference does not reduce the number of encrypted-archive oracle reads. A later
+continuation exposed the script's masked-NUL bug, repaired the state, and produced the first valid LDR
+headers; see §66.90.
+
+Source: Analog Devices, *ADSP-BF70x Blackfin+ Processor Hardware Reference*, Chapter 36, printed
+pages 36-32–36-41 and 36-50–36-51; official PDF:
+https://www.analog.com/media/en/dsp-documentation/processor-manuals/BF70x_BlackfinProcessorHardwareReference.pdf
+
+### 66.90 Masked-NUL bug fixed; first boot-stream blocks validate
+
+The follow-up run logged seven identical six-byte leaks at payload offset 467,808. The saved range
+already contained bytes through 467,822, but the next missing byte was 467,823; alignment rounded
+that retry back to 467,808. The underlying byte at relative position 6 was **0x01**. The probe's
+first-block XOR delta was 1, so the transmitted byte became NUL and stopped the C-string log. The
+collector incorrectly treated the terminator as plaintext zero because it compared the absolute
+payload offset with 16; it then retried the same masked window and never advanced.
+
+Fixed `toolkit/opzbootprobe.py` to record a terminator inside the masked first 16 bytes as the mask
+delta (otherwise as zero), rebuild legacy state from read records, and choose a different XOR delta
+when a retry lands on a known plaintext byte. The self-test reproduces the `0x01 XOR 0x01 = NUL`
+case and checks both state repair and next-mask selection. Large ranges no longer print a huge hex
+dump. The existing `state-467360-512.json` is repaired on load; its duplicate read records are
+preserved. No new device cycle was run for this fix.
+
+Reconstructing the corrected 250-byte compressed prefix at payload offsets 467,573–467,822 and
+inflating raw DEFLATE yields **217 bytes** (`eof=false`, as expected for a partial stream). The image
+begins with a standard BF70x LDR block header at inflated offset 0, not the 180-byte secure-boot
+wrapper:
+
+| Inflated offset | BLOCK_CODE | Target | BYTE_COUNT | ARGUMENT | Meaning |
+|---:|---:|---:|---:|---:|---|
+| 0 | `0xadc45004` | `0x11a00000` | 0 | `0x0000109c` | `FIRST|IGNORE`; application entry/next-stream metadata |
+| 16 | `0xad640004` | `0x11800000` | `0x5c` | 0 | normal 92-byte payload block; next header at 124 |
+| 124 | `0xad180004` | `0x11a00000` | `0x1010` | 0 | normal 4,112-byte payload block |
+
+All three 16-byte headers have the expected `0xAD` signature and their stored 8-bit XOR checksum
+matches the other header bytes. The first block's entry address and following target addresses now
+map code/data in the loader's Blackfin address space. This confirms the manual's parser direction
+and corrects the earlier unvalidated offset-124 header interpretation made from the corrupted map.
+
+The key is not yet located. A subsequent automated run completed the requested archive range:
+cycle 1 retried offset 467,808 with mask `0x02` and added 48 bytes; cycle 2 read offset 467,856
+with mask `0x01` and recovered the last missing byte. The saved range is now 512/512 bytes, with
+no holes. This covers bootloader compressed offsets 467,573–467,871: **299 of 156,306 compressed
+bytes**. Raw DEFLATE emits 299 bytes (`eof=false`), preserving the same three validated headers;
+159 bytes of the third block's 4,112-byte payload are now available. This is still far short of a
+full loader or a defensible AES-key search. The collector automatically polled for the volume between
+the two cycles, as intended.
+
+### 66.91 Measured oracle throughput and end-to-end estimate
+
+The next 10-probe range (`467872–468383`) yielded 432 new bytes, or **43.2 useful bytes per
+probe**. All ten probes produced a complete leak **4.506–5.476 seconds** after volume detection
+(mean **5.073 s**). The collector then continued its configured 20-second capture window; measured
+time from volume detection through capture completion averaged **20.506 s** (range 20.374–20.790 s).
+
+At that point, the contiguous data covered **731 of 156,306 compressed bytes** of `bootloader.ldr`
+(0.47%); raw DEFLATE emitted 1,087 bytes with `eof=false`. That exposed 947 bytes of the third
+block's 4,112-byte payload, but no additional complete block header. The requested range then had 80
+bytes missing; the follow-up probes completed it (see §66.92).
+
+Using that batch's 43.2-byte yield, the then-remaining 155,575 compressed bytes implied approximately
+**3,601 more probes**. A one-minute fully automated reboot/remount cycle would take about **60 hours
+(2.5 days)**. This is a planning estimate, not a measured full-cycle rate: the measured 20.506 seconds
+is the work after the volume has mounted, while re-entering update mode and remounting are unmeasured.
+The capture loop waits out its full 20-second window even though the first leak arrives after about
+5.1 seconds. It polls for the volume but does not automate the device reboot/update-mode transition.
+Effective bytes per probe also vary with C-string terminators and compressed data.
+
+### 66.92 Key-window search in the recovered loader prefix
+
+The next two probes completed the second requested range (512/512); the contiguous `bootloader.ldr`
+compressed prefix now covers archive payload offsets **467,573–468,383**, or **811 bytes**. Raw
+DEFLATE produces **1,211 plaintext bytes** (`eof=false`), so the key search covered every one-byte-step
+32-byte window in this recovered plaintext prefix: **1,180 candidates**.
+
+Each candidate was tested as an AES-256 key against two independent known plaintexts from the matching
+1.2.45 `.zfw`: (1) the hardware-verified first archive block `50 4b 03 04 14 00 00 00 08 00 62 70
+7f 54 47 9c`, using ciphertext block `C(0x3f0)` as the CBC predecessor for `C(0x400)`; and (2) the
+first 16 bytes of the known decrypted filename, using the header IV at `0x70`. **No candidate matched
+either check.** This rules out the raw key appearing in the first 1,211 inflated bytes, not elsewhere in
+the loader: the stream is incomplete and the reported key may occur later. The scan deliberately used
+the corrected hardware capture from §66.12, not the superseded hand-pasted ZIP bytes discussed there.
+
+As of this follow-up, **811 / 156,306 compressed bytes** are available and the second 512-byte requested
+range is complete. The new 12-probe batch yielded 512 bytes (**42.7/probe**); 155,495 compressed bytes
+remain, or approximately **3,645 further probes** at that yield. At an assumed one-minute full reboot/
+remount cycle this is about **60.7 hours (2.5 days)**. The 12 captures averaged 5.120 seconds to the
+first leak and 20.510 seconds from volume detection through capture completion. The full-cycle estimate
+remains conditional on the unmeasured reboot/remount interval.
+
+### 66.93 Arduino relay as a possible physical reset for the oracle loop
+
+The user reports that a relay interrupting OP-Z power **does fully turn the device off even while USB is
+connected**. This resolves the concern that USB alone prevents power loss in that setup. It does **not** yet
+prove that restoring power returns the device to `OP-Z Boot`, that the update volume remounts unattended, or
+that an entire probe-to-next-volume cycle meets a particular time bound. No relay wiring, Arduino firmware,
+or host integration has been implemented or exercised in this repository.
+
+A 20-second end-to-end cycle is currently a user-supplied planning assumption, not a measurement. At the
+observed 42.7 new bytes/probe and 3,645 remaining probes, that would project to about **20.25 hours** of
+continuous operation. The existing collector still captures for its full 20-second timeout after eject;
+measured volume-detection-to-capture-completion averaged 20.510 seconds, while the first leak arrived after
+5.120 seconds on average. Early stop after a complete leak frame is therefore needed before reboot/remount
+time can fit inside a 20-second total cycle.
+
+The execution checklist is `PLAN_OPZ_BOOTLOADER_ORACLE_AUTOCYCLE.md`. The proposed implementation is opt-in
+Arduino relay control after capture/state persistence, followed by verification of the boot-console identity
+and fresh update volume. Keep the collector's bounds and resume behavior. Existing evidence still rules out
+software reset, SCSI media-load, and combining a leaking probe with a successful upgrade (§§65.5–65.9); do not
+send console command `0x15`.
