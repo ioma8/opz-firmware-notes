@@ -392,7 +392,10 @@ repeatable on a fresh engine.
       non-zero, so the drums *and* the synth are audible together. Rendering twice is byte-identical,
       so the file doubles as a regression check. Done ahead of the other Phase 5 items because it was
       independent of `AnalogA` and it supplies the human-listening step that Phases 1 and 2 still owe.
-      The A/B script is not written yet.
+      The A/B script is `tools/ab-render.sh`: it renders the pattern twice and requires the two files
+      to be byte-identical, reports samples/peak/silence, and can diff against a saved reference,
+      failing with the first differing byte offset. Verified in all three modes, including that a
+      tampered reference exits non-zero rather than passing silently.
 - [ ] Port `Saw013a` as the first post-v1 engine to prove the pipeline is mechanical, not bespoke.
 - [ ] `PORT_METHOD.md` in this worktree: per-port source symbols, harness results, every
       invariant-instead-of-golden case, and the open unknowns that remain.
