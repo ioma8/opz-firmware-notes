@@ -51,7 +51,16 @@ tagged, Phase 3 deliberately untagged.
   Verify against the 144 `render_square` cases
   already in `tests/golden/analoga/oscillators.json` (its `renderSaw` sibling needed exactly one
   fixture-caught fix, an ordering of the two sub-branches).
-* **`_RFilter_fetch`** — **its fixtures already exist** (50 calls, every row, 15 distinct outcomes,
+* **`_RFilter_fetch`** — **ported, but not verified yet, and the test says why.**
+  `AnalogAEngine::r_filter_fetch` in `crates/opz-dsp/src/analog_a.rs` implements the two-dimensional
+  fetch (row from `param_7 >> 0x1c`, fraction inside the row from `param_6`, one output word per
+  bank, plain `(a*b) >> 31` multiplies and saturating adds). Its test is `#[ignore]`d with the
+  measured reason: 40-odd of the 50 recorded calls match, but `param_6 = 0, param_7 = 0xe0000000`
+  (row 14, zero row fraction) returns 0 from the original and a non-zero value from the port, so the
+  row/offset arithmetic is not pinned. **Next step:** extend `r_filter_fetch_cases` in the fixture
+  generator to fill five *distinct* banks and record all five output words (it currently records only
+  the first word, which cannot show which bank lands where). The function is not wired into anything.
+* **`_RFilter_fetch` older note** — **its fixtures already exist** (50 calls, every row, 15 distinct outcomes,
   in `tests/golden/analoga/oscillators.json` under `r_filter_fetch`, built by
   `r_filter_fetch_cases` in the generator). It indexes each of the five banks as
   `base + row * 0x104 + {0, 4}` with
