@@ -289,6 +289,28 @@ port is analysed but **not written**, so this phase cannot be tagged yet.
           and set `+0x10 = 0x7fffffff`, and it does not. The next step is to watch
           `updateFilterEnvelope` itself (called from `render` at 0x12f1e4 with `state + 0x30`) rather
           than its results, because `render` also writes that struct in the same block.
+
+      - Measured since, and enough to pick this up quickly:
+        * `updateFilterEnvelope` is entered **once** in the first three blocks, with
+          `(attack, decay, sustain, release)` = the params and the envelope reading
+          `state byte = 1`, `flag(+0x15) = 1`, `target(+0xc) = 0`, `+0x10 = 0`, `level = 0`,
+          `rate = 0`. State 1 with a target that is not `0x7fffffff` is the *hold* branch: it sets
+          `level = 0`, `rate = attack_table[attack >> 24]` and returns **without changing the state
+          byte**, so the voice stays silent for as long as the target is not `0x7fffffff` on entry.
+          The engine itself writes `0x7fffffff` into the target later in the block, which is why the
+          value read *after* a block looks right while the call still saw zero.
+        * No parameter combination changes that: filter/resonance at maximum, envelope stages at
+          maximum, velocity 127 and every parameter at maximum all render exactly zero, so this is a
+          missing host input or host ordering, not a parameter setting.
+        * The output path is visible now: `render`'s tail (0x12f79c..0x12f7dc) does
+          `out[i] += sat( (gain_pair × scratchpad[3][i]) >> 31 )`, so **scratchpad[3] carries the
+          signal** and it is the amplitude stage above that writes zeros into it.
+        * The amplitude loop's gains saturate to `i32::MIN` and `0` (`w9`, `w21` at 0x12f680), which
+          is a saturated gain rather than a small one — a good place to instrument next, together
+          with the target write that happens after the envelope call.
+      - Fastest way to continue: hook `0x12f1e4` (the envelope call), `0x12f6ac` (the amplitude loop)
+        and the write to `state + 0x3c` in one run and read them in program order, using the harness's
+        per-block `state_fields()` to see which value is zero *first*.
       - Harness bugs found and fixed on the way (they were hiding the above): the pthread shims
         returned "failure" from `pthread_mutex_lock`, which made the library's logging path abort with
         *"%s failed to acquire mutex"*; and the library's C++ logging needs `vasprintf`, `malloc`,
