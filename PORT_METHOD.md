@@ -55,8 +55,35 @@ written down with its measured size.
 | `tools/unicorn-harness/selftest.py` | the harness runs the original correctly (256-value conversion proof + engine smoke call) |
 | `tools/unicorn-harness/make_fixtures.py` | regenerates `crates/opz-dsp/tests/golden/sample_player_gain/{pack.bin,cases.json}` deterministically; exits non-zero if everything is silent |
 | `note_on_state_matches_the_original` | **exact**: every state field `noteOn` computes (gains, window bounds, increment, counters) equals the original's, field for field |
-| `golden_cases_match` | per-case budgets, each with a reason; all-zero case is byte-exact |
+| `golden_cases_match` (sample player) | **byte-exact** on all ten cases, no tolerance |
+| `golden/digital/cases.json` + `tests/digital.rs` | **byte-exact** on all 35 `Digital` cases, no tolerance, with anti-vacuity assertions |
 | `render_audio_integration` (`opz-core`) | the whole chain — AIFF pack → `Engine` → ported DSP → Q31 audio — produces sound |
+
+## Engines ported so far
+
+| Engine | Code | Verified by |
+|---|---|---|
+| `SamplePlayerGain` | `crates/opz-dsp/src/sample_player_gain.rs` | 10 fixtures byte-exact + exact `onNoteOn` state |
+| `Digital` | `crates/opz-dsp/src/digital.rs` | 35 fixtures byte-exact |
+| `AnalogA` (planned) | — | analysed: no host callbacks, four scratch sub-buffers, two host tables; see `PLAN_OPZ_SOFTWARE_CLONE.md` Phase 3 |
+
+Both were translated from the disassembly with the decompiler's C as a guide, and both needed the
+*assembly* to settle questions the C obscured: for the sample player the read loop's two position
+accumulators, for `Digital` the pan matrix, `onNoteOn`'s four gain stores and the envelope fold
+(Ghidra reuses variable names across reused registers).
+
+## A method note worth keeping
+
+Two things repeatedly cost time and are worth doing first next round:
+
+1. **The decompiler's C is for shape, the assembly is the authority.** In `Digital`, Ghidra reused
+   variable names across registers and got the loop's two gain vectors, the pan matrix and
+   `onNoteOn`'s four stores wrong (or unreadable); the pan/target structure only became clear from the
+   disassembly. Port from the C, then check every arithmetic step against the listing.
+2. **A flat host table hides whole code paths.** The first `Digital` fixtures used a flat octave
+   table, which makes every octave slope zero — the entire octave search and its clamps were
+   untested and the port passed anyway. Give host tables *varying* values (and the gain globals
+   distinct ones, so a case proves *which* global was read), then regenerate the fixtures.
 
 ## Open items (measured, in priority order)
 

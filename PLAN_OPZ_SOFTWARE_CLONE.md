@@ -174,33 +174,108 @@ terminal.*
 
 Goal: the same app plus one real synth engine you can play from the terminal keyboard.
 
-- [ ] Port `Digital` (2 112 B), golden vectors passing, and extract its param-index map from the
-      disassembly.
-- [ ] Track 5 (`digital.engine`) wired in; notes playable from the TUI keyboard, lengths/velocities
-      from the pattern rather than key-hold.
-- [ ] The 18 named params per track, with the device's `u8 → Q31` conversion, and parameter glide in
-      the interim host (target → current interpolation, same shape as the ported version).
-- [ ] Preset loading: factory `values` vectors from `opz-factory-plugs.json` per track.
-- [ ] Note entry in the TUI: enter/record a step’s note, duration (6 200/step units), microtiming
-      (tick × 8), per-track step length 1–16.
+Status 2026-10-13: **done, engine-exact.** `Digital` reproduces the original byte for byte on all 35
+golden cases and the synth track plays alongside the drums in the offline playable test. A human
+listening is still owed (as in Phase 1).
+
+- [x] Port `Digital` (2 112 B): `crates/opz-dsp/src/digital.rs`, translated statement by statement
+      from the disassembly — Ghidra's C gave the shape, the assembly decided the pan matrix, the four
+      `onNoteOn` gain stores and the envelope fold, where Ghidra reuses its variable names. 35 golden
+      cases (notes, octave shift, detune, pan/level, the velocity-255 wrap, multi-block state, the kill
+      countdown, the octave search's boundaries, every `init` variant) match with **no tolerance**
+      (`crates/opz-dsp/tests/digital.rs`; fixtures documented in `tests/golden/digital/README.md` and
+      regenerable, byte-identically, from `tools/unicorn-harness/make_digital_fixtures.py`).
+- [x] Its parameter map, extracted from the disassembly and recorded on the module: `params[0] >> 27`
+      is the octave shift, `params[1]` the detune, `params[2..=5]` go to the host's envelope callback,
+      `params[10]` the pan, `params[11]` the level. This engine does not read the filter, LFO or
+      note-style parameters at all.
+- [x] The digital track is wired in: `VoiceEngine::for_track` asks the plug table
+      (`engine_for_track`), so the track the *device* assigns to `digital.engine` — index 5, per its own
+      `slotConfiguration.json` — gets the ported voice while the drum tracks keep the sample player.
+      Notes come from the pattern with the pattern's velocity and length (no key-hold).
+- [x] The 18 named parameters, the device `u8 → Q31` conversion and glide are in place from Phase 1;
+      glide now steps **once per 64-frame block**, in `render_block`, the way the device interpolates.
+- [x] Preset loading: `Engine::new` boots each track from the first factory preset of its plug, and
+      the preset table is generated from `opz-factory-plugs.json` by `tools/gen-plugs.py`.
+- [x] Note entry in the TUI: `i`/`u` place and transpose a step's note (`I`/`U` by an octave), `[`/`]`
+      the duration in the device's 6 200 units per step, `,`/`.` the microtiming (ticks × 8), `;`/`'`
+      the per-track length 1–16. Documented in `docs/KEYS.md`, covered by `cargo test -p opz-tui`.
 
 **Playable check:** programme a drum beat and a synth line, play both together, and sweep the
 synth’s params live while it runs.
+*Offline half verified: `drum_beat_and_synth_line_play_together` renders a four-kick bar plus a
+four-note synth line through the real host, asserts every quarter of the bar carries energy, and
+asserts that sweeping a synth parameter while it runs changes the audio while an untouched engine
+reproduces itself exactly. The listening half needs a person at a terminal.*
+
+**Host timing, settled here and inherited by Phase 4:** both engines — and the device — render in
+64-frame blocks, so the interim host advances the transport in those blocks and hands the mixed
+output out sample by sample. A note therefore starts or ends on a block boundary (1.45 ms at
+44.1 kHz), and `microtiming` is editable and stored but not yet applied to playback; sub-block timing
+is the ported `Sequencer`/`InstrumentManager`'s job in Phase 4.
 
 ### Phase 3 — Second synth, per-engine parameter knowledge
 
 Goal: two synths, and param UI that only shows what each engine actually reads.
 
-- [ ] Port `AnalogA` (5 872 B), golden vectors passing, param-index map extracted.
-- [ ] Track 6 (`analoga.engine`) wired in; both synth engines get their own named param pages and
-      ranges, `p1…p18` fallback elsewhere.
-- [ ] Mute per track; master level; per-track octave from presets.
-- [ ] Per-engine parameter mutation tests (change one byte, diff output against the emulator) to
-      confirm the extracted maps.
+Status 2026-10-13: **partly done.** The mixer and parameter-UI half is in and verified; the `AnalogA`
+port is analysed but **not written**, so this phase cannot be tagged yet.
+
+- [x] Mute per track and a master level. Mute is a mixer gate that keeps the voice running (the
+      device's mute does the same, so unmuting does not restart a note); the master level is one Q31
+      multiply over the mixed block. Both are engine state and travel to the UI in the snapshot;
+      the TUI binds `m` / `M` / `N` and shows them.
+- [x] Per-track octave from presets: the track's preset `default_octave` shifts the programmed note
+      before any engine sees it, and `LoadPreset` moves it. (None of the app catalogue's six default
+      tracks happens to use a non-zero octave; the table does carry them, and a test asserts that.)
+- [x] Per-engine parameter maps, **established by mutation rather than by reading code**:
+      `tools/unicorn-harness/param_mutation.py` moves each parameter byte to 0 and to 255 against the
+      original under Unicorn, and records which indexes change the output in
+      `crates/opz-dsp/tests/golden/param_map.json`. That file found the sample player responds to
+      `params[0]`, `[1]`, `[2]`, `[10]`, `[11]` and `Digital` to `[0]`, `[1]`, `[10]`, `[11]` — its
+      `params[2..=5]` go to the app-side envelope callback, which the harness stubs out, so mutation
+      cannot see them (they are marked host-side in the evidence). The TUI's strip now shows each
+      engine's own list with its own names, `p1…p18` for plugs the catalogue cannot name, and a Rust
+      test fails if the constants drift from the evidence.
+- [x] One real bug fixed on the way, found by the mute work: both engines *add* into the buffer they
+      are handed, and the mixer reused one buffer without clearing it, so every voice was re-mixing
+      the previous voice's samples (a two-voice mix was exactly double).
+- [ ] **Port `AnalogA` (5 872 B), golden vectors passing.** Analysed, not written. What is known and
+      recorded here so the port is mechanical next time (all from the disassembly + Ghidra's C, the
+      steps that worked for `Digital`):
+      - Functions: `initModule` 32 B, `init` 92 B, `setEnvelopeState` 76 B, `updateFilterEnvelope`
+        292 B, `_RFilter_fetch` 712 B (a 65-slot filter state fetch), `renderSaw` 628 B,
+        `renderSquare` 1 388 B (with a lazily-built function-static sample table), `render` 2 044 B,
+        `onNoteOn` 600 B, `onNoteOff` 8 B. **No host callbacks at all**: the only calls are its own
+        `renderSaw` / `renderSquare` / `updateFilterEnvelope` / `_RFilter_fetch`, reached through PLT
+        stubs at 0x1cae80/0x1cae90/0x1caea0/0x1caeb0 that resolve in-library (they are *not* external
+        shims, which is what the earlier notes assumed).
+      - `init(state, variant, _, _, scratch)` zeroes the state and splits the host's scratch buffer
+        into four 0x100-byte sub-buffers stored in the global `g_scratchpads` (0x124b798) — so the
+        host must hand over at least 0x400 bytes. `state + 0x10` is the host gain: `variant` 4..7 read
+        0x124a5d0/5d4/5d8/5dc (via the pointer table at 0x1cebd0) and anything else reads 0x124a5cc,
+        all **without** the attenuation `Digital` applies.
+      - Two host-filled tables, both zero in the shipped library (`.bss`) and therefore inputs:
+        `AnalogA::presets` (0x124b7b8, 60 B = five 12-byte records of three filter coefficients,
+        interpolated by `params[0] >> 29` into the next record and by the low bits within it) and a
+        16-entry `i16` per-octave table at 0x124b770, used by `onNoteOn` for its pitch curve exactly
+        the way `Digital` uses 0x124a658.
+      - `render`'s second argument behaves like `Digital`'s: a running oscillator increment that
+        advances by the third argument per frame.
+      - The `renderSquare` static is why the harness needs `__cxa_guard_acquire/release` shims; it
+        already has them.
+- [ ] Wire the second synth track. The device's own default slot map (`13, 14, 15, 17, 21, 25, 28,
+      31` for tracks 1..=8) puts a *device-only* plug 21 on track 5 and `digital.engine` on track 6,
+      and `analoga.engine` is plug 10 — one of the four synth plugs the device ships as slots 2–4 of
+      every synth pack, not a default track. So the clone's two synth tracks are a documented
+      substitution: index 4 gets `analoga.engine`, index 5 keeps `digital.engine` (which the device's
+      own `slotConfiguration.json` also puts there). The UI already labels each track by the engine
+      its plug names, so this is a change in one table plus the port.
 
 **Playable check:** a six-track groove — four drum tracks plus two distinct synths — programmed and
 played entirely from the TUI, with per-engine param pages behaving differently where the engines
 differ.
+*Not yet: the second synth is not ported, so today the groove is four drums plus one synth.*
 
 ### Phase 4 — Replace the interim host with the ported chain
 
