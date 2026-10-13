@@ -264,6 +264,29 @@ port is analysed but **not written**, so this phase cannot be tagged yet.
         advances by the third argument per frame.
       - The `renderSquare` static is why the harness needs `__cxa_guard_acquire/release` shims; it
         already has them.
+      - **The host also owns the filter's memory and the envelope's rates**, which cost a session to
+        find because the engine does not complain — it just renders zeros:
+        * `interface + 0x28` is a pointer to **five** `fract32_t[65]` buffers, which `render` hands to
+          `_RFilter_fetch`. Without them the engine dereferences null and (via bionic) aborts.
+        * `init` carves the scratch argument into four 0x100-byte sub-buffers (`g_scratchpads`):
+          [0] saw, [1] square, [2] the LCG noise, [3] the amplitude-scaled mix. Watching those
+          buffers is the quickest way to see how far `render` got.
+        * two 256-entry `i32` **envelope rate tables** at 0x124b370 (indexed by attack's top byte) and
+          0x124b570 (decay/sustain/release, whose `[1]` is also a floor used as a default). Zeroed in
+          the library, app-supplied; with them zero the filter envelope never opens.
+        * the filter envelope lives at `state + 0x30` (`+4` level, `+8` rate, `+0xc` and `+0x10`
+          targets, `+0x14` state byte, `+0x15` a flag), and `onNoteOn` only sets its state to 1
+          (attack). Its level still stayed zero with the rate tables filled and the state machine
+          advancing to sustain (state byte 2), so the *remaining* unknown is which host value feeds
+          the level/target pair — that is where the next session should start, with the harness
+          printing `state+0x30..0x44` per block.
+      - Harness bugs found and fixed on the way (they were hiding the above): the pthread shims
+        returned "failure" from `pthread_mutex_lock`, which made the library's logging path abort with
+        *"%s failed to acquire mutex"*; and the library's C++ logging needs `vasprintf`, `malloc`,
+        `free`, `fputs`, `fprintf`, `strlen`, `memcmp` and `__assert2` shims. The harness now decodes
+        and prints those messages instead of raising, which is how the abort text was read.
+      - Both existing fixture sets still regenerate **bit-identically** after those harness changes
+        (`make_fixtures.py`, `make_digital_fixtures.py`), and `selftest.py` still passes.
 - [ ] Wire the second synth track. The device's own default slot map (`13, 14, 15, 17, 21, 25, 28,
       31` for tracks 1..=8) puts a *device-only* plug 21 on track 5 and `digital.engine` on track 6,
       and `analoga.engine` is plug 10 — one of the four synth plugs the device ships as slots 2–4 of
