@@ -373,6 +373,9 @@ port is analysed but **not written**, so this phase cannot be tagged yet.
         `_RFilter_fetch` (712 B), `setEnvelopeState` (76 B) and `updateFilterEnvelope` (292 B), all
         against the same fixture sets (`render` against the 20 recorded outputs, `renderSquare`
         against the same oscillator fixtures that already cover `renderSaw`).
+      - **`setEnvelopeState` is ported and exact on 21 recorded cases** (direct calls from three
+        starting structs for every state byte), and the fixture generator now covers it alongside the
+        two oscillators.
       - `renderSquare` starts with the function-static `samples` that needs the `__cxa_guard_*` shims,
         and reading it shows **it is not host data at all**: the guard body is
         `samples = DAT_0017b2a0`, a pointer to the library's own `.rodata`. So the port copies that
