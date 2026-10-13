@@ -39,18 +39,13 @@ tagged, Phase 3 deliberately untagged.
 
 ## What is already known about the remaining three
 
-* **`renderSquare`** — **settled by measurement, and it is simplest of all.** A read hook shows the
-  function fetching 4 bytes at `0x124c320` (at `0x12fb3c`), whose contents are **`0x60000000` and
-  `0xa0000000`**: a *two-entry* table selected by the phase's sign bit (`samples[phase >> 31]`). That
-  is why changing the bytes at `0x17b2a0` changed nothing — the `0x17b2a0` address is what the GOT slot
-  is pointed at during the lazy init, but the function never reads it. So the port needs a two-entry
-  `[0x60000000, 0xa0000000]` table (the same ±0.75 constants `renderSaw` uses as its bias) and no
-  host input at all. The tail combines it as
-  `((samples[phase >> 31] − v5) + v6 + v7) − v9`, saturating. Its first half repeats `renderSaw`'s four
-  quadrant blocks verbatim, so `ratio`, `sine_cubed` and `quadrant` in `analog_a.rs` apply as they are.
-  Verify against the 144 `render_square` cases
-  already in `tests/golden/analoga/oscillators.json` (its `renderSaw` sibling needed exactly one
-  fixture-caught fix, an ordering of the two sub-branches).
+* **`renderSquare`** — **ported and exact on all 144 recorded cases.** Four copies of the same
+  quadrant block (the phase, `!phase`, `phase ^ 0x80000000`, `phase ^ 0x7fffffff`) combined by a
+  saturating chain against a two-entry sample table selected by the phase's sign bit:
+  `((samples[phase >> 31] - b0) + b1 + b2) - b3`, with `samples = [0x60000000, 0xa0000000]` taken
+  from the variable at 0x124c320 (the same +/-0.75 constants `renderSaw` uses as its bias; nothing at
+  0x17b2a0 is read).
+
 * **`_RFilter_fetch`** — **ported and exact on all 50 recorded cases.** It is a two-dimensional
   interpolated fetch: `param_7`'s top nibble selects the row and carries a row fraction, `param_6`
   selects and interpolates inside a 65-entry row, and each of the five banks contributes one output
