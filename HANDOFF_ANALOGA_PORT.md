@@ -74,6 +74,10 @@ tagged, Phase 3 deliberately untagged.
     seed at the `randSeed` global) into `[2]`;
   * the amplitude loop writes `g_scratchpads[3]` and updates `adsr.level` every frame
     (`level = sat(mul31(mul*level) + ((0x7fffffff - cube) * add >> 31))`);
+  * after the amplitude loop it fills an output struct and calls
+    `_RFilter_fetch(bank0..bank4, cutoff & mask, mode, out5)` (the cutoff comes from the same
+    velocity/level/state chain, the `mode` word from `params[9]`), then mixes in a 64-sample loop:
+    `pad3[i]` (the amplitude mix) is scaled by the filter output and saturating-added into `out`;
   * the tail is `out[i] += sat((gain_pair × scratchpad[3][i]) >> 31)`;
   * **the ADSR phase must be 5..7** for the voice to sustain (0 is silent, 1..4 run out after a
     block) and the host sets the filter envelope target at `state + 0x3c`.
