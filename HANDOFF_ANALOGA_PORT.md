@@ -68,6 +68,12 @@ tagged, Phase 3 deliberately untagged.
   the output mix). What is already known:
   * it gates on `adsr.phase` only (0 → return; there is **no** kill countdown in `AnalogA`, unlike
     adjacent engines);
+  * the **gain ramp** feeding the oscillator mix, read literally (0x11f4xx): the target pair is the
+    *interpolated third preset coefficient* (`presets[params[0] >> 29][2]` and `presets[...+1][2]`,
+    combined by a `>> 31` multiply each and a saturating add, then `>> 2`), the stored pair is
+    `state + 0x1c`/`+0x24`, and the per-frame step is `(target - stored) >> 8` per lane
+    (the C's `NEON_sqsub` then a `>> 6` after an earlier `>> 2`) — **the preset values glide**, which is
+    why the fixtures' `stages[i]` include the filter taps and the mix's first samples;
   * the amplitude chain at the top is exactly
     `amp = mul31(mul31(mul31(vel_fract32(state+0x48) * params[11]) * state+0x10) * state+0x18)`
     (`state+0x48` velocity, `+0x10` the host gain `init` picked, `+0x18` the curve<<16 `onNoteOn`
