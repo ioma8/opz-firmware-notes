@@ -41,9 +41,13 @@ tagged, Phase 3 deliberately untagged.
 
 * **`renderSquare`** — its function-static `samples` (the one needing `__cxa_guard_*`) is just
   `samples = DAT_0017b2a0`, a pointer into the library's own `.rodata`: copy the table from the file,
-  it is not a host input. Its first half repeats `renderSaw`'s four quadrant blocks verbatim, so
-  `ratio`, `sine_cubed` and `quadrant` in `analog_a.rs` apply as they are. Verify against the 144
-  `render_square` cases already in `tests/golden/analoga/oscillators.json`.
+  it is not a host input. That table is **two `i32` entries** — the tail indexes it as
+  `samples[phase >> 31]`, i.e. by the phase's sign bit. Its first half repeats `renderSaw`'s four
+  quadrant blocks verbatim, so `ratio`, `sine_cubed` and `quadrant` in `analog_a.rs` apply as they
+  are; the tail then combines its four terms as a chain of *saturating* add/sub:
+  `((samples[phase >> 31] - v5) + v6 + v7) - v9`. Verify against the 144 `render_square` cases
+  already in `tests/golden/analoga/oscillators.json` (its `renderSaw` sibling needed exactly one
+  fixture-caught fix, an ordering of the two sub-branches).
 * **`_RFilter_fetch`** — **its fixtures already exist** (50 calls, every row, 15 distinct outcomes,
   in `tests/golden/analoga/oscillators.json` under `r_filter_fetch`, built by
   `r_filter_fetch_cases` in the generator). It indexes each of the five banks as
