@@ -338,10 +338,22 @@ port is analysed but **not written**, so this phase cannot be tagged yet.
         `uStack_d8`/`local_e0` cross-references — is the single remaining step before AnalogA makes
         sound, and it is the right first move in a fresh session rather than more probing at the end
         of a long one.
-      - Everything else is mapped and in the harness: the four scratch sub-buffers, the five
-        `fract32_t[65]` filter buffers behind `interface + 0x28`, the 128-entry rate tables, the
-        octave table, the coefficient records, the gain globals, the envelope target rule, and the
-        libc/logging shims the library's C++ helpers need.
+      - Everything else is mapped and in the harness: the four scratch sub-buffers, the five filter
+        banks behind `interface + 0x28`, the 128-entry rate tables, the octave table, the coefficient
+        records, the gain globals, the envelope target rule, and the libc/logging shims the library's
+        C++ helpers need.
+      - **It now makes sound.** The last three inputs were: each filter bank behind
+        `interface + 0x28` is **16 rows × 65 `fract32_t`** (`_RFilter_fetch` indexes
+        `base + row * 0x104 + {0,4}`), so a single 65-entry buffer is 15 rows short and the engine
+        reads past it; `render` **sustains the ADSR only in phases 5..7** (0 is silent, 1..4 sound for
+        one block and run out); and the filter envelope's target needs the host's write as above.
+        With those, `AnalogAHost` renders sustained audio with no manual pokes, and
+        **20 golden fixtures exist** (`crates/opz-dsp/tests/golden/analoga/cases.json`, deterministic,
+        pitch-dependent, only `level_zero` silent) with the whole host contract written down in
+        `tests/golden/analoga/README.md`.
+      - What remains for this phase is therefore the port itself, against ready ground truth: the
+        eight functions listed at the top of this item, ~1 435 instructions, verified case by case
+        exactly as `Digital` was. Nothing about the host needs discovering first.
       - Harness bugs found and fixed on the way (they were hiding the above): the pthread shims
         returned "failure" from `pthread_mutex_lock`, which made the library's logging path abort with
         *"%s failed to acquire mutex"*; and the library's C++ logging needs `vasprintf`, `malloc`,
