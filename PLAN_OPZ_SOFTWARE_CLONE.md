@@ -361,10 +361,18 @@ port is analysed but **not written**, so this phase cannot be tagged yet.
         Writing it found a real behaviour: the original reads the coefficient record *after* the
         selected one **without a bound check**, so the last record reads past the table; the port
         clamped and the test caught it, and it now reads zero past the end like the harness did.
-      - What remains for this phase is the rest of the translation against the same fixture set:
-        `render` (2 044 B), `renderSaw` (628 B), `renderSquare` (1 388 B), `_RFilter_fetch` (712 B),
-        `setEnvelopeState` (76 B) and `updateFilterEnvelope` (292 B). Nothing about the host needs
-        discovering first.
+      - **`renderSaw` is ported and exact on 144 recorded cases.** It is a pure function, so
+        `tools/unicorn-harness/make_oscillator_fixtures.py` calls the original symbol directly for 144
+        (phase, increment) pairs — every quadrant boundary, the wrap-around values an accumulator
+        reaches, and increments from 1 to 0x7fffffff — and the port reproduces all of them. The
+        translation keeps the details that matter (a signed quadrant division, unsigned 64-bit sine
+        arithmetic, a signed cubic chain, a logical shift in the bias term); the fixtures caught my
+        one ordering mistake, where the first sub-branch applies the cubic and the second only the
+        sine term.
+      - What remains for this phase: `render` (2 044 B), `renderSquare` (1 388 B),
+        `_RFilter_fetch` (712 B), `setEnvelopeState` (76 B) and `updateFilterEnvelope` (292 B), all
+        against the same fixture sets (`render` against the 20 recorded outputs, `renderSquare`
+        against the same oscillator fixtures that already cover `renderSaw`).
       - Harness bugs found and fixed on the way (they were hiding the above): the pthread shims
         returned "failure" from `pthread_mutex_lock`, which made the library's logging path abort with
         *"%s failed to acquire mutex"*; and the library's C++ logging needs `vasprintf`, `malloc`,
