@@ -60,7 +60,25 @@ tagged, Phase 3 deliberately untagged.
   `base + row * 0x104 + {0, 4}` with
   `row = param_7 >> 0x1c`, i.e. 16 rows of 65 `fract32_t` per bank (that size was the last cause of
   silence before the host was fixed). It writes its result through the last argument.
-* **`render`** — 2 044 B. Its output tail (`0x12f79c..0x12f7dc`) is
+* **`render`** — 2 044 B, the last function. **Reading state** (decompilation at
+  `/tmp/opz-decomp-analoga.txt`, regenerate per `PORT_METHOD.md`): read 320–400 (the gates, the
+  velocity/level/host-gain chain), 505–660 (the `_RFilter_fetch` call, the oscillator loops, the
+  amplitude loop and the engine's own envelope update) and 660–828 was **not** read; 400–505 is a
+  fragment seen. Sections still to read: **400–505** and **660–828** (the tail: the filter calls and
+  the output mix). What is already known:
+  * it gates on `adsr.phase` (0 → return) and on `state + 0x29` (the kill countdown);
+  * it calls `updateFilterEnvelope(state + 0x30, params[2..6])` and fetches a coefficient record from
+    `presets[params[0] >> 29]` (and the record after it) at `+8`, like `onNoteOn` does;
+  * the oscillator loops call `renderSaw(state+0x00, param_2)` into `g_scratchpads[0]` and
+    `renderSquare(state+0x04, param_2 >> 1)` into `[1]`, with an LCG (`* 0xbb38435 + 0x3619636b`,
+    seed at the `randSeed` global) into `[2]`;
+  * the amplitude loop writes `g_scratchpads[3]` and updates `adsr.level` every frame
+    (`level = sat(mul31(mul*level) + ((0x7fffffff - cube) * add >> 31))`);
+  * the tail is `out[i] += sat((gain_pair × scratchpad[3][i]) >> 31)`;
+  * **the ADSR phase must be 5..7** for the voice to sustain (0 is silent, 1..4 run out after a
+    block) and the host sets the filter envelope target at `state + 0x3c`.
+  Checked against the 20 recorded outputs in `tests/golden/analoga/cases.json`, each of which also
+  records `state_after_note_on`. Its output tail (`0x12f79c..0x12f7dc`) is
   `out[i] += sat((gain_pair × scratchpad[3][i]) >> 31)`, so scratchpad[3] carries the signal. The
   ADSR phase must be 5..7 for the voice to sustain, and `render` writes `adsr.level` every frame. It
   is checked against the 20 recorded outputs in `tests/golden/analoga/cases.json`, each of which
