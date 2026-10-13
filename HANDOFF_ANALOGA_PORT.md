@@ -78,7 +78,12 @@ tagged, Phase 3 deliberately untagged.
   * **the ADSR phase must be 5..7** for the voice to sustain (0 is silent, 1..4 run out after a
     block) and the host sets the filter envelope target at `state + 0x3c`.
   Checked against the 20 recorded outputs in `tests/golden/analoga/cases.json`, each of which also
-  records `state_after_note_on`. Its output tail (`0x12f79c..0x12f7dc`) is
+  records `state_after_note_on` **and, per render call, `stages`**: the four scratchpads' peaks
+  (saw, square, LCG noise, amplitude mix), the mix's first eight samples, the ADSR level the engine
+  left, and the first filter taps. Verify stage by stage against those rather than only the final
+  mix - that is what makes a wrong stage cheap to find. Example (`four_blocks`): pad peaks
+  `[1591502648, 1610612736, 2022170538, 372018194]` then `[999089904, ...]`, ADSR level
+  `0x7fffffbf -> 0x7fffff7f -> 0x7fffff3f -> 0x7ffffeff` (a slow decay toward the sustain). Its output tail (`0x12f79c..0x12f7dc`) is
   `out[i] += sat((gain_pair × scratchpad[3][i]) >> 31)`, so scratchpad[3] carries the signal. The
   ADSR phase must be 5..7 for the voice to sustain, and `render` writes `adsr.level` every frame. It
   is checked against the 20 recorded outputs in `tests/golden/analoga/cases.json`, each of which
