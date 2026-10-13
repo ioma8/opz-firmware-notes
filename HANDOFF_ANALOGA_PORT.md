@@ -74,6 +74,10 @@ tagged, Phase 3 deliberately untagged.
     seed at the `randSeed` global) into `[2]`;
   * the amplitude loop writes `g_scratchpads[3]` and updates `adsr.level` every frame
     (`level = sat(mul31(mul*level) + ((0x7fffffff - cube) * add >> 31))`);
+  * every case also records `filter_args`: the two int arguments of each `_RFilter_fetch` call
+    (**two calls per block**), captured by hooking the call during fixture generation. For the MID
+    preset the mode word is `0x40404040` (= `params[9]`) and the cutoff `0x3e404040`, constant across
+    blocks, which is the fiddliest arithmetic in `render` and is now pinned;
   * after the amplitude loop it fills an output struct and calls
     `_RFilter_fetch(bank0..bank4, cutoff & mask, mode, out5)` (the cutoff comes from the same
     velocity/level/state chain, the `mode` word from `params[9]`), then mixes in a 64-sample loop:
