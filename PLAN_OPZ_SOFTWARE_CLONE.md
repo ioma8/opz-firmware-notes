@@ -311,6 +311,19 @@ port is analysed but **not written**, so this phase cannot be tagged yet.
       - Fastest way to continue: hook `0x12f1e4` (the envelope call), `0x12f6ac` (the amplitude loop)
         and the write to `state + 0x3c` in one run and read them in program order, using the harness's
         per-block `state_fields()` to see which value is zero *first*.
+      - Since then, one more result narrows it a lot: **the host must set the filter envelope's target
+        (`state + 0x3c`) to `0x7fffffff` when it starts a note.** With that write the envelope leaves
+        its hold branch, advances to state 2, and its level becomes non-zero and scales with the rate
+        tables (`0x2020201f` at full-scale tables, `0x4040` at 0x10000) — so the tables and the
+        envelope are doing their job. The output is *still* zero, and the reason is now localised to
+        the amplitude loop at `0x12f6a8..0x12f6d4`: it read `w9 = 0x80000000` and `w21 = 0`, i.e. a
+        saturated gain pair, from a scratch pad whose samples it then multiplies. Next step is to read
+        that loop's *source* pointer and the samples at the offsets it uses (`x22` and `x8` at
+        `0x12f6ac`), because a saturated gain times a non-zero sample cannot store zero — so the source
+        samples are the remaining suspect, not the envelope.
+      - The negative rate seen there (`0xffc04040`) is *correct*, not a bug: the level (0.875) starts
+        above the sustain parameter (0.502), so the envelope decays toward it, exactly as the device
+        does.
       - Harness bugs found and fixed on the way (they were hiding the above): the pthread shims
         returned "failure" from `pthread_mutex_lock`, which made the library's logging path abort with
         *"%s failed to acquire mutex"*; and the library's C++ logging needs `vasprintf`, `malloc`,
