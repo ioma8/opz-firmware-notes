@@ -66,7 +66,12 @@ tagged, Phase 3 deliberately untagged.
   amplitude loop and the engine's own envelope update) and 660–828 was **not** read; 400–505 is a
   fragment seen. Sections still to read: **400–505** and **660–828** (the tail: the filter calls and
   the output mix). What is already known:
-  * it gates on `adsr.phase` (0 → return) and on `state + 0x29` (the kill countdown);
+  * it gates on `adsr.phase` only (0 → return; there is **no** kill countdown in `AnalogA`, unlike
+    adjacent engines);
+  * the amplitude chain at the top is exactly
+    `amp = mul31(mul31(mul31(vel_fract32(state+0x48) * params[11]) * state+0x10) * state+0x18)`
+    (`state+0x48` velocity, `+0x10` the host gain `init` picked, `+0x18` the curve<<16 `onNoteOn`
+    stored), then the pan matrix from `params[10]` produces the four smoothed gains;
   * it calls `updateFilterEnvelope(state + 0x30, params[2..6])` and fetches a coefficient record from
     `presets[params[0] >> 29]` (and the record after it) at `+8`, like `onNoteOn` does;
   * the oscillator loops call `renderSaw(state+0x00, param_2)` into `g_scratchpads[0]` and
