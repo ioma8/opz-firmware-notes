@@ -39,22 +39,15 @@ tagged, Phase 3 deliberately untagged.
 
 ## What is already known about the remaining three
 
-* **`renderSquare`** — its function-static `samples` (the one needing `__cxa_guard_*`) is set to
-  `DAT_0017b2a0`, but only the *pointer value* matters (see the measurement below). **Settled by
-  measurement — the term is not a table lookup.** Setting the bytes at
-  0x17b2a0 to all-`0x11111111` and then to all-`0x99999999` and calling the original with seven
-  phases gives **byte-identical results**, and a read hook over that region records zero reads. What
-  the C shows as `samples[phase >> 31]` is therefore reading the two 32-bit halves of the `samples`
-  variable itself (Ghidra's `PTR_x` means `&x`) — an *address-derived* term, not file data. So the
-  port cannot hard-code it: the fixtures must record the two words the engine used (the harness's
-  pointer halves) and the port takes them as host input, the way it takes the wavetable and octave
-  table. **One measurement does not fit that story yet:** reading the `samples` symbol's two words
-  after a call gives `0x60000000` and `0xa0000000` — not a pointer — so either the harness resolves a
-  different address for the variable than Ghidra's `PTR_samples_002d6088`, or the term is something
-  else again. Settle it by hooking *reads* of the `samples` symbol's address during one call and
-  watching which offset is fetched; do that before implementing the tail rather than trusting either
-  reading. (Two wrong guesses about this term have already been recorded and corrected here.) Its first half repeats `renderSaw`'s four
-  quadrant blocks verbatim, so `ratio`, `sine_cubed` and `quadrant` in `analog_a.rs` apply as they
+* **`renderSquare`** — **settled by measurement, and it is simplest of all.** A read hook shows the
+  function fetching 4 bytes at `0x124c320` (at `0x12fb3c`), whose contents are **`0x60000000` and
+  `0xa0000000`**: a *two-entry* table selected by the phase's sign bit (`samples[phase >> 31]`). That
+  is why changing the bytes at `0x17b2a0` changed nothing — the `0x17b2a0` address is what the GOT slot
+  is pointed at during the lazy init, but the function never reads it. So the port needs a two-entry
+  `[0x60000000, 0xa0000000]` table (the same ±0.75 constants `renderSaw` uses as its bias) and no
+  host input at all. The tail combines it as
+  `((samples[phase >> 31] − v5) + v6 + v7) − v9`, saturating. Its first half repeats `renderSaw`'s four
+  quadrant blocks verbatim, so `ratio`, `sine_cubed` and `quadrant` in `analog_a.rs` apply as they are.rs` apply as they
   are; the tail then combines its four terms as a chain of *saturating* add/sub:
   `((samples[phase >> 31] - v5) + v6 + v7) - v9`. Verify against the 144 `render_square` cases
   already in `tests/golden/analoga/oscillators.json` (its `renderSaw` sibling needed exactly one
