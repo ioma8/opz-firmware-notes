@@ -324,6 +324,24 @@ port is analysed but **not written**, so this phase cannot be tagged yet.
       - The negative rate seen there (`0xffc04040`) is *correct*, not a bug: the level (0.875) starts
         above the sustain parameter (0.502), so the envelope decays toward it, exactly as the device
         does.
+      - **Where AnalogA's silence actually is, precisely.** The amplitude loop at
+        `0x12f6a8..0x12f6d4` transforms `scratchpad[3]` **in place** (`ldrsw x11, [x22, x8]` …
+        `str w12, [x22, x8]` with `x22` = scratchpad[3]). Its samples are non-zero (the previous
+        block's output, decaying) but the gain it multiplies them by is **zero**, so it writes zeros
+        back. The gain is `w9 = [x29, -0x48]` (= `sp + 0xa8`) plus `w21`; `w21` is only ever set by
+        `fmov w21, s4` at `0x12f780`, i.e. at the *end* of a second loop that runs after the first —
+        so the pairs are a two-pass structure inside `render`, and the first pass of a block uses the
+        gains the previous pass computed.
+      - The last gap: `0xa8` appears **nowhere** in `render`'s listing, so the store that fills that
+        slot goes through an aliased base register (something like `ldr x8, [sp, …]` then `str w9,
+        [x8, N]`). Reading `render` with that aliasing resolved — or reading Ghidra's `local_a8` /
+        `uStack_d8`/`local_e0` cross-references — is the single remaining step before AnalogA makes
+        sound, and it is the right first move in a fresh session rather than more probing at the end
+        of a long one.
+      - Everything else is mapped and in the harness: the four scratch sub-buffers, the five
+        `fract32_t[65]` filter buffers behind `interface + 0x28`, the 128-entry rate tables, the
+        octave table, the coefficient records, the gain globals, the envelope target rule, and the
+        libc/logging shims the library's C++ helpers need.
       - Harness bugs found and fixed on the way (they were hiding the above): the pthread shims
         returned "failure" from `pthread_mutex_lock`, which made the library's logging path abort with
         *"%s failed to acquire mutex"*; and the library's C++ logging needs `vasprintf`, `malloc`,
