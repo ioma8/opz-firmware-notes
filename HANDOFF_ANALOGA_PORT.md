@@ -44,7 +44,10 @@ tagged, Phase 3 deliberately untagged.
   it is not a host input. Its first half repeats `renderSaw`'s four quadrant blocks verbatim, so
   `ratio`, `sine_cubed` and `quadrant` in `analog_a.rs` apply as they are. Verify against the 144
   `render_square` cases already in `tests/golden/analoga/oscillators.json`.
-* **`_RFilter_fetch`** — indexes each of the five banks as `base + row * 0x104 + {0, 4}` with
+* **`_RFilter_fetch`** — **its fixtures already exist** (50 calls, every row, 15 distinct outcomes,
+  in `tests/golden/analoga/oscillators.json` under `r_filter_fetch`, built by
+  `r_filter_fetch_cases` in the generator). It indexes each of the five banks as
+  `base + row * 0x104 + {0, 4}` with
   `row = param_7 >> 0x1c`, i.e. 16 rows of 65 `fract32_t` per bank (that size was the last cause of
   silence before the host was fixed). It writes its result through the last argument.
 * **`render`** — 2 044 B. Its output tail (`0x12f79c..0x12f7dc`) is
