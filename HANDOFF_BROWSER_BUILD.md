@@ -314,6 +314,25 @@ Two documentation failures worth naming: `README` and `project.rs` still printed
 as `slice = note - 36` after `3df37d4` replaced it with `(note + 19) % 24`, and the harness printed
 the Q31 conversion as `0x80808080` where the library builds `0x00808080`.
 
+### The second opinion
+
+An independent full-file scan (`ocr scan`, 70 files, 250 comments) ran alongside that review. Its
+critical and high findings were mostly the same defects, so the review's fixes cover them; commit
+`5b64acc` adds the ones the review missed — chiefly a *critical* one the review had only measured and
+documented: thirteen wasm exports indexed engine state with a `track`/`step` straight from
+JavaScript, and a panic in wasm traps the module, so the page's engine was finished for good rather
+than throwing something catchable. The readers take `Option` now and the smoke test probes twenty
+out-of-range calls. The same commit adds `opz-core`'s tempo clamp (a step of one frame fired sixteen
+steps per block), a guard on `LoadPack`'s track, overflow-proof chunk arithmetic in the ABIFF parser,
+bounds in the parameter setters, the layer-1 voices `set_track_engine` used to leave behind, Escape's
+leftover timers, three a11y attributes, and four harness bugs — `Elf64_Sym`'s `st_shndx` read out of
+`st_size`, `__memcpy_chk`'s length taken from the wrong register, the assert logger's register stride,
+and an overrun in `probe_callbacks.py`. The harness's own proofs still pass.
+
+Two of its findings were wrong, and are recorded as such: the fallback grid cannot render by default
+(it only exists in the fetch-failure path), and `params::interpolate`'s non-convergence is the
+device's own integer glide, which the fixtures pin.
+
 The one finding left open: **`AnalogA`'s noise does not share the LFOs' LCG.** The symbol dump shows
 a single `_ZZ20generateRandomNumbervE8randSeed` at `0x1da428` — the address the port's own comment
 cites — and both this handoff and `Synth`'s doc say the LFOs and this noise read it, so the port's
