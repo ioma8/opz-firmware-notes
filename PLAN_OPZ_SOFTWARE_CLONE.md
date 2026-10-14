@@ -334,7 +334,17 @@ repeatable on a fresh engine.
       to be byte-identical, reports samples/peak/silence, and can diff against a saved reference,
       failing with the first differing byte offset. Verified in all three modes, including that a
       tampered reference exits non-zero rather than passing silently.
-- [ ] Port `Saw013a` as the first post-v1 engine to prove the pipeline is mechanical, not bespoke.
+- [x] Port `Saw013a` as the first post-v1 engine to prove the pipeline is mechanical, not bespoke.
+      `init`, `initModule`, `onNoteOff`, `onNoteOn` and `render` are all ported and all exact: the 26-word
+      state block after `onNoteOn` matches for all 19 golden cases, and every sample of every block of all
+      19 cases matches `render` (plus each call's ADSR level), with one traced block's host calls and exit
+      state pinned separately. It is wired behind the `EngineVoice` seam (`VoiceEngine::for_engine`, and
+      `Chain::set_track_engine` for the app's plug assignment), and a chain test renders sound from a track
+      assigned `saw013a.engine`. The port and its four transcription bugs are in
+      `HANDOFF_SAW013A_PORT.md`; the fixtures and their generator live in the clone under
+      `crates/opz-dsp/tests/golden/saw013a/` and `tools/unicorn-harness/make_saw013a_fixtures.py`.
+      Boundary: there is no UI to *assign* a plug to a track yet, so the saw engine is reachable from the
+      host API and the tests, not from a key in the TUI.
 - [x] `PORT_METHOD.md` in this worktree: per-port source symbols, the harness proof, the
       golden-verified table (both engines, byte-exact, with the regeneration hashes), the open items
       with measured sizes, and the two method lessons that cost real time. Kept current as ports land.
@@ -367,8 +377,8 @@ repeatable on a fresh engine.
       5. *No device interaction of any kind* — ✅ no serial/USB/BLE/HID dependency (0 hits), and
          `git ls-files` contains **no** `.so`/`.engine`/`.apk`/`.zfw`/`.aif`/`.wav`: the packs are
          local symlinks into gitignored directories.
-      **Verdict: 5 of 5 met.** Phases 1, 2 and 3 are tagged; Phase 4 (the ported host chain) and
-      Phase 5's `Saw013a` remain, and after those it is worth planning the next engine batch
+      **Verdict: 5 of 5 met.** Phases 1 through 5 are tagged (`phase-1`..`phase-5`); the next step is
+      either the next engine batch
       (`Volt`, `Electric`, `Fm003b`, `Organ`, `EP`) or a v2 feature (p-locks, step components, FX
       tracks, pattern banks, chain mode).
 

@@ -59,6 +59,11 @@ written down with its measured size.
 | `golden/digital/cases.json` + `tests/digital.rs` | **byte-exact** on all 35 `Digital` cases, no tolerance, with anti-vacuity assertions |
 | `golden/analoga/cases.json` + `tests/analog_a.rs` | **byte-exact** on all 20 `AnalogA` voices, every block: all 128 stereo samples and each block's four scratchpad peaks, ADSR level, mix samples, filter taps and `_RFilter_fetch` arguments |
 | `render_audio_integration` (`opz-core`) | the whole chain — AIFF pack → `Engine` → ported DSP → Q31 audio — produces sound |
+| `tools/unicorn-harness/make_saw013a_fixtures.py` | regenerates `crates/opz-dsp/tests/golden/saw013a/cases.json` (19 cases) deterministically, twice per case, and refuses an all-silent fixture |
+| `saw013a_note_on_matches_the_original` (`opz-dsp/tests/host.rs`) | **exact**: the whole 26-word state block after `onNoteOn`, all 19 cases |
+| `render_matches_every_golden_case` (`opz-dsp`) | **exact**: every one of the 128 samples of every block of all 19 cases, plus the ADSR level each call leaves |
+| `render_matches_the_device` (`opz-dsp`) | one traced block's output, its two `+0x38` host calls and its exit state, against the device's register file |
+| `a_saw_track_plays_through_the_ported_chain` (`opz-core`) | a track assigned `saw013a.engine` sounds through the ported mixer |
 
 ## Engines ported so far
 
@@ -67,6 +72,7 @@ written down with its measured size.
 | `SamplePlayerGain` | `crates/opz-dsp/src/sample_player_gain.rs` | 10 fixtures byte-exact + exact `onNoteOn` state |
 | `Digital` | `crates/opz-dsp/src/digital.rs` | 35 fixtures byte-exact |
 | `AnalogA` | `crates/opz-dsp/src/analog_a.rs` | 20 end-to-end voices sample for sample, plus 50 `_RFilter_fetch` calls, 144 `(phase, increment)` pairs per oscillator, 21 `setEnvelopeState` and 36 `updateFilterEnvelope` calls |
+| `Saw013a` | `crates/opz-dsp/src/saw013a.rs` | 19 cases byte-exact through `render`, the exact `onNoteOn` state block, and a traced block's host calls and exit state |
 
 All three were translated from the disassembly with the decompiler's C as a guide, and all three
 needed the *assembly* to settle questions the C obscured: for the sample player the read loop's two
@@ -74,6 +80,16 @@ position accumulators; for `Digital` the pan matrix, `onNoteOn`'s four gain stor
 fold (Ghidra reuses variable names across reused registers); for `AnalogA` the gain-ramp shift
 (`>> 6`, not the `>> 8` the C suggested), the per-frame ADSR level and the logical narrowing of the
 lane multiplies. `HANDOFF_ANALOGA_PORT.md` lists all eight of those `AnalogA` behaviours.
+
+`Saw013a` added a third: **a fixture that agrees on one case is not a fixture that agrees.** Its
+prologue trace verified the lane machinery on `note_60`, where the fixture's parameters make it inert
+(`v8 = v9 = ramp = 0`). Rendering every case block by block found four transcription bugs at once — a
+32-bit add whose sum fed a 64-bit `mul`, a phase multiplier that needs `sxtw`, a `dup`'d blend scalar
+that must be sign-extended into `smull`, and the wrap handler's clamp being on a 64-bit `lsl`. The
+working loop was: render all cases, bisect to the first differing *frame*, then dump the device's
+register file at the PCs that produce that frame. And two of the fixtures' own bugs surfaced the same
+way (the gain table read at a 2-byte stride, and `render` being handed one buffer for every block, so
+every block after the first was cumulative).
 
 ## A method note worth keeping
 
@@ -103,9 +119,9 @@ Two things repeatedly cost time and are worth doing first next round:
    semantics as pack-relative, and adding the slice base alone does not fix it, so the window/position
    arithmetic for slices past the first needs the same read loop translated.
 4. **Retrigger.** `retrigger_same_buffer` (two `noteOn` events in one buffer) differs structurally.
-5. **Phase-4 host chain.** `Synth`, `InstrumentManager`, `Compressor`, and the real `ADSR` derivation
-   (`updateParametersADSR` / `updateParametersAHD`) are not ported yet; the interim host in `opz-core`
-   stands in for them, and the envelope is host input rather than derived.
+5. **Phase-4 host chain.** Ported and tagged (`phase-4`): `Synth`, `InstrumentManager`, `Compressor`,
+   `updateParametersADSR`/`updateParametersAHD`, the track filters and the master bus. The whole-mixer
+   fixtures match on all 14 cases including the master's DC-blocked mix.
 
 Item 1 is what turns items 2–4 from "structurally different" into "exact": all of them live in the same
 loop, which is why they are listed together as the next, and last, piece of engine fidelity.

@@ -1795,3 +1795,29 @@ Two further findings worth keeping:
   `saw013a.engine`, trackmask 240),
 * the fidelity pass and the docs,
 * then the `phase-5` tag.
+
+## Phase 5 closed: `Saw013a` is live behind the `EngineVoice` seam (clone `d22f598`, tag `phase-5`)
+
+`VoiceEngine::Saw` carries the engine plus the two host tables it reads (five Q31 sine wavetables, the
+16-entry per-octave gain table), because both are firmware-filled and the library ships them zeroed.
+`VoiceEngine::for_engine(name)` is the seam the app's plug selection needs - `for_track` is now the plug
+lookup plus that call - and `Chain::set_track_engine(track, name)` gives a track another engine in place.
+`Saw013a::render` takes the real `ADSR` and shapes its level, so the adapter hands it a copy and writes
+`level`/`phase` back; `onNoteOn` arms the engine's own envelope, so the saw voice needs no further host
+input, unlike `analoga.engine`, whose envelope target the host has to set on every note.
+
+`a_saw_track_plays_through_the_ported_chain` (in `crates/opz-core/src/chain.rs`) is Phase 5's playable
+check: assign `saw013a.engine` to a track, program it, start a note, and the ported mixer renders sound.
+Two clean-ups came with it: the interim host's `Voice` and `load_pack` in `opz-core/src/engine.rs`, dead
+since the Phase-4 wiring replaced them with the ported `Chain`, were deleted.
+
+**Boundary, deliberately not crossed:** there is no plug selector in the TUI. The factory plug map
+(`TRACK_DEFAULT_PLUG`) is the device's own, and changing it would falsify the table it is checked against,
+so the saw engine is reachable through `for_engine`/`set_track_engine` and the tests but not through a key.
+A plug-selection command is the natural next UI feature, not part of this port.
+
+Phase 5's other items: `opz-tui --render` verified again (byte-identical across runs, `afinfo` reads
+1 ch / 44100 Hz / Int16 / 2.00 s, peak 69894), `PORT_METHOD.md` gained the saw rows and the third method
+note (a fixture that agrees on one case is not a fixture that agrees), the README carries the engine's
+status, and the acceptance walkthrough still reads 5 of 5. Workspace: 97 tests over 9 binaries, green, no
+Unicorn at test time. Tags now run `phase-1`..`phase-5`.
