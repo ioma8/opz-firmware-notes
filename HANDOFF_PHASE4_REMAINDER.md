@@ -140,6 +140,37 @@ zero, so they are documented rather than ported (the plan's `PORT_METHOD.md` rul
 The two `(this + 0x6c10)`/`local_a8` peak paths and the four master words are pure bookkeeping: they
 change no audio, but the fixture records them, so they must match too.
 
+### The mixer's scratch, resolved
+
+| object | address | offset in the port's span | role |
+|---|---|---|---|
+| group sums | 0x1227a20 (+0x200 per four-track group) | 0x20 | the master accumulation, summed into the output |
+| send A | 0x1227e20 | 0x420 | an FX send per group |
+| send B | 0x1228020 | 0x620 | the input-signal scratch (`g_renderInputSignal` only) |
+| send C | 0x12284a0 | 0xAA0 | the third send |
+| track mix | 0x12286a0 | 0xCA0 | what the voices render into |
+| track filtered | 0x12288a0 | 0xEA0 | the DC blocker's output and the mix-down's input, later the master buffer |
+| input buffer | 0x1228aa0 | 0x10A0 | the mic path, never filled in v1 |
+| modulation 0/1 | 0x1228cec / 0x1228d38 | 0x12EC / 0x1338 | the two LFO blocks the voices read |
+
+The tail, exactly: `param_1 += 0x12288a0` for the three FX-track mixes (8/9/10, each DC-blocked into
+it first) and the master FX return; `trackFilterDcBlock(this + 0x6bb4, param_1, 0x12288a0)` moves the
+sum into the master buffer; `bounceAudio` taps it; `masterCompressor(0x12288a0, ...)` compresses it in
+place; then per sample
+
+```text
+g   = clamp(mul31_arith(this[0x6858]^2) * 0x5fffffff >>u 31) + 0x20000000     // the master gain
+x   = clamp(master[i] * g * 2 >>a 0x1e & ~3)                                  // gain applied
+y   = sat_add(x, sat_sub(x, mul31(mul31_arith(x^2) * x)) >> 1)                // soft clip
+out = sat_add(mul31(x * (0x7fffffff - this[0x6264])), mul31(y * wet))         // dry/wet blend
+peak = max(peak, out)                                                         // the VU word
+out = min(0x7fffffff, mul31(this[0x6860] * out))                              // the master volume
+```
+
+`wet` is the BPM-table interpolation (`UNK_0017d064`/`+0x68`, two eight-entry `i32` tables at
+0x7d064) and the compressor's third and fourth reference arguments come from `this + 0x629c` and that
+table. The table is `.rodata` and belongs in a generator.
+
 ## The seam decisions a resuming session must not undo
 
 * **`EngineVoice` (in `voice.rs`)** replaces the original's three per-voice function pointers
