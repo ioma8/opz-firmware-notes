@@ -208,6 +208,26 @@ is the one part still worth reading line by line from the asm when the port land
 `param_2` (the caller's second buffer) is written by this loop, so v1 - which has no FX tracks -
 still has to produce it byte for byte for the fixture to pass.
 
+### The mixer's state, measured while the loop was driven
+
+* The `FxManager` has **four** slots (`FX tracks 8..11`): `0x4940 + 4 * 0xf0 = 0x4d00`, exactly the
+  LFO array. Writing a fifth slot wipes the LFOs (a fixture bug that produced a very confusing diff).
+* The LFO array is at `+0x4d00` with a `0x2c` stride and a **layer stride of eleven slots**, so slot 8
+  is track 8 of layer 0 - the master LFO the tail renders at `+0x4e60`, `+0x4e8c` and `+0x4eb8` with
+  the blocks at `+0x5d08`, `+0x5d50` and `+0x5e70`. The loop itself renders only tracks 0..7.
+* The layer-1 modulation block's `out` buffer reaches `0x1228e88` (its 84th word), past the block, so
+  the mixer's scratch span has to be `0x1500` bytes from `0x1227a00`.
+* `Synth::resetLfo` takes the track, the layer and the caller's `params`, and uses the *Synth's*
+  smoothed block for the LFO's parameters while writing the LFO's output into the caller's buffer -
+  which the voices are also reading as their parameter block. A re-trigger therefore changes what the
+  voices after it read. The port keeps its own copy of the modulation block per track and writes it
+  back when the track's voices are done, which the mix-down sees; a voice rendering after a
+  re-trigger inside the same block reads the pre-reset block. That is the one deviation, and
+  `PORT_METHOD.md` records it.
+* The port's `Voice` models the record from `+0x20` on; `+0x00`..`+0x1f` (the engine's area and the
+  three entry points) is replaced by the trait dispatch, so a whole-mixer comparison has to zero those
+  eight words on both sides.
+
 ## The seam decisions a resuming session must not undo
 
 * **`EngineVoice` (in `voice.rs`)** replaces the original's three per-voice function pointers
