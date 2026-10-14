@@ -1333,3 +1333,35 @@ value, the same convention `opzso.py` already uses for `PER_OCTAVE_TABLE`. The A
 **Next**: characterise which indices the engine uses (probe `x8`/`x9` at `0x123eac` across several notes and
 velocities), add the gain table to `Saw013aHost` with that documented fill, then write
 `make_saw013a_fixtures.py` against a now-working engine.
+
+### The golden vectors are recorded
+
+`tools/unicorn-harness/make_saw013a_fixtures.py` writes `crates/opz-dsp/tests/golden/saw013a/cases.json`:
+**19 cases, 2 816 output samples, none silent**, peaks from 4 146 582 (`velocity_1`) to 1 426 469 823
+(`four_blocks`). Case coverage:
+
+* one note per octave (`note_36`..`note_84`), which walks the gain table's slots 2..7 and shows the peaks
+  rising with the octave (149M, 281M, 415M, 526M, 649M);
+* both velocity extremes, the four variants `init` distinguishes, and the parameters the prologue reads
+  (`p0`, `p1`, `p11`..`p16`).
+
+It records what the host supplies, not just the output: the 16-entry octave gain table, the five variant
+constants, the ADSR levels, the state `onNoteOn` leaves, both interface calls' arguments, and the increment.
+Determinism and the not-every-case-silent guard are both enforced, as in the other generators.
+
+**Where Phase 5's `Saw013a` item now stands**:
+
+| step | state |
+|---|---|
+| inventory, disassembly, decompilation | done |
+| `init`, `initModule`, `onNoteOff` ported + unit test | done |
+| harness drives the whole engine, and it sounds | done |
+| the host inputs identified and filled | done (five constants, 16-entry octave gain table, ADSR arming) |
+| **golden vectors** | **done** (19 cases) |
+| **port `render` and `onNoteOn`** | **not started** |
+| engine test, track wiring, Phase 5 tag | not started |
+
+**The port is now a transcription job with recorded ground truth**: read `render` in the order the state is
+touched (the handoff carries the state map, the two interface seams, the wavetable access pattern, the
+per-octave gain lookup and the phase pair's semantics), write it against `cases.json`, and iterate until the
+19 cases match sample for sample - the same loop that closed `Digital` and `AnalogA`.
