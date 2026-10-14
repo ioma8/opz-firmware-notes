@@ -1,53 +1,62 @@
-# Handoff: the clone's end-to-end output level
+# Handoff: why the clone was inaudible, and what fixed it
 
-Found while adding a `--project` file to the TUI: **the whole clone plays about 78–90 dB down**, which
-is why nobody has ever heard it. Nothing below is fixed; this records the measurements so the next
-session starts from evidence.
+Found while adding `--project` to the TUI and reported by ear ("I do not hear anything"): the whole
+clone played about **80 dB down**, and the second half of every bar was silent. Both causes were host
+programming gaps in `crates/opz-core/src/chain.rs`, not port bugs. Fixed, with a regression test.
 
-## Measurements (44 100 Hz, the real packs in `samplepacks/`)
+## What was wrong
 
-| path | peak, Q31 |
+**1. The master bus's parameters were never programmed.** The device's mixer renders *twelve* tracks:
+the UI drives six, and tracks 8..11 are the three FX tracks and the master bus. Their parameters are
+the library's to *read* and the app's to write, and the clone wrote none of them, so track 11's
+filter row sat at zero - and that row **is** the master filter. Zero cutoff is row zero of the
+coefficient table, i.e. a closed lowpass. Measured, one full-scale kick through the whole chain:
+
+| master filter word | master-bus peak (Q31) |
 |---|---|
-| `DrumEngine` alone, pack.bin-equivalent real pack, `level` 0x7fffffff, note 36, velocity 200, 64 blocks | **301 010 069** |
-| the same hit through `opz_core::engine::Engine` (the whole ported chain), track level 255 | **32 419** |
-| the demo pattern's offline render (`--render`), all six tracks | **69 894** |
-| one synth track alone through `Engine` (track 5, note 60, every parameter 255) | **8 401** |
+| 0 (what the clone had) | 1.5e5 |
+| 0x40000000 (centre) | 1.6e8 |
 
-The engine's own output is Q31 and near full scale; the chain hands back roughly the raw i16
-magnitude. That is a ~2^13–2^15 cut.
+The filter's response is symmetric around the centre, so the clone latches `0x40000000` into the
+filter's two words (track 11 parameters 8 and 9) - the same "centre" convention `pan` already uses.
+`Chain::new` now calls `program_mixer_tracks`, which sets all four mixer-only tracks with a transparent
+parameter vector (filter centred, FX sends silent, limiter dry) and latches them so the first half
+second of a session is not 30 dB quiet while the smoothed block glides in.
 
-The two output conversions then make it inaudible:
+**2. `set_master_volume` set only half of the pair.** `interpolateParameters` glides the smoothed
+volume (`+0x6860`) a sixty-fourth of the way toward its target (`+0x685c`) every block, and the clone
+wrote only the smoothed word - so the volume walked down to silence in about half a second. That is
+the "first hit is loud and the rest are ducked into nothing" symptom. Both words are now set.
 
-- `crates/opz-tui/src/render.rs`'s `write_wav` writes `sample >> 16`, so a peak of 69 894 becomes
-  **1 LSB of i16** (the recorded "non-silent, peak 69894" evidence is true and useless).
-- `crates/opz-tui/src/audio.rs` converts Q31 to `f32` by dividing by 2^31, so the live path is the
-  same ~-90 dB.
+## Measured, `opz-tui --render` (i16 peak, one bar demo / two bar project)
 
-## Why 105 green tests did not catch it
+| | demo | project |
+|---|---|---|
+| before | 69894 Q31 -> **1 LSB, -90 dBFS**, bar 2 silent | 91036 Q31 -> **2 LSB** |
+| after | 309499830 Q31 -> **4723, -16.8 dBFS** | 389469850 Q31 -> **5943, -14.8 dBFS** |
 
-The mixer-level fixtures are inert at the level that matters:
+The fixed render's per-step peaks repeat every bar (the pattern loops), where before everything after
+step 5 was zero. Two runs are byte-identical. 106 tests green, including a new
+`chain::tests::the_master_bus_keeps_the_mix_audible`, which asserts the level a listener needs rather
+than merely a non-zero sample (the old tests all passed with the bug live: the whole-mixer fixtures
+are inert at audio level - every `voice` case's `out` is all zero and all 14 `synth_render` cases'
+`outputs` peak at 13654, so nothing pinned the master bus's level).
 
-- every `voice` case in `crates/opz-dsp/tests/golden/host/host.json` has `out` **all zero** (73 cases);
-- all 14 `synth_render` cases have `outputs` peaking at **13 654** — they pin the scratch, the LFOs,
-  the counters and the ramps, not a voice's audio;
-- the `synth_render_tracks_match_the_original` comment already notes the master bus at 0x12288a0 is
-  4.5 % off for its "filled" case, at a magnitude of ~2e6.
+`engine::tests::render_audio_integration` had to change with it: it counted `0 -> non-zero` edges to
+prove the kicks on steps 4/8/12 fired, and those edges only existed while the master volume decayed to
+silence between hits. It now watches the host's own note bookkeeping as the transport reaches each
+step, plus an audio check per step window.
 
-So the per-voice gain domain (the ported `Voice` / `TrackFilter` / group-gain path) has never been
-compared against the device with an engine producing real audio. The engine-level fixtures pin the
-engine alone (1.04e9 for a full-scale pack, byte-exact), and the mixer fixtures pin a mix of silence.
+## What is still open, and how it would be closed
 
-## What would settle it
-
-1. A Unicorn trace of the device's `Voice::render` (and the mix-down after it) with a **full-scale**
-   voice input, reading the voice's `out` buffer and the master buffer — the same register-oracle
-   method that ported `Saw013a::render`. The open question is which domain the device's per-voice
-   gain multiplies run in (`>>15` over Q15, or `>>31` over Q31), and whether the framework scales
-   the master buffer up before the DAC.
-2. A `synth_render` fixture case whose engine input is a full-scale drum `noteOn` rather than
-   silence, added to `tools/unicorn-harness` and `host.json`.
-3. Only then decide where the fix belongs: the ported `Voice`/mixer gain math, or `Engine::render`'s
-   hand-off to the output stage (the `master[frame*2] >> 1` fold plus the two output conversions).
-
-Until that lands, the plan's Phase 5 "playable check" stays open for a second reason: not only has
-nobody listened, the app as it stands cannot be heard.
+* **The app's real values.** The clone's mixer-track parameters are a *stand-in* (the transparent
+  setting), because the device's app data for the master filter, the FX sends and the compressor's
+  references is not in replay. On the device the app writes them; a trace of the app's
+  `setTargetParameters`/`latchParameters` calls for tracks 8..11 would pin them exactly.
+* **The compressor's references.** `Chain::set_compressor_references` is still dead code: it writes
+  `+0x6854`, which `render_setup` refolds from `HostValues::master_params` every block, so it cannot
+  take effect that way. With track 11's parameters at their stand-in the compressor's `gain_scale`
+  (`+0x6298`, track 11 parameter 14) is zero, which makes it transparent - fine for now, but it means
+  the master compressor is effectively not exercised by the live path.
+* **Listening.** Still nobody has heard it. This round went from "inaudible" to "-15 dBFS, pattern
+  loops" by measurement only; the ear check belongs to whoever has the speaker.
