@@ -255,6 +255,21 @@ is.
 The words *before* those match, so the LFO phase (both layers, including the reset seam) and the
 setup are right.
 
+**The modulation blocks are the next blocker, and they are the tail's doing.** Layer 1 matches words
+0..18 and differs at word 19; layer 0 differs from word 0 on. That is not the loop's LFOs - the
+device's own parameter region (0x51c8..0x6860, which includes every smoothed block the LFOs are given
+as parameters) matches word for word. It is the FX/master section, which renders three more LFOs -
+slots 8, 9 and 10 at `+0x4e60`, `+0x4e8c` and `+0x4eb8`, with the parameter blocks at `+0x5d08`,
+`+0x5d50` and `+0x5e70`, and hands them `&DAT_01328cec` (layer 0) as their output. They run at C lines
+2755, 2812 and 2283, so *after* the track loop, and nothing downstream can match until that section is
+ported.
+
+That section (C lines 2690-2870) is: `trackFilterDcBlock(this + 0x6b70, mix, 0x12288a0)` for the
+master track, the three LFO renders, four `FxManager::render` calls (no-ops in v1), the three
+FX-track mixes each through its own `trackFilterProcess` and `trackFilterDcBlock` into 0x12288a0 and
+then added into `param_1`, and the master DC blocker that moves `param_1` into 0x12288a0 for
+`bounceAudio` and the compressor.
+
 **`+0x174` is solved, and it is a layout fact, not an arithmetic one.** A write watchpoint on voice
 0's `+0x174` shows exactly one write in the whole call - `Voice::renderVoice`'s store at `0x13dbcc` -
 and the value it writes is `0xff3bb6c2`, which the *device's own* `centsDetune` table reproduces
