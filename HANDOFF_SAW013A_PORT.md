@@ -538,3 +538,25 @@ This is the same trap the mixer's port hit with Ghidra's reused names, one level
 *correct* to print at one address is *misleading* a few instructions later. The measurement to run is the one
 for `x14` and `x15` at `0x124394`, and if those are fine then the zero is in whatever produced them - which
 the listing shows is the `NEON` product chain ending at `0x12438c`'s inputs, not the phase.
+
+### The corrected reading, and its own caveat
+
+`x14` and `x15` at `0x124394` both read zero in their **low 32 bits**, `x27` zero likewise, and `x28`
+`0x7fffffff`:
+
+```text
+at 0x124394 (x14, x15, x27, x28): [('0x0', '0x0', '0x0', '0x7fffffff'), ...]
+```
+
+The probe masked each register to 32 bits, so "zero" there means the low word is zero - which is *also* what
+a 2^62 sentinel looks like in its low word (`0x4000000000000000` ends in eight zero bytes). So this reading
+does not yet distinguish "the operand is zero" from "the operand is the sentinel", and the sentinel is
+exactly what `x27` is expected to hold at the comparison on the line before.
+
+The next measurement has to print the **full 64-bit** registers (`x14`, `x15`, `x27`) rather than their low
+words, and at the *first* instruction of the loop rather than mid-body, so the values are the ones the body
+starts with instead of wherever a later instruction left them.
+
+Two rounds of measurement have now been lost to the same mistake in two forms - a reused Ghidra variable
+name, and a stale/low-masked register - so the rule for the rest of this port is: read the value at the
+instruction that *consumes* it, at full width.
