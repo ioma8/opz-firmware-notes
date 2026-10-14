@@ -109,3 +109,19 @@ Two things repeatedly cost time and are worth doing first next round:
 
 Item 1 is what turns items 2–4 from "structurally different" into "exact": all of them live in the same
 loop, which is why they are listed together as the next, and last, piece of engine fidelity.
+
+## The host's mute is a `LoopHost` flag, not port behaviour
+
+`Synth::render` has no per-track mute. The device's `+0x6d1c` byte gates only the *track filter*, and the
+macro's `+0x6848` mask reaches the *pan lane*; a track that is neither nor still runs its mix-down and its
+FX sends, and the app silences it by not triggering it. Measured on a muted track with a drum: the group
+sums stay in the millions and only drain through the filter, the DC blocker and the compressor.
+
+The host needs a mute that takes effect while a voice is *running* (the app's `SetMute` deliberately keeps
+the note), so `LoopHost` carries `muted: [bool; MIXED_TRACKS]` and `render_tracks` drops a muted track's
+mix before the DC block. The voice keeps rendering, so unmuting picks it up mid-note.
+
+This is an extension, and it is kept out of the port's own behaviour on purpose: the whole-mixer fixture
+leaves the flag all-false, so `Synth::render` compares word for word against the device as before. Putting
+the same clear in the not-enabled branch made the comparison fail - which is the evidence that the device
+does not do it.
