@@ -1124,3 +1124,35 @@ Two facts worth keeping from that probe:
 `x8`'s writes over the same range. The trace pattern has now found four registers' stories - `x20` = the
 ADSR, `x13` = the previous phase, `x11`'s last write, and the pair's zeroing - so it is the right tool for
 the last link too.
+
+### The zero is a halfword host table the harness never fills
+
+`x8`'s last write in the prologue is at `0x123eb0`, and the listing shows what that address really does:
+
+```text
+0x123ea4  add   x11, x11, 0x890            ; the table base
+0x123ea8  mov   w12, -0x80000000
+0x123eac  ldrsh w8, [x11, w8, uxtw 1]      ; x8 = a *signed halfword* table entry, indexed by the old x8
+0x123eb0  ldrsh w9, [x11, w9, uxtw 1]      ; and the same for x9
+0x123eb4  mov   w11, 0x7fff
+0x123ec0  sub   w9, w9, w8                 ; their difference
+```
+
+`x8`/`x9` therefore come from a **16-bit table at `x11 + 0x890`**, indexed by two small integers (the trace
+showed the indices passing through 3 and 4), and the table is **all zero in the harness** - so `x8` = 0,
+`w11` = 0, the pair's products are 0, and the engine renders silence.
+
+**This is the same class of missing input as the wavetables**, and it is the root cause of everything
+downstream: one more host table the fixtures have to fill, exactly as `AnalogA`'s filter banks and rate
+tables had to be.
+
+**Next**: find the base address of that table - `x11` before the `add 0x890`, which the same trace pattern
+gives in one pass - and fill it with a documented ramp, then re-run. Given the pattern of this engine's other
+host data (five sine tables behind a pointer array, five constants in `.bss`), this is most likely another
+`.bss`/`.rodata` block the firmware populates, and a documented monotone ramp is the calibration the
+fixtures should record.
+
+**Why this is the important result of the round**: three registers' stories (`x20` = ADSR, `x13` = previous
+phase, `x11`'s zeroing) all pointed at the pair construction, and this closes it - the zero is not arithmetic
+at all but a table the host must supply, which is precisely the kind of gap the fixture harness exists to
+find.
