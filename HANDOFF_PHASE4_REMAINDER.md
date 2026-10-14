@@ -666,3 +666,41 @@ Harness traps found on the way, both able to waste a session:
 
 What the test deliberately does not look at: the three send buffers, the four output blocks and the
 master tail - those are unported, and the sends' gains are still undecoded.
+
+### The tail and the master bus: ported, converging on the master's DC block
+
+`88d0264` adds `render_tail` and `render_master` to the clone. Everything below is transcribed from
+the tail's assembly, not the decompiled C:
+
+| stage | |
+|---|---|
+| the three FX passes | tracks 10, 8, 9, each with its `FxManager` gain and two destinations, its track filter, its DC blocker and its 16-bit peak |
+| the master bus | `FxManager(11)`, `trackFilters[11]`, `trackDcBlockers[11]` into `0x12288a0`, then `bounceAudio` |
+| the compressor's four references | `this[0x6854]`, `this[0x6298]`, `mul31(this[0x629c] * 0xc8f040d) + 0x734ec8aa`, and the tempo ramp |
+| the master gain | `sat_add(narrowed, 0x20000000)` where `narrowed` narrows `this[0x6858]²` twice, the second time with `0x5fffffff` and a **`0x5ffffffe` sentinel** |
+| the limiter and volume | `x = clamp(mix[i] * gain * 2 >> 0x1e & ~3)`, `y = sat_add(x, sat_sub(x, mul31(mul31(x*x) * x)) >> 1)`, `out = sat_add(mul31(x * dry), mul31(y * wet))`, then `min(0x7fffffff, mul31(this[0x6860] * out))` |
+
+The tempo ramp comes from a new generated table, `COMPRESSOR_GAIN` at `0x07d064` (nine values; the
+decompilation's `UNK_0017d064[i]`/`UNK_0017d068[i]` are consecutive entries of the one curve, indexed
+by `(bpm - 40) / 20` clamped to 7).
+
+Two corrections the comparison forced, both measured on the device:
+
+1. **The mix-down's sixth destination is the track mix at `0x12286a0`.** The body's last store is
+   `str w17, [x6, x11]`, accumulating `mul31(gain * x19)`; `x19` was measured at **0** for every one
+   of the eight passes with a `UC_HOOK_CODE` hook at `0xf8428`, matching the port's gated module gain.
+   The port had been throwing that term into a private local.
+2. **That slot is the *input* of the tail's track-10 filter** (its `FxManager` destinations are the
+   third send `0x12284a0` and the track mix itself), so the filter runs over the track mix and leaves
+   its result there. The port had been filtering a zeroed local, which left `0x12286a0` holding the
+   raw voice output instead of the filtered mix.
+
+With both, `0x12286a0` matches the device and the first differing word is now **`0x12288a0`**, the
+master's DC-blocked mix (port `-2,088,924` against the device's `-2,208,046` at sample 0, and the
+output block follows from it: `2,474` against `2,659`).
+
+The master comparison sits behind a `CHECK_MASTER` constant in the test so the loop's verification
+stands alone; the host binary reports 20 passing and the workspace is green over nine binaries.
+
+**Next:** the master's DC-blocked mix at `0x12288a0` - its input is `param_1` after the tail's three
+accumulates, so the discrepancy is in one of those or in the DC blocker's own state.
