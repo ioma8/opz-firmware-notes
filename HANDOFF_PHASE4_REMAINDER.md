@@ -1390,3 +1390,32 @@ worth the next measurement:
 2. the **slice window** - `window_start=96 window_end=608` for a pack whose slices are 32 frames long, so
    the window spans many slices; if `play_mode`/the window arithmetic is off, a hit can play the *wrong*
    region for its note.
+
+### The bar decay is not the drum engine: it is downstream of it
+
+Two more fixes went in and neither moved the output, which is itself the decisive measurement.
+
+**What was added** (all in `PHASE4_ENGINE_WIRING.diff`):
+
+* the drum engine's envelope is re-armed on every note-on. `sample_player_gain` keeps its own `Adsr` whose
+  `level` only ever decays - `render` walks it down and nothing puts it back, so without this a track's hits
+  get quieter and quieter. Added as `DrumEngine::rearm_envelope(level)` and called from the `EngineVoice`
+  adapter's `note_on`, *not* from the chain: a gated note is played by the ported `Voice`'s own re-trigger,
+  which reaches the engine through the adapter and never passes the chain again. Verified by measurement -
+  `adsr_level` now reads 2147483071 at the second hit instead of a monotonically smaller number;
+* the master compressor's reference words (`+0x6854`, `+0x6298`, `+0x629c`), which are plugin data on the
+  device and were zero here, so the compressor was clamping everything it saw.
+
+**What the measurement says.** With the envelope re-arming and the compressor references set, the
+kicks-only quarter peaks are *unchanged to the digit*: `193312, 3828, 14, 0`. Meanwhile the drum engine's
+own state at the first and second hit is identical - `position` rewound to 23040, `gain_a`, `gain_b`,
+`gain_a_step`, `gain_b_step`, `window_start`, `window_end`, `window_a`, `velocity` all equal, and
+`adsr_level` now equal too. **Identical engine state, 50x different output** means the decay is not in the
+engine at all, but in the mix path between it and the master.
+
+The prime suspect, and the next measurement: the **per-track filter's cutoff and level**, which come from
+the layer-0 modulation block's words 8 and 9 (`scratch[MOD_LAYER0 + 8/+9]`) and are therefore *LFO'd*. A
+modulation block whose cutoff falls over the bar closes the filter on the drums, which is exactly a loud
+first hit followed by silence - and the LFOs' output depends on the track's parameters, which the app's
+`initial_values` supplies rather than the device's own preset data. Print those two words alongside the
+group sums per quarter; if they fall, the fix is in what the app programs, not in the mixer.
