@@ -243,6 +243,33 @@ still has to produce it byte for byte for the fixture to pass.
 The words *before* those match, so the LFO phase (both layers, including the reset seam) and the
 setup are right.
 
+**`+0x174` is solved, and it is a layout fact, not an arithmetic one.** A write watchpoint on voice
+0's `+0x174` shows exactly one write in the whole call - `Voice::renderVoice`'s store at `0x13dbcc` -
+and the value it writes is `0xff3bb6c2`, which the *device's own* `centsDetune` table reproduces
+exactly: `table[225] * centsDetune[0] >> 30 & ~1` with the table's element 0 equal to **6449518**,
+not the `0x20000000` the port computes. The reason is that on the device the two modulation blocks
+*overlap the head of `Tuning::centsDetune`*:
+
+```text
+layer-0 block   0x1228cec   (0x54 words = 0x150 bytes → 0x1228e3c)
+layer-1 block   0x1228d38   (0x54 words = 0x150 bytes → 0x1228e88)
+Tuning::centsDetune  0x1228d88   (2401 words → 0x122b30c)
+```
+
+`centsDetune` starts 0x50 bytes into the layer-1 block's 0x150, so an LFO writing `out[dest]` with a
+high destination - or even the marker at `out[18]` - *is* writing the detune table. That is real
+device behaviour on the voice path, and it is reachable in v1 whenever a modulation parameter selects
+a high destination, so the port has to reproduce it rather than compute `centsDetune` into a private
+static.
+
+The fix, and it is small: the voice path should take the detune *value* (`cents_detune_at(index)` is
+still the right helper for callers whose table is not aliased), and the mixer must take it from its own
+scratch - which therefore has to span `0x1227a00` through `0x122b30c` (3651 words), with the table at
+word 1250. `VoiceHost.detune_index: u16` becomes `detune: i32`; the voice and manager fixtures pass
+`cents_detune_at(case.detune_index)` as they do today.
+
+The older, still-valid part of the analysis:
+
 The `+0x174` diff is precise and surprising: for a voice whose every other field matches (note,
 variant, the ADSR words, the step at `+0x17c`, the bend and vibrato, the legato byte, and both the
 current frequency at `+0x170` and the previous one at `+0x178`), the port's target is
