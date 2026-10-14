@@ -566,3 +566,24 @@ function whose callees are engines without pulling the engines in. Two traps alr
 * `tools/resolve-got.py <slot>...` resolves a GOT slot to its symbol and address from
   `.rela.dyn`/`.rela.plt` - that is how the globals above were found (`python3 tools/resolve-got.py
   0x1d58f0`).
+
+### The `silent` case (the last whole-mixer case left)
+
+13 of the 14 whole-mixer cases match, including all six clock cases. `silent` - the all-zero-state
+case - differs in the LFO array, the per-track `+0x68b4` byte and both modulation blocks, and the diffs
+point the same way: the port takes the "voices rendered" branch and the device takes the "nothing
+rendered" one.
+
+* `+0x68b4` (written when a track's manager pass rendered *no* voice) is `1` in the device and `0` in
+  the port.
+* The LFO phases differ by a factor: the device advances to `0xBD60000`, the same value the `filled`
+  case reaches, while the port's is `0x52D8A800`. `filled` and `silent` are handed different
+  parameters, so identical device phases suggest the device's silent run is not using the parameters
+  the port thinks it is.
+
+The contradiction to resolve first: every Voice's note byte is `0` in both runs (the fixture's `fill`
+is zero and the pins only touch `+0x35`, `+0x38`, `+0x3D`), so `InstrumentManager::render`'s
+`note != 0xff` test should render them and set the counter - yet the device's `+0x68b4` says it did
+not. Either the device's manager test is not the one the port implements (the manager fixture used a
+spec with explicit sounding voices, so a "note byte equals something else" condition could hide
+there), or the silent case's Synth is not the all-zero one the test builds.
