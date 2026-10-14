@@ -378,3 +378,42 @@ and effect plugs, and hosting (which would only change where the packs come from
 
 Two shared entry points moved into `opz-core` so the two frontends cannot disagree: `parse_aiff`
 (the browser has no filesystem) and `drum_pack_name`.
+
+
+## Device-faithfulness fixes (the six items the review left open)
+
+Done, each with the device as the arbiter rather than the port's own reasoning:
+
+* **A drum slice plays its own frames (clone `880eb0a`).** The descriptor's frame count is the slice's
+  playable length, not the pack's: `note_on` scales the AHD envelope's attack/decay/sustain by it and
+  `render` bounds the readable region with `length - 0xC0`. The port *and* the harness's
+  `SamplePlayerGainHost` had both set a per-slice pointer with a pack-wide length, so one 1.15 s kick
+  got a 10 s window and the pack's envelope. `set_pack` now writes `end - start + SLICE_GUARD_FRAMES`;
+  the harness writes the same from `slice_margin`. The sample-player fixtures were regenerated from the
+  original ARM64 engine under the corrected host model (13 cases, `golden_cases_match` byte-exact) and
+  the browser smoke render's peak fell 369 123 337 -> 254 570 802 (-18.5 dBFS).
+* **The play-mode-3 crossfade (clone `8e2f81b`).** The port's one admittedly unverified branch. Play
+  mode 3 is `params[17] >> 29`, so `note_style=255` selects it; the crossfade also needs the counter at
+  state+0x64 to be fresh-and-within-0x5f-steps or already running. Five defects fell out of the ARM64
+  listing (wrong `b_pos`/position at the start, inverted cursor increments, the counter read from the
+  block's entry value, the wrap writing 0 instead of -1, and a blend loop whose fade never advanced and
+  whose two windows shared one fraction). Pinned by the new `fade_path_short_window` (16 blocks,
+  `decay=0`) plus per-case `slice_frames` in the fixtures; 13 cases, 5760 samples, byte-exact.
+
+Still open, with what is now known:
+
+1. **The random-number claim in `README`/`analog_a.rs` is wrong and needs correcting.** The library's
+   only located RNG is libc **`rand_r`** on the word at **0x1da42c** (initialised 0x12345678), called
+   from `applyHumanize`/`updateHumanize` — the humanize feature, not the LFOs. The port cites
+   0x1da428 (value 0x56ce) as `generateRandomNumber`'s seed; that symbol is **WEAK and exported**, its
+   GOT slot is 0x1d53e0 and **nothing in the library reads it** (no `adrp`/`add` or `adrp`/`ldr`
+   reference anywhere in `.text`), so it is an app-facing export, not a shared engine seed. Where the
+   LFOs and AnalogA actually get their randomness is not yet located; a scan for the classic LCG
+   constants (1664525, 1103515245, 214013, 16807) finds none.
+2. **Microtiming** — stored, drawn, editable, never played. Needs the ported sequencer's sub-block
+   timing (the transport reports block offsets; the device moves a trigger up to half a step).
+3. **The live timbres' host tables** (AnalogA's filter banks and rate tables, Saw013a's five wavetables
+   and per-octave gains, both engines' init constants) are app-side stand-ins. The real tables live in
+   the firmware/app, so this is an extraction job, not a code change.
+4. **The master compressor parameter 14** is left at zero (transparent). The device's value comes from
+   the app's mixer-track programming, i.e. firmware data.
