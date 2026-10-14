@@ -1248,3 +1248,45 @@ flat `0x4000`/`0x7FFF` (each drives the engine into an unmapped read, so its ent
 recovery effort outside this phase's constraints, a published key, or a device in hand. With the file, the
 block that initialises `0x124A890` is found in the same region as `0x124A5CC` and `0x124A7B0`, and the
 harness is filled from it exactly as those were.
+
+### The calibration route is exhausted too
+
+The last idea before accepting the block: maybe the unmapped read that a nonzero table entry causes is a
+*harness* artefact - a large entry value indexing past the harness's `0x800`-byte wave tables - in which case
+the entries could be calibration (a documented ramp) rather than recovered firmware data. Tested and refuted:
+
+* the entries at indices 4 and 5 feed `w11` (`mul x9, x11, x9`) and a difference (`sub w9, w9, w8`), so they
+  are used as *values*, not as indices into the wave tables - a small ramp (`1..64`, offsets at most `0x100`)
+  faults just as a full-scale one does;
+* replacing the harness's wave tables with much larger ones is not possible in the harness either: the
+  allocation for a `0x40000`-byte table fails with `UC_ERR_WRITE_UNMAPPED`, so that experiment cannot be run
+  as written.
+
+So all four value shapes tried - flat `0x4000`, flat `0x7FFF`, a full-scale ramp, a small ramp - drive the
+engine into an unmapped read, and the zero-filled table is the only shape that keeps it on a runnable path.
+The entries' *magnitude* selects a further dereference, so guessing them is not safe.
+
+**This closes the calibration route**: the table is firmware data, its values matter in a way that changes
+control flow, and neither recovering nor approximating them is available offline.
+
+## Blocked - final state for this item
+
+* **Objective**: port `Saw013a` (Phase 5's last checklist item) and wire it onto a track.
+* **Done and verified**: the symbol inventory and disassembly; the decompilation (`SAW013A-decomp.c`, which
+  corrected three transcriber errors in the fold constants); `init`, `initModule`, `onNoteOff` ported with a
+  unit test; the harness drives the whole engine (`init`, `initModule`, `onNoteOn` and `render` all execute);
+  the state map; both interface seams and their argument shapes; the five-pointer wavetable and its access
+  pattern; the accumulate-into store; and the register stories `x20` = ADSR, `x13` = the previous phase,
+  `x11`'s zeroing and `x8`'s table load.
+* **Blocker**: the engine's oscillator gain multiplies by a 16-bit entry from the table at **`0x124A890`**,
+  which is firmware-filled `.bss` (zero in the shipped library). Recovering its values needs the firmware
+  archive, which is AES-256-CBC encrypted with a **device-resident global key** - `FIRMWARE_ANALYSIS.md:49`
+  states there is "no feasible software-only path", the file carries only a key index byte, and the one
+  documented recovery path is a serial-console oracle, i.e. device interaction, which Phase 5 forbids.
+* **Attempted**: five constants, the ADSR's level/mul, all three callback-fill shapes, the ADSR serviced via
+  the first callback, and four table fill shapes.
+* **Next input needed**: the AES-256 key or a decrypted firmware archive from some source compatible with the
+  phase's constraints. With the file, the block initialising `0x124A890` sits in the same region as
+  `0x124A5CC` and `0x124A7B0` and drops straight into the harness.
+* **Not done, and not claimed**: `render`/`onNoteOn` are unported, there are no fixtures, the engine is not
+  wired to a track, and Phase 5 is not tagged.
