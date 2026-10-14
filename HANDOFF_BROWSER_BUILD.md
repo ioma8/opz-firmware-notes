@@ -168,6 +168,29 @@ prints the page's status tail on failure, which is how the last one was found.
 workspace stays green at 109 tests and the smoke test still reports 85 344 samples identical to the
 TUI's.
 
+## Fifth pass: the panel's layout (commit `d8e73e5`)
+
+Reported once more from use: `shift`, `+` and `−` still did not look right. Two real problems, plus
+the checks that now prevent them.
+
+- The two keys the schematic does not draw (`shift`, `+`) were styled with the *drawn* keys' colours —
+  dark text, meant for the light inverted panel — while sitting on the dark page, so their labels were
+  invisible; and their boxes overlapped the column they sat beside. They are dark chips with light
+  labels now, off the panel, with §2.10's transpose pair (`+` next to `−`) in the bottom row and
+  `shift` beside `track`, all three labelled the way the drawn column already was.
+- The **value keys were placed one column pair too early**, so pill 1 sat *on top of* the play and stop
+  keys. They now start at the third pair, which is where the drawing prints them.
+- The momentary transpose keys flash when pressed: a key that leaves no state behind showed nothing at
+  all before.
+
+Four of `tools/web-check.mjs`'s checks are **layout invariants** rather than gestures, because this is
+the second time the panel's geometry shipped wrong: no two keys may overlap, every key with a name must
+show it, `−` and `+` must be one row and adjacent (§2.10), and the keys the drawing lacks must sit off
+the panel. The overlap invariant found the value-key bug on its first run.
+
+`tools/web-check.mjs` is 61 checks, all passing in a real Chrome; the workspace stays green at 109
+tests and the smoke test still reports 85 344 samples identical to the TUI's.
+
 ## Not verified, and what is out of scope
 
 Nobody has **listened** to the browser build; the offline TUI render is also still unheard. Touch on a
