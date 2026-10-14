@@ -1208,3 +1208,31 @@ Note also that the earlier hand-built-pack experiment and this one agree: a drum
 land on a slice renders nothing at all, and note 48 with a 24-slice pack is a candidate for that. The app's
 own `initial_values`/`programmed` defaults give note 48 for a drum step, so if the mapping is
 `note - 36` or similar, the port's slice lookup is the first thing to check.
+
+### Correction: the drum's slice lookup is not the problem
+
+The previous note's last paragraph guessed that note 48 against a 24-slice pack might be the drum silence.
+That is refuted by the code: `DrumEngine::slice_for_note` is
+
+```rust
+let idx = (note as i32 - NOTE_BASE).max(0) as usize;
+Some(idx.min(self.instruments.len() - 1))
+```
+
+- it clamps to the last slice, so any note finds one, and it returns `None` only when no pack is loaded at
+  all. Note 48 against a 24-slice pack therefore selects a slice, as does note 60.
+
+What is left, sharper than before:
+
+* the triggers arrive (counter resets at every kick), the gate is idle, the manager renders the voice every
+  block, and the sample player **ignores the voice's frequency** (its `render` takes only `out` and
+  `params`), so the odd `512` in the voice record does not matter;
+* the **first** hit does sound - `mute_silences_a_track_without_stopping_it`'s first assertion, "the track
+  sounds", passes on a drum track - and the bar's first quarter carries the energy;
+* the **later** hits do not. `DrumEngine::note_on` resets its position and its envelope word (`self.s0c = 0`,
+  `self.s38 = 0x7fffffff`) before setting up the new slice, so the re-trigger path itself looks right.
+
+So the next measurement is inside `DrumEngine::render` for a *second* hit: the sample position at the end of
+the previous slice, the slice bounds after the new `note_on`, and the playback step it computes. The voice's
+`octave` for note 48 is `(48 + 19) / 24 - 3 = -1`, i.e. the step is halved, which is the one arithmetic
+input that differs between hits only through the note - and all four kicks use the same note.
