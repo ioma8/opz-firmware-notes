@@ -679,3 +679,39 @@ will show the first one that reads zero, and that instruction is the bug.
 index, fraction, both interpolation operands, both interface calls' shapes, the state map), the per-table
 contributions are healthy at their first accumulation, and the loss is inside one short saturation run in
 the prologue. Everything measured is in this file with its numbers.
+
+### The gain chain, link by link, and the data angle
+
+Following the zeros backwards through the prologue's gain chain, reading each register at the instruction
+that consumes it:
+
+| site | what it computes | value |
+|---|---|---|
+| `0x124150` | `lsr x13, x13, 0x1f` (a `mul31`) and `w14` - the add's operands | **both zero** |
+| `0x12416c` | `mul x13, x13, x17` - the gain times a state-derived factor | `x13` in = zero, `x17` = `0x55aded23` |
+| `0x124180`-`0x12418c` | the 2^62 sentinel and the `x28` clamp | `x13` out = zero |
+| `0x1242bc` | `mul x15, x13, x15` - the accumulated lane value times that gain | `x13` = zero, so the lane value becomes zero |
+
+So the lane value is zero because **the gain `x13` is zero**, and `x13` is zero because its own chain starts
+from a zero - every link that has been read is zero while its *other* operand is fine (`x16` = `0x507aaef2`,
+`x17` = `0x55aded23`, the products `0x1bc879ac96be2005`).
+
+**The data angle is a dead end for this**: the app catalogue's `saw013a.engine` entry is a `dlc-asset` with
+only an `api_path`, `version: 2` and `memoryslot: 16` - no host data at all - and `assets-listing.json` has
+the same fields. The wavetables and constants live in the firmware, not in anything fetched alongside the
+engine.
+
+**Three candidates remain, in order of likelihood**:
+
+1. the state's `+0x00`, `+0x04` and `+0x20` - the fields the C *re-reads* after the callback, and all zero in
+   the harness. Filling them from the callback's four arguments (tried) did not help, but that write was
+   inside the stub *after* it recorded the arguments, and the engine may read them before the callback on
+   some path;
+2. the *interface object's* contents beyond the two slots used - the engine reads `+0x28` and `+0x38`, and
+   the object's other fields are the harness's `0x40`-byte zero allocation;
+3. a genuine port-side subtlety: the region is dense, and the last three rounds each found a *reading*
+   mistake rather than a real zero, so a systematic instruction-level trace of `x13` from `0x123994` to
+   `0x1241b0` - logging its value at every write - is the way to settle it rather than guessing.
+
+That trace is the next action: it is mechanical, it is bounded to the prologue, and it cannot be misread the
+way single-address probes can.
