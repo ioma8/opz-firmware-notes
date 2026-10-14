@@ -228,6 +228,28 @@ still has to produce it byte for byte for the fixture to pass.
   three entry points) is replaced by the trait dispatch, so a whole-mixer comparison has to zero those
   eight words on both sides.
 
+### Where the mixer's loop stands
+
+`render_tracks` is written and driven by `synth_render_tracks_match_the_original`, which is
+`#[ignore]`d while it converges. It currently reports, per case, in this order:
+
+| region | first diff | what it means |
+|---|---|---|
+| a voice's `+0x174` | the target frequency | the vibrato the loop hands the manager, or the glide/detune arithmetic reaching it |
+| the ramps at `+0x50c8`/`+0x5148` | the per-track level/pan | the mix-down's target and step |
+| the counters and peaks | `+0x6aa0` on | the `voices == 0` branch and the 16-bit peak decay |
+| the group sums | word 0 | the mix-down itself, and the four accumulator gains |
+
+The words *before* those match, so the LFO phase (both layers, including the reset seam) and the
+setup are right. The three send buffers are not compared: their gains are the one part of the
+preamble's `mul31` chains that is not decoded yet.
+
+The test's own machinery, worth keeping: it rebuilds the `Synth`'s structured parts (23 LFOs, 13
+filters, 12 blockers, 44 voices) from the fixture's word buffer, runs the loop, writes the objects
+back into the words, and compares only the regions the loop owns - with the port's deliberate gaps
+masked on *both* sides (the engine area, the three entry points, the engine's state block, the bytes
+the original's constructor leaves untouched).
+
 ## The seam decisions a resuming session must not undo
 
 * **`EngineVoice` (in `voice.rs`)** replaces the original's three per-voice function pointers
