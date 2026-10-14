@@ -377,3 +377,41 @@ introduced. The next measurement is a code hook on the loop's *first* instructio
 the loop's body reads (the decomp's `uVar26`, `uVar23`, `uVar6`, `uVar1` and the two `iVar`s it enters
 with), then the same hook stepping forward until one of them is zero - the registers are visible at every
 instruction address, so this localises the stage without guessing which host input is missing.
+
+### The wavetable lookup is not the silence either
+
+The index site is `0x1241dc` (`asr w3, w14, 0x19` - the seven-bit index), and `w14` there reads
+**`0x310f6c19`** on every frame. So the index is `0x18` = 24 and the fraction `(w14 << 6) & 0x1ffffff` is
+nonzero: the interpolation has real entries to work with and the host tables are doing their job.
+
+The access pattern around it, read off the listing, confirms the shape the C described:
+
+```text
+0x1241ac  ldr x15, [x25]           ; the interface
+0x1241b4  ldr x15, [x15, 0x28]     ; the pointer array
+0x1241c4  ldp x17, x0, [x15]       ; table[0], table[1]
+0x1241d8  ldp x1, x2, [x15, 0x10]  ; table[2], table[3]
+0x1241d4  ldr x16, [x15, 0x20]     ; table[4]
+0x1241dc  asr w3, w14, 0x19        ; the index
+0x1241e4  sbfiz x17, x3, 2, 0x20   ; index * 4
+0x1241ec  add x6, x17, 4           ; the next entry
+0x1241f8  ubfiz w14, w14, 6, 0x19  ; the fraction
+0x124208  eor w4, w14, 0x7fffffff  ; its complement
+0x124200  ldrsw x3, [x15, x17]     ; table[0][index] ...
+```
+
+So the zero is *after* the lookup. What the store actually is, from the C:
+
+```c
+uVar32 = NEON_sqadd(*(undefined8 *)(param_1 + lVar19), uVar32, 4);
+*(undefined8 *)(param_1 + lVar19) = uVar32;
+```
+
+- the output buffer is **accumulated into**, not written over (so a fixture must hand it a zeroed block,
+  and the harness does);
+- the sample is a *packed select* built from a long `CONCAT`/`|`/`&` chain immediately before the store.
+
+The next measurement is therefore on **that blend**: the two operands the select chooses between are the
+last places a zero can come from. Hooking the `ldrsw`s at `0x124200` onwards and following the values into
+the `str` at `0x1243a8` shows which of the two is zero - and the answer names the model parameter the engine
+expects the host to supply.
