@@ -95,6 +95,51 @@ until the port can replay it.
 `Synth::render`'s signature is `(fract32_t *a, *b, *c, *d)`; the four blocks are the main output
 plus the two FX returns and the sidechain the master compressor reads.
 
+### What `Synth::render` does, in the order the C shows it
+
+Measured from the decompilation (line numbers are the C's), with the **v1-reachable** path marked; the
+input-signal, sampling, tone-mode and song-mode branches are gated on host flags the clone fixes at
+zero, so they are documented rather than ported (the plan's `PORT_METHOD.md` rule).
+
+1. **Setup** (1 500-1 700): `mutex_lock(this + 0x6864)`, `interpolateParameters`, then four master
+   words at `+0x684c`/`+0x6850`/`+0x6854`/`+0x6858`, each folded one step toward a byte the song
+   fixture carries (`master_params[0..4]`, the same 64th-order IIR `interpolateParameters` uses);
+   `get_time_monotonic`; the module's two plug ids (`+0x60`, `+0x6c`) through
+   `PlugManager::getPlugFlags`; `*(u64 *)(this + 0x6c40) = [0x7fffffff - *(u32*)(this+0x5d38),
+   0x7fffffff - *(u32*)(this+0x5d80)]`.
+2. **The track loop** (1 700-2 070), eight iterations, all reachable:
+   * track 6 skips the LFOs and copies the FX/master parameter blocks (`+0x5c78`, `+0x5c80`, `+0x5c88`,
+     `+0x5c90`, `+0x5c98`.., `+0x60f8`..) into the two modulation blocks and sets two words to
+     `0x3fffffff`;
+   * otherwise two `Lfo::render` calls - layer 1 at `+0x4ee4` with the block at `+0x5f48`, layer 0 at
+     `+0x4d00` with `+0x5ac8` - with the modulation blocks as their `out` and `this + track*4 + 0x6ca4`
+     (+`0x6c78`/`+0x6c4c` as the accelerometer inputs);
+   * two `InstrumentManager::vibrato` calls (layer 0 from `+0x6c78`'s word, layer 1 from `+0x6c4c`'s);
+   * `InstrumentManager::render(track, 0, mix, mod0, &counter)` and the same for layer 1 with `mod1`;
+   * `trackFilterProcess` on `this + track*0x2c + 0x688c` and `trackFilterDcBlock` on
+     `this + track*0x18 + 0x69ec`, both over the mix buffer and into the group sums;
+   * the mix-down: each sample of the track mix is scaled by the track's gain (from `+0x50c8`,
+     `+0x5148`, `+0x5108`, `+0x5188` and the two group gains `local_88`) with the `mul31` chains and
+     saturating adds, accumulated into the group sums at `0x1227a20` (tracks 0-3) and `0x1227c20`
+     (tracks 4-7), with per-track peaks at `this + track*2 + 0x6c10` and per-group peaks in the
+     `local_a8` block (decayed by `* 0x7ed9 >> 15`).
+3. **The master mix** (2 090-2 140): `param_1[i] = softclip(sat_add(group0[i], group1[i]))` where
+   `softclip(x) = sat_add(x, sat_sub(x, mul31(mul31(x*x) * x)) >> 1)`. The C has a second, vectorised
+   copy of the same arithmetic for the case where the output does not alias the sums.
+4. **The FX sends/returns** (2 140-2 870): four `FxManager::render` calls with the plugs the manager
+   has loaded. **v1 has none**, so each is a no-op, but the buffers around them (`0x12284a0`,
+   `0x12288a0`, `this + 0xee8`..) and the `trackFilterProcess`/`trackFilterDcBlock` pairs after them
+   still run.
+5. **The master tail** (2 870-3 610): `param_1 += 0x12288a0`; `FxManager::render(0xb, this+0x5de0,
+   param_1, ...)`; two more `trackFilterProcess`/`trackFilterDcBlock`; `bounceAudio`; the four
+   `getBPM` reads and the `UNK_0017d064` table lookups that become `masterCompressor`'s four
+   reference arguments; `masterCompressor(0x12288a0, ...)`; the master gain from
+   `g_compressorLevel` and `this + 0x6854`/`0x6858`/`0x6264`/`0x6298`/`0x629c`; a soft limiter over
+   the master buffer; the VU words; and the writes into the four caller buffers.
+
+The two `(this + 0x6c10)`/`local_a8` peak paths and the four master words are pure bookkeeping: they
+change no audio, but the fixture records them, so they must match too.
+
 ## The seam decisions a resuming session must not undo
 
 * **`EngineVoice` (in `voice.rs`)** replaces the original's three per-voice function pointers
