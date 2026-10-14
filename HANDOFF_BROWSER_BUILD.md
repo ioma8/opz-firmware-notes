@@ -191,6 +191,38 @@ the panel. The overlap invariant found the value-key bug on its first run.
 `tools/web-check.mjs` is 61 checks, all passing in a real Chrome; the workspace stays green at 109
 tests and the smoke test still reports 85 344 samples identical to the TUI's.
 
+## Sixth pass: mapped to the drawing (commit `b2ca9d8`)
+
+Reported from use: the controls worked but were not on the keys the SVG draws. Measuring the SVG
+properly — every ellipse, the glyph inside it, and the printed marks around it — showed the drawing
+names five dedicated keys that had been mapped elsewhere:
+
+| drawn key | glyph | button |
+|---|---|---|
+| left column, top | `工` | track select (§2.5) |
+| left column, middle | `●` | record (§2.7) |
+| left column, bottom | `−` | transpose down (§2.10) |
+| bottom row, 2nd column | `+` | transpose up (§2.10) |
+| bottom row, 3rd column | `↑` | shift (§2.11) |
+| middle row, columns 2 and 3 | `▷` `□` | play, stop (§2.8) |
+
+So `+` and `shift` were drawn all along; keyboard keys had been sitting on them while shift and `+`
+floated in the margin. The keyboard is that bottom row *from its third column on* — **14 white keys**,
+which is exactly the manual's fourteen step components — playing C major over two octaves. The value
+keys are the **black keys**, at boundaries 0,1,3,4,5,7,8,10,11,12 of those fourteen, which is why the
+drawing prints ten of them.
+
+Everything else moved to where the drawing has it: the parameter LEDs sit at each dial's lower-left
+(from the path bounding boxes), the pitch bend is the pad at the bottom edge under the transport
+(path 10 — the teardown puts the real one at the bottom left of the frame), the volume knob is path 2,
+and the read-out lights the drawn 8-dot matrix's dot for the transport's position.
+
+Two invariants were added, and they are what make this a measurement rather than a claim: every key
+must sit within 3 SVG units of one of the drawing's 37 circles, and every value key must sit between
+two white keys. Both pass, and the previous three (no overlap, every named key labelled, `−` and `+`
+one key apart) still hold. `tools/web-check.mjs` is 62 checks; 109 tests; the smoke test still reports
+85 344 samples identical to the TUI's.
+
 ## Not verified, and what is out of scope
 
 Nobody has **listened** to the browser build; the offline TUI render is also still unheard. Touch on a
