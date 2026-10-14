@@ -911,3 +911,20 @@ device's voice record holds at `+0x3d`.
 4. the master output replaces `Engine::render_block`'s mono fold, and the existing engine tests change
    accordingly: the plan already says the offline render cannot stay byte-identical once the master chain
    is real, and asks for a measured, explained difference instead.
+
+### The parameter bridge is almost in place already
+
+Checked while starting the wiring: `TrackParams` (`opz-core/src/params.rs`) already holds
+`values: [u8; PARAM_COUNT]`, "raw bytes as the device stores them", alongside the Q31 `current` and
+`target` it hands the engines today. That is exactly what `set_target_parameters(words, track, values,
+targets, flags)` wants, and it is where the device does both the byte → Q31 conversion and the glide -
+so the wiring hands the *bytes* over and lets the ported `Synth` smooth them, retiring the app's own
+`TrackParams::interpolate`.
+
+One addition it needs: a byte-level *target* (`[u8; PARAM_COUNT]`, the preset or UI value) to pass as
+the fourth argument. The app's `target` is Q31, which is what `interpolate_parameters` produces, not what
+it consumes; `values` and `targets` are both device bytes at that seam (`setTargetParameters`'s
+`const unsigned char *`).
+
+The off-track case is already handled by the ported call: a track index at or above 12 smooths all
+eighteen parameters rather than the lower twelve.
