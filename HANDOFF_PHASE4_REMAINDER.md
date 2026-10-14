@@ -963,3 +963,28 @@ order:
 
 The cheapest next measurement is (1): the whole-mixer fixture's own pins show exactly which voice fields
 the device needs before it renders, and the port's `Voice` has them all public.
+
+### The chain was silent for four measurable reasons, and the fifth is the engine's state
+
+`e2f42aa`. Running the chain test with `SYNTH_CHAIN_DEBUG=1` prints the voice's record and the mix's
+first sample per block, which localised the silence one layer at a time. Four were *device state a fresh
+`Synth` is missing*; all four are fixed:
+
+| missing | how it shows |
+|---|---|
+| the `centsDetune` table | the mixer's scratch aliases `Tuning::centsDetune`, which the device builds at load. Zeroed, every note's frequency comes out **0** - the detune is a multiplier, not an offset. The chain now seeds it from `tuning::cents_detune()`. |
+| the per-track enable byte at `+0x6d1c` | a track that is not enabled never runs its filter and never reaches the mix. This is a *different* gate from the mute mask at `+0x6848`; the level setter now sets it too. |
+| the master volume at `+0x6860` | zero multiplies the whole master to zero. |
+| the envelope's *level* | the device's `noteOn` writes the envelope's `mul` and phase but not its level, and all three engines scale by the level. The chain arms it the way the interim host did. |
+
+With those, the voice runs: the manager's counter advances each block, `adsr.level` reads `0x7fffffff`,
+and `+0x174`/`+0x178` hold note 60's increment (`12 740 058`). The per-track level ramp also moves
+(`0x7fffff80` after one block, from the 128th-per-sample glide).
+
+**Still zero: the engine's contribution to the track mix.** `TRACK_MIX` and `TRACK_FILTERED` are both
+zero after a block even though the manager rendered the voice, so the engine is either writing zero or
+skipping. The next measurement is the engine's own state block (`+0x58`..`+0x16f`, which the port keeps
+inside the engine) printed after `note_on` and after one block: the device's `noteOn` writes part of it
+and the preset supplies the rest, so a fresh zeroed block is the prime suspect. `Chain`'s voices take
+their engines from `VoiceEngine::for_track`, and the digital branch sets the octave table and the
+wavetable but nothing else.
