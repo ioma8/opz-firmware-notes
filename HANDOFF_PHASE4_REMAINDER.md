@@ -275,6 +275,19 @@ the *same* address - `0x1228cec + 38*4 = 0x1228d38 + 19*4 = 0x1228d84` - because
 blocks overlap by eight words (layer 0 spans `0x1228cec`..`0x1228d3f`, layer 1 starts at `0x1228d38`).
 The port keeps both as offsets into one scratch buffer, so the aliasing is automatic there.
 
+**The write is invisible to three instruments.** In a re-run of the case, `0x1228d84` reads `688567`
+before `Synth::render` and `688384` after it, and the write is *not* observed by any of:
+
+* `UC_HOOK_MEM_WRITE` over the range `0x1228d38`-`0x1228e00` (which does catch the LFOs' parameter
+  copies and their markers, so the hook and its filter are working);
+* a monkey-patched `OpzSo.write` (which the harness's native `memset`/`memcpy`/`memmove` use);
+* a monkey-patched `uc.mem_write` (the lowest level available from Python).
+
+So the next instrument has to be different in kind rather than broader: poll the word inside hooks
+that already fire during the call (a stub call, or a code hook on the loop's PCs) to **bisect when**
+it changes, then narrow from there. A read watchpoint is not useful - the value is read, not written,
+by the code the hooks can see.
+
 **Why the watchpoint missed it.** `opzso.py` implements `memset`, `memcpy`, `memmove` and
 `__memcpy_chk` *natively* in Python (`so.write` -> `uc.mem_write`), so their writes never go through a
 CPU store and a `UC_HOOK_MEM_WRITE` hook cannot see them. The device's unseen write at `0x1228d84` is
