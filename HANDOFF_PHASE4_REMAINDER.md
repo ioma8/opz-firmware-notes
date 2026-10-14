@@ -1353,3 +1353,40 @@ puts track 0 at 0 and track 1 at 2), so the port's `Chain::note_on` picking "the
 part that does not match: it should prefer a voice that is *free*, and fall back to killing one, rather than
 re-using the gated voice whose deferral then swallows every later hit. That is also the behaviour the plan's
 Phase 4 playable check describes ("voice stealing on rapid re-triggering").
+
+### The host envelope works: every kick retriggers now
+
+The fifth variant is the one that works, and it is the previous variant plus nothing new - the difference
+this time was *measuring* it instead of inferring.
+
+Implemented in the chain (and now carried in `PHASE4_ENGINE_WIRING.diff`):
+
+* a per-track envelope (`[u32; 4]`: attack, decay, release rates with their top byte set, sustain in Q31),
+  default a short percussion envelope `[0xff << 24, 0xff << 24, 0, 0xff << 24]`;
+* `update_parameters_adsr` for every voice in a track's range at the top of `render_block`;
+* for drum voices, the level advance the drum engine does not do (`level = sat(mul31(level * mul) + add)`).
+
+Measured across the bar (voice 0, sample every 16 blocks, drum engine state alongside):
+
+```text
+b16:  note 48  gated 0xff ph 2 lvl 0x786e2cf0 | position=40960  active=1
+b32:  note 255 gated 0xff ph 0 lvl 0x0        | position=71680  active=0
+b336: note 255 gated 0xff ph 0 lvl 0x0        | position=71680  active=0
+b352: note 48  gated 0xff ph 2 lvl 0x7c2852b4 | position=20480  active=1   <- second kick, slice rewound
+b1040: note 48 gated 0xff ph 2 lvl 0x7ca1a639| position=17920  active=1   <- fourth kick, rewound again
+```
+
+Every kick now rewinds the slice and re-arms the envelope; the voice goes idle between hits. The
+deferral deadlock is gone, and the pass count is unchanged: only the two known failures remain.
+
+**The remaining decay is a different mechanism.** With the retriggers fixed the quarter peaks are
+`204151, 4893, 22, 0` - the *first* hit carries almost everything and the later ones are tiny even
+though their engine states look right (`active=1`, the position rewound to 17920/20480). Two candidates
+worth the next measurement:
+
+1. the **drum engine's gain ramps** - the state dump has `gain_a`, `gain_a_step`, `gain_b`, `gain_b_step`,
+   and `gain_a_step` is zero while `gain_b_step` is 2 600 354, so the two lanes behave differently and one
+   of them may be ramping to zero;
+2. the **slice window** - `window_start=96 window_end=608` for a pack whose slices are 32 frames long, so
+   the window spans many slices; if `play_mode`/the window arithmetic is off, a hit can play the *wrong*
+   region for its note.
