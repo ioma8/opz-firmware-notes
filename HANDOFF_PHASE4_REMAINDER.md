@@ -1451,3 +1451,47 @@ all zero, and - measured over the following twelve blocks - the residual *grows*
 neither did removing the compressor's reference words, so it is not the FX destinations and not the
 compressor's references. That growth is the next thing to diagnose, and it is new with the master chain: the
 interim host had no compressor, no DC blockers and no limiter.
+
+### The mute residual: the enable byte does not gate the mix-down
+
+Instrumenting the wired chain stage by stage (the group sums, the master mix, after the tail, and the final
+output) shows where the muting track's audio goes, and why the app's mute cannot be the enable byte:
+
+```text
+chain: sums 3556488 mix 5334727 tail 5334727 final 8
+chain: sums 14678846 mix 22098922 tail 22098922 final 548
+```
+
+The **group sums are not zero** after a mute - they are millions, and they grow across the blocks. Reading
+`render_tracks` explains it: the `+0x6d1c` byte gates only the **track filter**.
+
+```rust
+if read_u8(&synth.words, 0x6d1c + track) != 0 {
+    ... track_filter_process ...
+} else {
+    synth.track_filters[track].reset = 1;        // <- the filter is skipped, nothing else
+}
+let count = read_u16(&synth.words, count_slot);
+if count >= 1000 { settle_ramps(...); continue; }
+{ ... dc_block ... mix_track ... }                // <- runs for every track with voices
+```
+
+So a "disabled" track still reaches the mix-down **and** the FX sends, and the tail folds the sends back
+into the master. Muting by the level word has the same problem for the same reason: the sends are taken
+from the *track mix*, before the level.
+
+**Consequences for the app's mute**, which the interim host implemented by skipping the voice render:
+
+1. `killNote` on the track's voices is not enough either - tried, and the group sums were unchanged to the
+   digit, because a drum's slice is a one-shot the sample player plays to its end regardless;
+2. what actually silences a track on the device is the *sequencer* not triggering it, and the current hit's
+   tail then draining through the filters, the sends and the compressor;
+3. so the ported chain needs a way to express "this track contributes nothing this block" - either the
+   chain clears the track's own contribution, or the mixer gains a per-track gate the original does not
+   have. That is a design decision to make deliberately, not a byte to flip, and it is why
+   `mute_silences_a_track_without_stopping_it` is still failing on the branch.
+
+The *growth* rather than a decay is the other half of the puzzle: the sums rise over the blocks after the
+mute (3.5M, 6.2M, 8.1M, 9.3M, 14.7M) even though the host triggers nothing more. That is worth its own
+measurement - the candidates are the drum engine's slice still running plus the FX sends integrating, since
+clearing the sends and the FX mix at the top of `render_tracks` changed nothing.
