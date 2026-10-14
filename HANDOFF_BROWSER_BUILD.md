@@ -223,6 +223,29 @@ two white keys. Both pass, and the previous three (no overlap, every named key l
 one key apart) still hold. `tools/web-check.mjs` is 62 checks; 109 tests; the smoke test still reports
 85 344 samples identical to the TUI's.
 
+## Seventh pass: the row means one thing at a time (commit `985d45d`)
+
+Two reports from use, both correct and both mine:
+
+- **the steps belong on the top row.** They had been lit and tapped on the *bottom* row, which is the
+  musical keyboard. The top row is the device's track **and** step row: with `track`, `mixer` or
+  `project` latched it is the track row (select, mute, pattern, the clone's six live and 7–16 dimmed),
+  and on its own it is the active track's sixteen steps. The LED is the dot the drawing already prints
+  inside each circle — red programmed, white playhead, amber cursor, purple microtiming — and it is
+  where a step is tapped, held and cleared.
+- **the eight dots are the speaker grille**, not a display. They had been lit as a playhead read-out;
+  they are now drawn and inert, and the read-out text (the page's own element, since the clone has no
+  screen) sits beside them.
+
+The keyboard's keys lost their LEDs: a piano key lights only while it is played. Three browser checks
+followed the move — the empty-step and step-light helpers were reading the keyboard, and the
+hold-track+stop clear had to let go of `track` before its step lights could be counted, since the row
+means "tracks" while it is latched. `docs/WEB.md`'s control-mapping table was also rebuilt: it still
+carried browser v1's mapping (top row tracks, bottom row steps), which the device rewrite had already
+contradicted in prose.
+
+62 checks, 109 tests, the smoke test still reports 85 344 samples identical to the TUI's render.
+
 ## Not verified, and what is out of scope
 
 Nobody has **listened** to the browser build; the offline TUI render is also still unheard. Touch on a
