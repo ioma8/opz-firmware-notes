@@ -1564,3 +1564,93 @@ is handed the same host constants the device had, because `onNoteOn` reads the `
 
 **Remaining in Phase 5's Saw013a item**: `render` (0x123994, 3 180 bytes), the engine test against the
 recorded output, the track wiring and the tag.
+
+### `render` (0x123994..0x1245dc): the map the port needs
+
+Taken from the corrected listing (`SAW013A.asm`, the `0x123994` section). Roughly 650 instructions; the
+same idioms as `onNoteOn` plus a NEON lane-pair layer.
+
+**Signature and gates.** `render(fract32_t *out /*x0*/, uint increment /*w1*/, int delta /*w2*/,
+void *state /*x3*/, const uint *params /*x4*/, ADSR *adsr /*x5*/)`.
+
+* `0x1239c4/0x1239c8`: `ldr w8, [x5,0x10]` / `cbz -> 0x1245ac` - a zero ADSR phase renders nothing.
+* `0x1239d0/0x1239d4`: `ldrb w8, [x3,0x65]` / `cbnz -> 0x1245f0` - the `+0x65` countdown: it decrements
+  the byte and returns (`0x1245f0`..`0x1245f8`).
+* The epilogue at `0x1245ac`..`0x1245dc` reloads x24, checks the stack canary and returns.
+
+**Register roles.** `x19 = state`, `x23 = out`, `x20 = adsr`, `w22 = increment` (advanced by
+`w22 += w21` each frame, `w21 = delta`), `x28 = 0x7fffffff`, `x24 = -0x80000000`, `x26 = 0x40000000`,
+`x27 = 2^62` (the sentinel), `x25 = &Crush::sampBuffer_l` (the GOT slot at `0x1d6010`), `w9 = 0` (the
+output byte counter).
+
+**The prologue.**
+
+1. `0x1239d8`..`0x123d90`: the **doubled gain chains** - the same arithmetic as `onNoteOn`'s eight chains
+   (`0x12466c` onwards), computed for two lanes and packed into `v0`/`v1`/`v2` lane elements with
+   `mov v2.s[i], w..`, `shrn`, `sqadd`/`sqsub`. Two results are spilled: `stp w1, w3, [sp,0x18]` and
+   `stp w9, w11, [sp,0x10]` - those four words are the second interface call's arguments.
+2. `0x123d90`..`0x123e58`: the **octave bucket search over the increment**. `adrp x10, 0x7d000` +
+   `add x10, x10, 0xc78` = the threshold table at `0x7dc78` (the same one `Digital::render` uses, and
+   `opzso.py` already records as `OCTAVE_THRESHOLDS`). The seven `cmp`/`b.lt`/`b.lo` pairs are a binary
+   search returning `w8 = band`, `w9 = band + 1` (`0x1245e0` is band 0, `0x1245e8` is band 1).
+3. `0x123e6c`..`0x123ebc`: `ratio = (increment - thr[band]) << 31 / (thr[band+1] - thr[band])`, a 64-bit
+   `sdiv`, clamped to `[-0x80000000, 0x7fffffff]`.
+4. `0x123ea4`..`0x123f24`: the **octave gain table at `0x124a890` indexed by the band** (not by
+   `note/12` as in `onNoteOn`): `ldrsh w8, [x11, band]`, `ldrsh w9, [x11, band+1]`, span clamp, then the
+   same `fraction^2` `sbfx #15,#16` curve and `>>15` narrowing as `onNoteOn`, with `fraction` the `ratio`.
+   The result is multiplied by the `init` word (`ldrsw x10, [x19,0x38]`) at `0x123f48`.
+5. `0x123f28`..`0x124040`: `params[10]`/`params[11]` (`ldpsw x13, x14, [x4,0x28]`) and the `+0x64`
+   velocity byte folded through the same Q31 products, and the `0x7fffffff - x` complements, into the
+   per-lane values. `0x124040`/`0x124048` narrow the lane products with `shrn v1.2s, v1.2d, #0x1f`, `0x12404c`
+   /`0x124050` take the running `sqsub` against `v3`/`v4` (the state's `+0x28`/`+0x30` pair) and
+   `0x124054`/`0x124058` form the **per-frame steps** `sshr v8.2s, v1.2s, #8` and `v9`.
+6. `0x12405c`: **the first interface call** - `(adsr, params[2], params[3], params[4], params[5])`, the
+   host's envelope update. `0x124074`: **the second** - `(state + 8, [sp,0x18][0], [sp,0x18][1],
+   [sp,0x10][0], [sp,0x10][1])`; the arguments are `ldp w2, w1, [sp,0x18]` and `ldp w4, w3, [sp,0x10]`,
+   so the order is `(state+8, w1, w2, w3, w4)` as the AArch64 register file demands.
+7. `0x124078`..`0x124094`: `ldp d3, d4, [x19,0x28]` (the previous lane gains), `x9 = 0`, `ldp w12, w10,
+   [x19]` (`state[0]`, `state[4]`), `ldr q7, [sp]` (the saved `v0`), `ldr w8, [x19,0x20]`, then
+   `b 0x124494` - **the loop is entered at its phase update, not at its head**.
+
+**The loop.** Body `0x124098`..`0x124488`; the counter check `cmp w9, 0x200` / `b.eq 0x124590`; the phase
+update `0x124494`..`0x1244b4`; the wrap branch `0x1244b8`..`0x12458c` which rejoins at `0x124098`.
+
+* Head: `ldrsw x14, [x20,4]` (the ADSR level), `zip1 v3.2s, v2.2s, v1.2s` and `zip2 v5.2s, v2.2s, v1.2s`,
+  `w22 += w21` (the running increment), `mul x13, x14, x13`.
+* `0x1240b8`..`0x124110`: the `mul31`-style squaring/`sat_sub` chain that turns the level into the frame's
+  amplitude.
+* `0x124114`..`0x1241dc`: the pan/amp chain - `ldpsw x17, x15, [x19,0x4c]`, `ldp w16, w14, [x19,0x54]`,
+  `ldrsw x16, [x19,0x3c]`, the `0x40000000` half and the `0x7fffffff -` complement - producing the
+  wavetable index `w14` (clamped, `+0x40000000`, then `x16 = state[0x3c]` scaled).
+* `0x1241ac`..`0x124254`: **the wavetable lookup**. `ldr x15, [x25]` is `Crush::sampBuffer_l`,
+  `ldr x15, [x15,0x28]` is the pointer array; the five pointers are consumer at `+0x410` with
+  `index = w14 asr 0x19`, `sbfiz` to a byte offset, the neighbour at `+4`, the fraction `ubfiz w14, w14, 6,
+  0x19` and its complement `eor w4, w14, 0x7fffffff`. Each table contributes
+  `mul(fraction, table[(i+1)])` and `mul(complement, table[i])` with a logical `lsr #0x1f`, accumulated with
+  saturating adds.
+* `0x1242bc`..`0x1243a8`: the per-lane multiplies (`sxtw`, `smull`, `dup v4.2s, w15`, `smull v3.2d,
+  v4.2s, v3.2s`), the `2^62` sentinel select (`cmeq v5.2d, v3.2d, v0.2d` with `v0 = 2.0`, `shrn`, `xtn`,
+  `bic`/`orr`), the running lanes `sqadd v3.2s, v3.2s, v4.2s`, `sqadd v4.2s, v1.2s, v9.2s`,
+  `sqadd v3.2s, v5.2s, v3.2s`, and the store `str d3, [x23, x9]` - an **accumulating** saturating add into
+  the caller's buffer (so a fixture must hand it a zeroed block).
+* `0x1243b0`..`0x124410`: the ADSR update - `ldpsw x10, x16, [x20,4]`, `ldrsw x17, [x20,0xc]`, the
+  `mul`/`sbfx`/`mul`/`lsr` Q31 chain, `subs w15, w28, w15` (the complement), the saturating add into
+  `w14`, and `str w14, [x20,4]` - the new ADSR level lands **into the ADSR record**, not into state.
+* `0x124414`..`0x12448c`: the state maintenance - `ldpsw x14, x15, [x19,0xc]`, `ldrsw x17, [x19,0x14]`,
+  `ldur q5, [x19,0x4c]`, `sqadd v5.4s, v5.4s, v7.4s`, `stur q5, [x19,0x4c]`, then the
+  `mul x15, x15, x14` chain, `subs w12, w13, w12`, and `str w14, [x19,0xc]`; `add x9, x9, 8` advances the
+  output counter.
+* Phase update: `ldp w11, w14, [x19,0x5c]` (the phase pair, `+0x60` is the current phase, `+0x5c` the
+  previous), `w8 = w8 + w22`, `w15 = w8 ^ 0x80000000`, `stp w14, w8, [x19,0x5c]`, `cmp w15, w22`,
+  `b.hs 0x124098`. When the compare fails (wrap) `0x1244b8`..`0x12458c` computes
+  `fraction = ((w15 << 31) / increment)` clamped, then `fraction^2`, `fraction^3`, the `sat_sub` mixes and
+  `stp w14, w15, [x19,0x5c]` before `b 0x124098`.
+* Exit `0x124590`: `sqadd v0.2s, v2.2s, v8.2s` / `sqadd v1.2s, v1.2s, v9.2s` (the lane gains advance by
+  one step), then `stp w8, w11, [x19,0x20]`, `stp w12, w10, [x19]`, `str d0, [x19,0x28]`,
+  `str d1, [x19,0x30]`.
+
+**The host seam.** `render` reaches the host twice per block through an object held in the GOT slot for
+`Crush::sampBuffer_l` (loaded at `0x123f44`): slot `+0x28` is the five-pointer wavetable array and slot
+`+0x38` is the callback at `0x124044`/`0x12405c` and `0x124070`. The port therefore needs a host trait
+carrying the callback and the five tables; `onNoteOn` needs neither, which is why it could be ported and
+verified before this.
