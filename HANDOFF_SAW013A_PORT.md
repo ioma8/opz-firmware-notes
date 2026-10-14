@@ -515,3 +515,26 @@ both interface calls - and the remaining unknown is one register's origin.
 full scale; the ADSR's level and mul at `0x7fffffff`; five Q31 sine tables behind the pointer array; making
 the `+0x38` callback return a value; servicing the first call by ramping the ADSR; writing the second
 call's four arguments into `state + 0x20`; filling eight words at `state + 8`.
+
+### Correction: that `x16` reading was a stale register
+
+Reading the instructions around `0x124394` shows what `x16` actually is there:
+
+```text
+0x124374  lsr x16, x14, 0x1f       ; x16 = the saturation sign of x14
+0x12437c  cmp x14, x27             ; against the 2^62 sentinel
+0x12438c  csel w14, w28, w16, eq   ; w14 = sentinel-or-sign
+0x124390  subs w14, w15, w14       ; the saturating subtract
+0x124394  asr w15, w14, 0x1f
+```
+
+`x16` is set at `0x124374` and consumed by the `csel` at `0x12438c`, so by `0x124394` it is a leftover
+register, not one of the value's operands. The probe reading `x16 = 0` therefore says nothing about the
+product; the operands that matter are **`x14` and `x15`** (and `x27`, the sentinel). My earlier note calling
+`x16` "one operand, therefore the zero" was wrong, and the honest state is that the operand values at
+`0x124394` have not been read yet.
+
+This is the same trap the mixer's port hit with Ghidra's reused names, one level down: a register that is
+*correct* to print at one address is *misleading* a few instructions later. The measurement to run is the one
+for `x14` and `x15` at `0x124394`, and if those are fine then the zero is in whatever produced them - which
+the listing shows is the `NEON` product chain ending at `0x12438c`'s inputs, not the phase.
