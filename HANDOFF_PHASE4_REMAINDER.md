@@ -1013,3 +1013,42 @@ block as the *track's* LFO render left it, and that is the value to look at.
 If that block turns out to hold the parameters, the next suspect is the gain chain the mix-down uses -
 `track_gains`' four complements - since the level ramp does move (`0x7fffff80` after one block) and the
 group sums stay zero.
+
+### The ported chain makes sound
+
+`1237ba4`. The chain test runs unignored: program the render loop's track 4, arm it, start a note,
+render sixteen blocks - the master buffer carries signal.
+
+**The last blocker was a numbering mix-up, and it is worth writing down because it will bite again.**
+Two numbering schemes meet in `Synth::render` and they are *not* the same:
+
+| scheme | who uses it |
+|---|---|
+| the **render loop's** track index (0..7) | `InstrumentManager`'s voice tables (`voice_start_index`) and the `Synth`'s parameter blocks (`setTargetParameters` writes `SMOOTHED + track*0x48`) |
+| the **plug map's** track number (1-based) | which engine a track gets (`VoiceEngine::for_track`) |
+
+The chain had been offsetting *both*, so a note landed on a voice the loop never renders and everything
+downstream was zero for that reason alone. The constructor now applies the plug offset only to the engine
+lookup; the voice ranges, the parameter blocks and `note_on`/`note_off` all use the loop's own index.
+
+**Everything else a fresh `Synth` is missing**, all found by measurement and all now in `Chain::new` or
+the test:
+
+| missing | why it silences |
+|---|---|
+| the `centsDetune` table | the scratch aliases it; zeroed, every voice's frequency is zero (the detune is a multiplier) |
+| the per-track enable byte at `+0x6d1c` | a track that is not enabled never reaches the mix; a *different* gate from the mute mask |
+| the master volume at `+0x6860` | multiplies the whole master, so zero is silence |
+| the level/pan words `+0x5108`/`+0x5188` | the ramps move toward them; both start at zero |
+| the envelope's level | the device's `noteOn` writes `mul` and the phase, not the level, and the engines scale by it |
+| a parameter snap | `interpolateParameters` folds a sixty-fourth per block, so a note started straight after a program change plays at 1/64th |
+
+Measurement note: printing the modulation block *after* a whole render is misleading, because the tail's
+own LFOs (slots 8 and 9) rewrite that block from the master track's parameters. The block to look at is
+the one `render_tracks` builds `params0`/`params1` from, inside the loop.
+
+**What is left for Phase 4** is now only the wiring itself: `Engine::render_block` replaces its hand-rolled
+voice loop with a `Chain`, the app programs `values`/`targets` from `TrackParams` (which already holds the
+device bytes) plus a byte-level target, and the master buffer replaces the mono fold. The existing engine
+tests then change, which the plan anticipates: the offline render cannot stay byte-identical once the
+master chain is real.
