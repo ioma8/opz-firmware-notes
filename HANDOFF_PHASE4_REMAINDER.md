@@ -800,3 +800,39 @@ next thread:
 Also fixed this round: the tail region first compared `0x6abc..0x6c00`, whose gaps hold bytes nothing
 models (the device leaves zero there, the port's fill does not); it now compares the four 10-word filters
 and four 6-word blockers exactly.
+
+### The master bus's buffer flow, and the one number still open
+
+`56bdd5b` fixes a *buffer identity* mistake that had been hiding inside the master tail. The gain stage and
+the scratch at `0x12288a0` are two different buffers, and the port had them conflated:
+
+| buffer | who writes it | who reads it |
+|---|---|---|
+| `0x12288a0` | the DC blocker of the master (in place), then `masterCompressor` (in place) | the gain stage (`[x20, x12]`) |
+| the caller's `param_1` | the gain stage's blend (`str w16, [x25, x12]`) | the volume pass, in place |
+
+The port now copies the DC-blocked mix into the scratch **after** the compressor, puts the blend into the
+caller's buffer, and runs the volume as its own pass over that buffer.
+
+Two more things were confirmed with it:
+
+* the parameter region now runs through `0x6864`, so the master volume word (`0x6860`) is compared - it
+  matches, which is why the volume pass was never the source of the LSB;
+* the compressor's four references were re-derived from the assembly and match the port exactly:
+  `this[0x6854]`, `this[0x6298]`, `sat_add(mul31(this[0x629c] * 0xc0f040d), 0x734ec8aa)` and the tempo ramp
+  (`COMPRESSOR_GAIN[(bpm-40)/20]` with a `0x06666666`-scaled fraction; bucket 7 above 199 BPM).
+
+**Still open: the master's DC-blocked mix at `0x12288a0`.** Port `-2208924` against the device's
+`-2112204` for the `filled` case - about 4.5% - and the output block is one LSB (`2660` against `2659`)
+as a result. Since the compressor's references and code are verified, and the input is `param_1` after the
+tail's three accumulates, the remaining candidates in order are:
+
+1. the FX-10 pass's contribution to `param_1` - `sat_add(param_1[i], mul31(sample * (0x7fffffff - this[0x5db4])))`
+   where `sample` is the DC-blocked track mix;
+2. the FX-8/9 passes' plain `sat_add` contributions;
+3. the master filter / DC blocker's own state (their state words match, but their output is only visible
+   through this one value).
+
+Also verified this round, from the assembly: the tempo ramp's bucket is `(bpm - 40) / 20` by a
+magic-number division, `7` above 199 BPM, and the fraction is `(bpm - (bucket*20 + 40)) * 0x06666666`
+when that difference is at most 20, clamped to `0x7ffffff8` otherwise.
