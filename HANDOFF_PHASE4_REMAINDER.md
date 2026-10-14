@@ -283,6 +283,26 @@ before `Synth::render` and `688384` after it, and the write is *not* observed by
 * a monkey-patched `OpzSo.write` (which the harness's native `memset`/`memcpy`/`memmove` use);
 * a monkey-patched `uc.mem_write` (the lowest level available from Python).
 
+**Found, with one instrumentation trap worth remembering.** The writer is a *byte* store in the block
+that runs between the track loop and the tail:
+
+```text
+0xf88c0: strb w9, [x8, #0xd84]     ; x8 = 0x1228000, so 0x1228d84
+0xf88c4: b.ls 0xf88d4
+0xf88d0: strb wzr, [x8, #0xd84]
+```
+
+Two things kept it invisible. First, **Unicorn reports the *old* value in a byte-sized write hook** -
+the write at `0xf88d0` printed `value=0x0`, which reads like "a byte was zeroed" but is actually the
+pre-write content; the poll right after it shows `688384`, i.e. the low byte became `0xC0`
+(`0xA81B7 -> 0xA81C0`). Second, the block is in the *sequencer-check / input-selector* section that
+follows the loop (`*(long *)(&DAT_00346a50 + seq) == seq + 0x3469b0`), which I had assumed v1 never
+reaches. It does.
+
+So the port is missing that block, not a mix-down detail. The next step is to read the C for it (the
+region around the `if (*(long *)(&DAT_00346a50 + lVar41) == lVar41 + 0x3469b0)` test) and port what
+runs when the input selector is zero.
+
 Polling the word inside hooks that fire during the call *does* bisect it. With polls on the track
 loop's head (`0xf7fb8`), the mix-down's store (`0xf8490`), and every `bl` in the tail's FX/master
 section, the value reads `688567` at every loop poll - all eight track heads and every mix-down store -
