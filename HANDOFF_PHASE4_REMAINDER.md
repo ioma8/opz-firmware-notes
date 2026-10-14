@@ -836,3 +836,41 @@ tail's three accumulates, the remaining candidates in order are:
 Also verified this round, from the assembly: the tempo ramp's bucket is `(bpm - 40) / 20` by a
 magic-number division, `7` above 199 BPM, and the fraction is `(bpm - (bucket*20 + 40)) * 0x06666666`
 when that difference is at most 20, clamped to `0x7ffffff8` otherwise.
+
+### Realtime safety: the render path allocates nothing, measured
+
+`6dc9bdf` closes Phase 4's realtime-safety item by *measurement*. The host test binary installs a counting
+global allocator, counts only its own thread's allocations (the test binary runs tests in parallel, so a
+process-wide counter picks up other tests' traffic), and asserts the count is unchanged across the whole
+render - `render_setup` + `render_tracks` + `render_tail` + `render_master`. It passes for all fourteen
+cases.
+
+Everything the render used to build per block was a `&[u32]` view of the `i32` scratch, and each is now a
+fixed array the caller owns:
+
+| was | now |
+|---|---|
+| the two modulation-block parameter copies, per block | `[u32; 18]` each |
+| `ResetLfo`'s snapshot of the two blocks | `[[i32; OUT_WORDS]; 2]` |
+| the reset's layer list (`vec![layer]`, per re-trigger) | a two-element array plus a count |
+| `params_of`, the FX plugs' parameter view | `[u32; 18]` |
+
+Two further things the measurement turned up, both worth remembering:
+
+1. **`Tuning::cents_detune`'s `OnceLock` allocates on first read**, and that read is inside the render.
+   The original builds the table in `.bss` at load, so the port now has `tuning::prime()` for the engine
+   to call when it is built. (The test primes it explicitly so the measurement is about the render.)
+2. **The first attempt measured the harness, not the port.** The engine-call recorder was a `Vec` (one
+   allocation per call) and the test's own `master` buffer was a `Vec` allocated *inside* the window -
+   that one was the single 512-byte allocation the counter kept reporting. The recorder is now a fixed
+   array and the buffer is hoisted above the measurement; the engine that drives this will own it
+   outright.
+
+Method note for the next slice: `std::backtrace::Backtrace::force_capture()` from inside the allocator
+identifies a stray allocation quickly, but the capture and its `eprintln!` allocate too, so the counts it
+reports alongside are meaningless - read only the backtrace, and guard the capture so it fires once.
+
+Phase 4's remaining item is the wiring itself: delete the interim host and have `Engine` call this chain.
+The seam it needs is an `EngineVoice` implementation for `VoiceEngine`, and the two blockers there are
+that `AnalogAEngine::render` wants the host's banks/pads/rates (which `AnalogVoice` already owns) and that
+the engines take `DigitalAdsr` while the mixer's trait takes the device's `Adsr`.
