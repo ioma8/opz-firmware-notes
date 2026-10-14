@@ -283,10 +283,20 @@ before `Synth::render` and `688384` after it, and the write is *not* observed by
 * a monkey-patched `OpzSo.write` (which the harness's native `memset`/`memcpy`/`memmove` use);
 * a monkey-patched `uc.mem_write` (the lowest level available from Python).
 
-So the next instrument has to be different in kind rather than broader: poll the word inside hooks
-that already fire during the call (a stub call, or a code hook on the loop's PCs) to **bisect when**
-it changes, then narrow from there. A read watchpoint is not useful - the value is read, not written,
-by the code the hooks can see.
+Polling the word inside hooks that fire during the call *does* bisect it. With polls on the track
+loop's head (`0xf7fb8`), the mix-down's store (`0xf8490`), and every `bl` in the tail's FX/master
+section, the value reads `688567` at every loop poll - all eight track heads and every mix-down store -
+and `688384` at the first tail poll (`0xf99b0`). So the write happens **between the loop's last
+mix-down store and the tail's first LFO render**, a window that contains only: the loop's per-track
+peaks and the master mix, the first FX pass's `FxManager::render(10, ...)`, its
+`trackFilterProcess(0x6b44, &0x12286a0)` and `trackFilterDcBlock(0x6b70)`, its 16-bit peak, and its
+three-way accumulate into `param_1`, `0x1227e20` and `0x1228020`.
+
+The three accumulate targets are all *below* `0x1228d84` in the scratch, and `FxManager::render` with
+no plug loaded writes nothing at all - so the next poll set is that window's own `bl` sites
+(`0xf9840`, `0xf9868`, `0xf9884`, plus the accumulate loop's store), which should pin it to one call.
+
+A read watchpoint is not useful - the code the hooks can see only reads that word.
 
 **Why the watchpoint missed it.** `opzso.py` implements `memset`, `memcpy`, `memmove` and
 `__memcpy_chk` *natively* in Python (`so.write` -> `uc.mem_write`), so their writes never go through a
