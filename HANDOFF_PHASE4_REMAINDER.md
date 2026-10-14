@@ -988,3 +988,28 @@ inside the engine) printed after `note_on` and after one block: the device's `no
 and the preset supplies the rest, so a fresh zeroed block is the prime suspect. `Chain`'s voices take
 their engines from `VoiceEngine::for_track`, and the digital branch sets the octave table and the
 wavetable but nothing else.
+
+### The engine sounds; the mixer's hand-off is what is left
+
+`2412ee8`. Two more things, and the diagnosis is narrow now.
+
+**The parameters have to be snapped.** A fresh `Synth` leaves the smoothed block at zero, and
+`interpolate_parameters` folds it toward the target one sixty-fourth per block, so a note started right
+away plays at a tiny fraction of its amplitude - which is why the engine wrote zero for the first
+blocks. The device snaps on a preset load (`forceParametersToTarget`), so `Chain::force_parameters` now
+exposes that and the test calls it after setting the track up.
+
+**The engine is not the problem.** With the snap, the engine driven *directly* - `EngineVoice::render`
+with the track's smoothed parameters and the voice's increment (12 740 058 for note 60) - writes
+`[0, 0, -5511, -2767]`. Non-zero, as expected. Through the mixer it still writes nothing, so the
+difference is in what the mixer hands over.
+
+The measurement that settles it, written into the test's ignore note: print the modulation block **where
+`render_tracks` builds `params0`/`params1` from it**, not after the whole render. After the render the
+tail's own LFOs (slots 8 and 9) have already rewritten that block from the *master* track's parameters,
+which is why the earlier print showed zeros and why it was misleading: the engine for a track sees the
+block as the *track's* LFO render left it, and that is the value to look at.
+
+If that block turns out to hold the parameters, the next suspect is the gain chain the mix-down uses -
+`track_gains`' four complements - since the level ramp does move (`0x7fffff80` after one block) and the
+group sums stay zero.
