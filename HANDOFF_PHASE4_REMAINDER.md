@@ -704,3 +704,45 @@ stands alone; the host binary reports 20 passing and the workspace is green over
 
 **Next:** the master's DC-blocked mix at `0x12288a0` - its input is `param_1` after the tail's three
 accumulates, so the discrepancy is in one of those or in the DC blocker's own state.
+
+### The tail's filters: FX 9's state is the one that differs
+
+Adding the tail's own filters and blockers to the comparison (the region `0x6abc..0x6c00`) surfaced the
+next concrete diff, and it is *not* the master bus:
+
+| case | word | port | device |
+|---|---|---|---|
+| `filled` (and every LCG-filled case) | `+0x6b00` | `-2172764` (the LCG prefill, unchanged) | `9307` |
+| `silent` | `+0x6bdc` | `0` | `1664` |
+
+`0x6b00` is **FX track 9's filter** (`0x6abc` is track 8's, `0x6b00` track 9's, `0x6b44` track 10's).
+Its state holds the prefill in the port, so the port's FX-9 filter is not writing its state while the
+device's is. FX 8's filter (`0x6abc`) *does* match, which rules out the pass being absent and points at
+the second iteration of the tail's modulator/FX loop.
+
+The two passes' arguments, read from the assembly (`0xf99f0`-`0xf9a44`):
+
+```text
+x24 = 0x12282a0                       ; the FX mix, this pass's filter *input*
+x9  = 0x1228d0c                       ; MOD_LAYER0 + 8, loaded as a pair: ldp w2, w3, [x9]
+trackFilterProcess(this + 0x6abc, x24, w2, w3, 0)
+trackFilterDcBlock(this + 0x6ae8, x24, 0x12288a0)
+```
+
+so the port's shape (`FX_MIX` in, `MOD_LAYER0 + 8/+9` as the parameters, `0x12288a0` out) is right; the
+difference has to be in where the second iteration's state goes.
+
+Also confirmed this round, from the same assembly:
+
+* **the master's filter parameters are `this + 0x5e00` and `this + 0x5e04`** - the address register
+  `x27` is `this + 0x50e8`, so `[x27, #0xd18]` is `this + 0x5e00` and `[x27, #0xd1c]` is `this + 0x5e04`,
+  exactly what the port uses;
+* the tail's first pass really does read `[x27, #0xcd0]`/`[x27, #0xd1c]`, i.e. `this + 0x5db8`/
+  `this + 0x5dbc`, so the port's first pass is right too;
+* `x19` at the mix-down's module term (`0xf8428`) was measured at **0** for all eight passes, so that
+  term genuinely contributes nothing on this path.
+
+The comparison itself was the real weakness this round: the broad region list only *printed* its
+mismatches, and the assertions covered just the LFO array and the group sums. `834d4f8` asserts every
+region and now also asserts the scratch words the device changed (minus the sends and the master bus),
+so the loop's verification rests on assertions rather than on a debug print.
