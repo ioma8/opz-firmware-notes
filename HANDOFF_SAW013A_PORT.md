@@ -1654,3 +1654,59 @@ update `0x124494`..`0x1244b4`; the wrap branch `0x1244b8`..`0x12458c` which rejo
 `+0x38` is the callback at `0x124044`/`0x12405c` and `0x124070`. The port therefore needs a host trait
 carrying the callback and the five tables; `onNoteOn` needs neither, which is why it could be ported and
 verified before this.
+
+### `render` traced against the device, checkpoint by checkpoint
+
+Hand-transcribing `render` blind failed twice, so the next attempt is driven by measured register values instead
+of the listing alone. A throwaway hook (`UC_HOOK_CODE` over `0x123994`..`0x1245dc`, dumping `x0..x30` and
+`d1..d9` at the first hit of each chosen PC) was run against the `note_60` case of `cases.json`
+(`params = [0, 0x40404040 x17]`, velocity 100, `variant 5`, all five constants `0x7fffffff`). What it settled:
+
+**1. The prologue's four lane targets ARE `onNoteOn`'s `+0x4c`..`+0x58` words.** The values `render` packs into
+`v2.s[0..4]` at `0x123be0`, `0x123cc4`, `0x123d34` and `0x123d5c` are, in order:
+
+```text
+v2.s[0] = 1557699545 = onNoteOn state[0x4c]
+v2.s[1] = 1075365509 = onNoteOn state[0x50]
+v2.s[2] = 3817897951 = onNoteOn state[0x54]  (-477069345 as i32)
+v2.s[3] = 3147111936 = onNoteOn state[0x58]  (-1147855360 as i32)
+```
+
+That is not a coincidence: both are the same eight gain chains over `params[0]`/`params[1]` alone. So the port
+should *factor* that chain out of `on_note_on` (it is already device-verified) and reuse it for `render`'s
+`v2`, instead of transcribing it a second time. Only the **extra** chains in the same prologue (which build
+`v0.d[0..2]`, `v1.d[0..2]` and the two spills) are new work.
+
+**2. The spills and the extra lane sources are now known too.**
+`stp w1, w3, [sp,0x18]` and `stp w9, w11, [sp,0x10]` for `note_60` are
+`sp18 = [339411614, 501772359]`, `sp10 = [2147483644, 2147483644]`, matching the fixture's `host_calls[1] =
+[501772359, 339411614, 2147483644, 2147483644]` in `x1..x4` order (`ldp w2, w1` swaps). And the four lane
+sources `v0.d[0], v0.d[1], v1.d[0], v1.d[1]` read at `0x123d18`/`0x123d54` are all **zero** for this case
+(they are products of `params[0]`, which is 0), so the ramp's `v1` is zero and only `v2` matters here.
+
+**3. For all 19 fixture cases `v8 = v9 = ramp = 0`.** `v8 = (target - state[0x28]) >> 8` and
+`v9 = (target - state[0x30]) >> 8` both came out zero at `0x124058` for `note_60` (and `ramp` is
+`(v2 + v1 - state[0x4c..0x5c]) >> 6`, also zero), because the prologue's targets equal the state the
+`onNoteOn` chain just wrote. So for the fixtures the loop's lane ramp is a no-op and the per-frame output comes
+from the phase and the wavetables alone - a much smaller surface to get right first.
+
+**4. The pan chain's intermediates at `0x123fa0`** (after `ldpsz x10, x11`, before the two host calls):
+`x8 = 848755651`, `x9 = 2139062142`, `x10 = 2147483647`, `x11 = 848755651`, `x12 = 1073741823` (the `d10>>1`),
+`x13 = 1077952576`, `x14 = 1077952576` (both `params[10]`/`[11]`), `x25 = 0x124A890`-region table base.
+
+**5. The loop's exit state for `note_60`** (the whole block after one `render` call):
+
+```text
+[47694351, 15897555, 0, 0, 2147483647, 0, 1, 1, 815363776, 789883658, 845427195, 0,
+ 847091422, 1664227, 2147483647, 0, 0, 0, 0, 1557699545, 1075365509, 3817897951,
+ 3147111936, 802623717, 815363776, 100]
+```
+
+with `out[0..6] = [0, 0, 0, 0, 9408859, 9445901]` and `adsr.level = 2147483583` after the call - so the exit
+writes `state[0x00] = w12`, `state[0x04] = w10`, `state[0x20] = w8` (the phase accumulator), `state[0x24] = w11`
+(the last `state[0x5c]`), `state[0x0c] = w14`, and `state[0x28..0x38] = v2+v8 / v1+v9` (unchanged here).
+
+**The plan this implies**: extract `on_note_on`'s eight-chain block into a helper returning
+`[+0x4c, +0x50, +0x54, +0x58]`; `render` calls it for `v2` and transcribes only the extras, the pan chain and
+the loop, checking each against the values above. The trace script is throwaway (it lives in `/tmp`) but the
+checkpoints are the acceptance targets for the transcription.
