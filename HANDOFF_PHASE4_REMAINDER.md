@@ -1106,3 +1106,32 @@ What the second pass found:
 
 Measuring either against the device means driving the Unicorn harness with the same pattern and
 comparing quarter energies; that is the next step for Phase 4's "measured, explained difference".
+
+### Diagnosing the bar's decay: what was measured and what was not
+
+Chasing the `drum_beat_and_synth_line_play_together` failure (quarter peaks **511769, 2907, 24, 0**) turned up
+one useful negative result and one dead end worth writing down so neither is repeated.
+
+**The negative that matters**: a hand-built pack pushed through `Chain::load_pack` renders silence for a drum
+note of 36 or 60, while the Engine's own integration pack on the same path does sound (the mute test's first
+assertion, "the track sounds", passes on a drum track). So the pack plumbing is right and the silence is in
+the *note*: the device's sample player maps the note to a **slice**, and a hand-built 24-slice pack with
+notes 36/60 does not land on one. Any future drum-side differential test should take its note values from the
+app's own pattern defaults rather than picking them.
+
+**The open measurement**: the quarter-energy decay itself. It is not yet localised, and the two candidate
+mechanisms need different evidence:
+
+1. the **master compressor's detector** filling across the bar - visible by printing the compressor's state
+   (or the gain it applies) per block;
+2. the **per-track level/pan ramps** - both are read at the mix-down and both start at zero, so a target
+   that is only set once may leave them somewhere other than full scale.
+
+The device is the reference for whichever it turns out to be: drive the Unicorn harness with the same
+sixteen-step pattern and compare quarter energies, the way the whole-mixer fixture compares the render word
+by word. That comparison is what Phase 4's acceptance asks for ("the offline render cannot stay
+byte-identical ... expect a measured, explained difference instead"), and it is the last thing between the
+current state and a wiring that can be committed.
+
+The wiring patch (`PHASE4_ENGINE_WIRING.diff`) is unchanged by this round and still passes 29 of 31
+opz-core tests when applied.
