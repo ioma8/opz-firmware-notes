@@ -235,10 +235,22 @@ still has to produce it byte for byte for the fixture to pass.
 
 | region | first diff | what it means |
 |---|---|---|
-| a voice's `+0x174` | the target frequency | the vibrato the loop hands the manager, or the glide/detune arithmetic reaching it |
-| the ramps at `+0x50c8`/`+0x5148` | the per-track level/pan | the mix-down's target and step |
+| ~~a voice's `+0x174`~~ | fixed | the `centsDetune` aliasing, above |
+| the level ramp `+0x50c8` | fixed | the lane-1 target chain's first factor |
+| the pan ramp `+0x5148` | ~3% off | one of the four chain factors is still not the one the original multiplies |
 | the counters and peaks | `+0x6aa0` on | the `voices == 0` branch and the 16-bit peak decay |
 | the group sums | word 0 | the mix-down itself, and the four accumulator gains |
+
+Measured for track 0 of the `filled` case, the preamble's four complements are
+`[0x7fffffff, 2145157886, 0x7fffffff, 0x7fffffff]` where the device's chain product implies
+`0.9667` instead of my `0.9989` - so one factor is roughly 0.967 against my 1.0. The inputs are
+`d04 = -69064347`, `d08 = -72317119` (raw, because the plug flags leave the raw word in place), the
+mute mask `0x6848 >> track & 1 = 0`, `module = 0`, `this[0x6c40] = this[0x6c44] = 0x7fffffff`,
+`this[0x6c48] = -6517706`, and the duck word `0x7fffffff - this[0x5ea0] = 2141718728`. The four
+factors the original multiplies, in the order the disassembly shows them (0x831c on), are the
+module's complement, the `+0x6c40` word's, one that crosses the first modulation word *again* with
+the `+0x6c44` chain, and the mute's - the interleaving around `0x829c` is where the last ambiguity
+is.
 
 The words *before* those match, so the LFO phase (both layers, including the reset seam) and the
 setup are right.
