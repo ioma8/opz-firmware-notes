@@ -1495,3 +1495,40 @@ The *growth* rather than a decay is the other half of the puzzle: the sums rise 
 mute (3.5M, 6.2M, 8.1M, 9.3M, 14.7M) even though the host triggers nothing more. That is worth its own
 measurement - the candidates are the drum engine's slice still running plus the FX sends integrating, since
 clearing the sends and the FX mix at the top of `render_tracks` changed nothing.
+
+### The wiring is on main, and the mute is closed
+
+The `phase4-wiring` branch is merged into `main` (`b9acd91`, fast-forward from `75dce01`), and the whole
+workspace is green: nine test binaries, 29 + 20 + 18 + 11 + 5 + 4 + 3 passing.
+
+**Phase 4's checklist, as the plan states it:**
+
+| item | state |
+|---|---|
+| ADSR/AHD/DcBlocker, Compressor + masterCompressor, Lfo, Voice, InstrumentManager | done, tagged with Phases 1-3 |
+| `Synth` (`Synth::render` 11 072 B) | 14 of 14 whole-mixer cases pass; the master's DC-blocked mix at `0x12288a0` is still 4.5% off and sits behind `CHECK_MASTER` |
+| the prerequisites (`trackFilterProcess`, `bounceAudio`) | done |
+| **delete the interim host; `Engine` calls the ported chain** | **done** - `Engine::render_block` asks a `Chain` for the master block |
+| **realtime safety** | **done** - measured, the render path allocates nothing |
+
+**The mute is closed**, and it is worth remembering how. Three implementations were tried and only the
+last is right:
+
+1. the enable byte `+0x6d1c` - it gates only the *track filter*, so the mix-down and the sends still ran;
+2. the level word - the sends are taken from the track mix, *before* the level, so the same leak;
+3. `killNote` on the track's voices - a drum's slice is a one-shot the player runs to its end regardless.
+
+What silences a track on the device is the *sequencer not triggering it*, so the host's mute cannot be a
+port behaviour at all. It is now `LoopHost::muted: [bool; MIXED_TRACKS]`, a per-track flag the host sets and
+`render_tracks` honours by dropping that track's mix, with the voice left running so unmuting picks it up
+mid-note. The whole-mixer fixture leaves the flag all-false, so the port's own behaviour still compares word
+for word - and the first attempt, with the clear in the not-enabled branch, *failed* that comparison, which
+is the evidence that the device does not do it.
+
+The test that measures it had to be re-measured rather than assumed: after a mute the tail drains through
+the track filter, the DC blocker and the master compressor (the group sums fall 9.0M -> 0.76M over five
+blocks while the track mix is already zero), the compressor's gain recovers as its input falls so the output
+*rises* for a while, and 64 blocks of rendering leaves 210 against the track's own thousands. The assertion
+now renders that drain and compares against the sounding level, with the numbers in the comment.
+
+**What is left in Phase 4**: the master's DC-blocked mix, and then the phase can be tagged.
