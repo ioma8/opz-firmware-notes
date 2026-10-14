@@ -1219,3 +1219,32 @@ any kind" criterion.
 five constants were filled, but with recovered values rather than calibration. If the image turns out to be
 encrypted beyond what `decrypt_zfw.sh` handles, that is the blocker to report, with the exact file and the
 script's failure.
+
+## BLOCKED: the table's values cannot be obtained offline
+
+The route recorded last round - recover the values from the local firmware image - is closed, and the
+evidence is in this worktree's own analysis:
+
+* `FIRMWARE_ANALYSIS.md:49` - "**Without the 256-bit AES key there is no feasible software-only path to
+  decrypt the archive.**"
+* `FIRMWARE_ANALYSIS.md:26-27` - the `.zfw` stores only a *key index* (byte `0x04` = `0xFF`, meaning an
+  on-device key store); the AES key itself is not in the file, and all consumer firmware shares one global
+  key held inside the device.
+* `decrypt_zfw.sh`'s own usage line requires `<hexkey>` and notes it "is useful the moment a key is
+  obtained (e.g. via the BF703 debug port / on-chip AES engine)" - i.e. it cannot do anything without one.
+* The recovered-key path that the analysis does document (a serial-console padding oracle) is **device
+  interaction**, which Phase 5's acceptance criteria forbid outright ("no device interaction of any kind").
+
+So the one remaining input for `Saw013a` - the 16-bit table at `0x124A890` - is firmware data whose only
+offline copy is AES-256 encrypted, whose key is device-resident, and whose recovery would violate a
+constraint of the phase it is part of. That is a genuine blocked stop, not a missing idea.
+
+**Failed attempts on this thread, for the record** (all measured, all in this file): the five constants at
+full scale; the ADSR's level and mul; the callback's four values written to `+8`, `+0x20`, `+0x28`, `+0x30`;
+the first callback serviced by ramping the ADSR; the table filled with a full-scale ramp, a small ramp, and a
+flat `0x4000`/`0x7FFF` (each drives the engine into an unmapped read, so its entries are not a unity table).
+
+**What would unblock it**: the AES-256 key (or a decrypted firmware archive) from any source - a key
+recovery effort outside this phase's constraints, a published key, or a device in hand. With the file, the
+block that initialises `0x124A890` is found in the same region as `0x124A5CC` and `0x124A7B0`, and the
+harness is filled from it exactly as those were.
