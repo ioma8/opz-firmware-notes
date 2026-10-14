@@ -261,10 +261,19 @@ their engine dispatch, the filters, the blockers, the counters and peaks, and bo
 are left in the loop:
 
 1. the two modulation-block words the tail's master LFOs leave (19 and 38, ~0.03% off);
-2. the group sums, one LSB out at group 0's **sample 4** - samples 0..3 match, so it is not a
-   systematic arithmetic difference but something that starts partway. Hooking the device's mix-down
-   loop (`0xf83f0`-`0xf84e8`, with `x11 = 0x10` for sample 4) and comparing its intermediate values is
-   the direct next step.
+2. ~~the group sums~~ - fixed: the mix-down's first term rides the **advancing** pan lane. The
+   original re-reads the ramp's lane 1 at the top of every iteration, before that iteration's step;
+   the port used the fixed input value, which absorbs into the truncation for the first few samples
+   and then shows as one or two LSBs. With that fixed **every word the track loop owns matches**.
+
+So the whole track loop is verified: the setup, the LFO array and the reset seam, the voices and their
+engine dispatch, the eight track filters, the eight DC blockers, the counters and peaks, both ramps,
+the group gain, the mix-down and the two 128-word accumulator groups.
+
+**What is left in the loop** is two modulation-block words - layer 0's word 38 and layer 1's word 19 -
+where the port has 688567 against the device's 688384. Both blocks match everywhere else, and an LFO's
+shape value depends on the destination word's *prior* content, so the cause is a write the final
+content has already overwritten. Hooking the LFO renders of the writes in between is the way in.
 
 **The group gain's formula, confirmed from the disassembly** (`0xf7d44`-`0xf7d64`):
 
