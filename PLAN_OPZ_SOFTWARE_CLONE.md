@@ -285,9 +285,12 @@ Goal: the app sounds and behaves like the device’s own voice path, not our app
       (`1e4731b`, `13b9dd7`; 1 337 + 73 cases). The engine seam is an `EngineVoice` trait where the
       original has three function pointers, so the engine's state block (`+0x58`..`+0x16f`) stays in
       the engine.
-- [ ] Port `InstrumentManager` — voice start/end indices, overload handling, vibrato/pitch bend.
-- [ ] Port `Synth` (`Synth::render` 11 072 B and the latch/target/interpolate/LFO paths); the two
-      extra output buffers stay zeroed (no FX tracks in v1).
+- [x] Port `InstrumentManager` — voice start/end indices, overload handling, vibrato/pitch bend
+      (`c2cf34b`; 147 cases over the whole 4 400-word voice array, its three range tables embedded).
+- [ ] Port `Synth` (`Synth::render` 11 072 B and the LFO paths); the two
+      extra output buffers stay zeroed (no FX tracks in v1). The parameter paths are done
+      (`645083f` `interpolateParameters` + `forceParametersToTarget`, 9 cases; `71d2fb7`
+      `setTargetParameters` + `latchParameters`, 28 cases) and `resetLfo` is next, then `render`.
 - [ ] Delete the interim host; the `Engine` now calls the ported chain. Where Unicorn cannot reach a
       slice, invariants stand in and are recorded in `PORT_METHOD.md`.
 - [ ] Check realtime safety (no `malloc`/`new` in the callback) from the Unicorn traces; pre-warm if
