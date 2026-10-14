@@ -560,3 +560,27 @@ starts with instead of wherever a later instruction left them.
 Two rounds of measurement have now been lost to the same mistake in two forms - a reused Ghidra variable
 name, and a stale/low-masked register - so the rule for the rest of this port is: read the value at the
 instruction that *consumes* it, at full width.
+
+### The interpolation is healthy - full width, at the consuming instruction
+
+Applying the rule (read at the consuming instruction, at full width) immediately gave a clean answer. At
+`0x124218` (`mul x3, x4, x3`, the first interpolation product):
+
+```text
+x3  = 0x7641af3b    the table entry the index selects
+x4  = 0x3c24f9bf    the fraction's complement (w14 ^ 0x7fffffff)
+x14 = 0x43db0640    the fraction itself
+x15 = 0x78848412    the next table entry
+```
+
+All four are nonzero, and `0x7641af3b` is *exactly* `sin(2*pi*24/128) * 0x7fffffff` - so the host sine tables,
+the index (`24`), the fraction and the interpolation's operands are all correct.
+
+**So the zero enters between `0x124218` and the store at `0x1243a8`.** That window contains the
+saturating adds that combine the five table contributions, the packed select that blends the two pan lanes
+(`bic`/`orr` against a sign-derived mask at `0x124360`-`0x124388`), and the final `sqadd` against the output
+buffer. The next measurement is a hook midway - `0x124280` after the first `adds`/`csel` pair - to see
+whether the per-table contributions survive their summation, and then at `0x124360` for the blend's mask.
+
+Everything before that window is now positively verified: the tables, the index, the fraction, all five
+entries, and both interpolation products' operands.
