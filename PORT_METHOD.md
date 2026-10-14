@@ -64,6 +64,8 @@ written down with its measured size.
 | `render_matches_every_golden_case` (`opz-dsp`) | **exact**: every one of the 128 samples of every block of all 19 cases, plus the ADSR level each call leaves |
 | `render_matches_the_device` (`opz-dsp`) | one traced block's output, its two `+0x38` host calls and its exit state, against the device's register file |
 | `a_saw_track_plays_through_the_ported_chain` (`opz-core`) | a track assigned `saw013a.engine` sounds through the ported mixer |
+| `setting_a_tracks_engine_swaps_its_voices` (`opz-core`) | a `SetTrackEngine` command swaps the track's voices and the track renders audio through the whole `Engine` |
+| `the_engine_key_cycles_the_synth_engines` (`opz-tui`, `opz-core`) | the `e` key cycles the synth engines, wraps, and refuses to turn a drum track into a synth |
 
 ## Engines ported so far
 

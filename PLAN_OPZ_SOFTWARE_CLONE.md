@@ -354,8 +354,11 @@ repeatable on a fresh engine.
       assigned `saw013a.engine`. The port and its four transcription bugs are in
       `HANDOFF_SAW013A_PORT.md`; the fixtures and their generator live in the clone under
       `crates/opz-dsp/tests/golden/saw013a/` and `tools/unicorn-harness/make_saw013a_fixtures.py`.
-      Boundary: there is no UI to *assign* a plug to a track yet, so the saw engine is reachable from the
-      host API and the tests, not from a key in the TUI.
+      The plan's playable check ("`Saw013a` available on a track") is met from the keyboard too: `e`/`E` on
+      a synth track cycles `digital.engine` -> `analoga.engine` -> `saw013a.engine`, the host's plug
+      assignment (`Command::SetTrackEngine`, `plugs::SYNTH_ENGINES`), and the parameter strip's header
+      names the engine the track runs. A drum track is excluded by the cycle helper, because its plug is a
+      device-only factory plug and swapping its engine would drop the pack the track loaded.
 - [x] `PORT_METHOD.md` in this worktree: per-port source symbols, the harness proof, the
       golden-verified table (both engines, byte-exact, with the regeneration hashes), the open items
       with measured sizes, and the two method lessons that cost real time. Kept current as ports land.
@@ -394,7 +397,11 @@ repeatable on a fresh engine.
       tracks, pattern banks, chain mode).
 
 **Playable check:** a fresh clone of the repo, setup command, `cargo run -p opz-tui`, six tracks,
-`Saw013a` available on a track, and the whole thing still playing after the host swap.
+`Saw013a` available on a track, and the whole thing still playing after the host swap. Verified as far
+as an agent can: the app starts, draws six tracks and the packs it loaded, takes keys through a pty (a
+step programmed by keystroke appears, and `e` switches the cursor track's engine - the header changes
+from `analoga.engine` to `saw013a.engine` and the strip drops to the generic eighteen), and the same
+`Engine` writes a non-silent, byte-identical WAV offline. Only listening needs a person.
 
 ## Acceptance criteria
 

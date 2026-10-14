@@ -1821,3 +1821,24 @@ Phase 5's other items: `opz-tui --render` verified again (byte-identical across 
 note (a fixture that agrees on one case is not a fixture that agrees), the README carries the engine's
 status, and the acceptance walkthrough still reads 5 of 5. Workspace: 97 tests over 9 binaries, green, no
 Unicorn at test time. Tags now run `phase-1`..`phase-5`.
+
+## The keyboard path: `e` assigns a synth engine (clone `79d8354`)
+
+The port was reachable only from the host API, which left Phase 5's playable check half-true ("Saw013a
+available on a track"). It is now a key: `e`/`E` on the cursor's synth track cycles
+`digital.engine` -> `analoga.engine` -> `saw013a.engine` and back, which is the device's own gesture
+(the app puts one of those plugs on a track in the synth group, and `saw` is catalogue id 26).
+
+The guard lives in `plugs::next_synth_engine`, not in the command: it returns `None` for an engine that
+is not in `SYNTH_ENGINES`, and a drum track's engine is not in that list - swapping it would replace the
+`DrumEngine` together with the pack it holds, and the device's factory drum plugs are ones the app
+catalogue does not describe anyway. `Command::SetTrackEngine` therefore applies whatever it is told; the
+UI is what refuses.
+
+Mirroring follows the mute's pattern: the `Engine` owns `track_engine`, the `Snapshot` carries it, the
+`App` mirrors it for the key and for the strip's header (which now names the engine the track runs).
+
+Driven through a pty to check it end to end: four `Down`s put the cursor on track 5, and `e` flips the
+header from `analoga.engine` (page 1/2 of the analogue parameters) to `saw013a.engine` (the generic
+eighteen). The engine that actually sounds is pinned by the tests instead - a `SetTrackEngine` command
+followed by a one-step render through the whole `Engine` produces audio on that track.
