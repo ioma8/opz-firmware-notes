@@ -27,13 +27,14 @@ one preset per track plus "load factory preset", stereo master output.
 - Never committed anywhere: `libSnakePlugin.so`, the APK, `.engine` Blackfin blobs, device dumps,
   sample packs. The derived crate carries a provenance header per file and `publish = false`.
 
-## Cargo workspace (three crates)
+## Cargo workspace (four crates)
 
 | Crate | Contents | Notes |
 |---|---|---|
 | `opz-dsp` | Ported DSP only: `SamplePlayerGain`, `Digital`, `AnalogA`, then `ADSR`/`DcBlocker`, `InstrumentManager`, `Synth`, `Compressor`. One module per original class. | `publish = false`; per-file header naming the source mangled symbol; frozen except for porting |
 | `opz-core` | Plug/preset table (from `opz-factory-plugs.json`), pattern/sequencer model, AIFF pack reader, `Engine` (audio-thread state), command queue | no UI, no audio device — testable headless |
-| `opz-tui` | Binary: ratatui/crossterm tracker grid + param strip | the only frontend in v1 |
+| `opz-tui` | Binary: ratatui/crossterm tracker grid + param strip | the terminal frontend |
+| `opz-web` | `wasm-bindgen` shell over `opz-core`/`opz-dsp`; the page itself is `web/` in the clone | the browser frontend, built by `tools/web.sh` (`wasm-pack`); outside the phase plan — see `HANDOFF_BROWSER_BUILD.md` |
 
 Support: `tools/unicorn-harness/` (Python, Unicorn + capstone) and `crates/opz-dsp/tests/golden/*`
 (short golden bursts, tens of KB total). Dependencies: `cpal`, `ratatui`, `crossterm`, `serde_json`,

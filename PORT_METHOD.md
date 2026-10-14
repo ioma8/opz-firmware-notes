@@ -66,6 +66,7 @@ written down with its measured size.
 | `a_saw_track_plays_through_the_ported_chain` (`opz-core`) | a track assigned `saw013a.engine` sounds through the ported mixer |
 | `setting_a_tracks_engine_swaps_its_voices` (`opz-core`) | a `SetTrackEngine` command swaps the track's voices and the track renders audio through the whole `Engine` |
 | `the_engine_key_cycles_the_synth_engines` (`opz-tui`, `opz-core`) | the `e` key cycles the synth engines, wraps, and refuses to turn a drum track into a synth |
+| `tools/web-smoke.mjs` (browser build) | **sample for sample**: a bar rendered through the wasm build equals `opz-tui --render` of the same project, all 85 344 samples, plus a non-zero peak — the wasm and host math hash the same, so identity and not a tolerance is the bar (`HANDOFF_BROWSER_BUILD.md`) |
 
 ## Engines ported so far
 
