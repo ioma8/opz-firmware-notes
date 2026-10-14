@@ -240,7 +240,16 @@ still has to produce it byte for byte for the fixture to pass.
 | the pan ramp `+0x5148` | ~3% off | one of the four chain factors is still not the one the original multiplies |
 | ~~the counters and peaks~~ | fixed | the per-track gate is a byte, and the 1000-block branch |
 | the two modulation-block words | 19 and 38 | the tail's master LFOs (slots 8/9)'s shape output, ~0.03% off |
-| the group sums | word 0 | the mix-down itself, and the four accumulator gains |
+| the group sums | word 0 | the group gain (see below), then the sends' gains |
+
+**The group gain, measured.** For `filled` track 0 the device's `local_88[0]` at the gain multiply
+(`0xf83f8`) is `0x1a1dc8e = 27,385,998`, and the word it comes from - the *folded* `+0x684c`, which
+the fixture records - is `5,414,283`. The formula is `sat_add(mul31(folded * 0xcccccd0), 0x199999a)`
+with `0x199999a = 26,843,546`: that gives `541,428 + 26,843,546 = 27,384,974`, i.e. exactly **1,024
+short** of the device's value, so the term should be `542,452` and one of the constant, the shift or a
+missing addend is still off. (Both `0xccccccd` and `0xcccccd0` give the same term, so it is not the
+low nibble.) Hooking the setup's own instructions (`0xf7...`, the lines that write `+0x684c` and then
+`local_88`) is the direct way to read the constant and shift, the way the lane-1 chain was settled.
 
 **Solved.** A register trace over the preamble's instructions (0xf8204-0xf82c8) gives the mapping
 outright - the four factors are the four *independent* saturating complements, chained
