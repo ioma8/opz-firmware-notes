@@ -1236,3 +1236,47 @@ So the next measurement is inside `DrumEngine::render` for a *second* hit: the s
 the previous slice, the slice bounds after the new `note_on`, and the playback step it computes. The voice's
 `octave` for note 48 is `(48 + 19) / 24 - 3 = -1`, i.e. the step is halved, which is the one arithmetic
 input that differs between hits only through the note - and all four kicks use the same note.
+
+### Root cause found: a drum voice's second hit is deferred forever
+
+The drum engine's own `state_fields()` across the bar, sampled every 16 blocks, shows the position running
+away monotonically and never rewinding:
+
+```text
+b16  sums   483372  position  40960  sample_frames 768  window 96..608  active 1
+b48  sums   783444  position 122880  sample_frames 768  window 96..608  active 0
+b96  sums  1306984  position 245760  ...            active 0
+b160 sums   653680  position 409600  ...            active 0
+```
+
+(`position` advances 2560 per block, so by the end of the bar it is 533 times the slice length.) Every later
+kick re-uses that same engine state, which is why the group sums die after the first hit.
+
+**Why the engine's `note_on` is never called again**, read straight out of the port (`voice.rs:375`):
+
+```rust
+if self.adsr.phase != 0 {
+    // Sounding: remember the note and start it when the envelope ends.
+    self.gated_note = note;
+    self.pending_note = (velocity & 0xff) as u8;
+    self.adsr.phase = 5;
+    return;                       // <- the engine's note_on is not reached
+}
+```
+
+That is the device's *gated* path: while the envelope is still sounding, the note is remembered and played
+when the envelope ends, by `renderVoice`'s re-trigger. It is right for the synth engines, whose envelopes run
+out. A **drum voice's envelope is the engine's own** (`sample_player_gain` keeps `adsr_level`, `adsr_rate`,
+`adsr_inc`, `adsr_phase` in its own state, as the dump shows), and nothing brings the *voice's* `+0x50` phase
+back to zero - so the first kick leaves `phase = 5` and **every** later kick takes the deferral branch.
+
+This also explains why the interim host's drums worked: it called the engine's `note_on` directly on every
+note and armed the envelope itself, never using the ported `Voice`'s deferral.
+
+**A first fix was tried and reverted**: in `Chain::note_on`, clearing `adsr.phase` for a drum voice whose
+`gated_note` is set, so the render's re-trigger picks the note up. The position still never rewound and the
+opz-core pass count fell from 29 to 28, so it was wrong in a way the dump does not yet show. The next step is
+to confirm which branch `renderVoice`'s re-trigger takes for a drum voice - in particular whether
+`pending_note`/`pending_vel` (not `note`) are what it plays, and whether the drum engine's `note_on` is
+reached from there - with the same `state_fields()` dump taken across a *single* re-trigger rather than every
+16 blocks.
