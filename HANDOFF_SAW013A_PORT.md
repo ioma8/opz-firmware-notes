@@ -963,3 +963,40 @@ the vector path part company somewhere between the accumulator and the `zip1`/`z
 the port's other engines), the store is *explained* (accumulate-into, 64 interleaved pairs), the products are
 *pinned* as the first zero going backwards, and everything upstream has been verified. One vector pair's
 provenance remains.
+
+### The lane pairs' sources are zero as well - the pair-building loop
+
+Reading `q1`/`q2` at `0x12409c` (`zip1 v3.2s, v2.2s, v1.2s`), the instruction that builds the pair whose
+narrowing the store sees:
+
+```text
+iterations 64 with nonzero sources 0
+last two (q1, q2): [('0x0', '0x0'), ('0x0', '0x0')]
+```
+
+Both zero, all 64 times. And this address sits inside the *prologue's own loop* - the `0x124098`/`0x1240ac`
+pair that the earlier trace showed repeating - so the prologue builds 64 lane pairs and every one is built
+from zero sources.
+
+That is one loop earlier than `0x124338`, and it means the zero is not in the store, the select, or the
+sample loop at all: it is in the **prologue's pair construction**, whose inputs are the values the second
+interface call is handed and the `+0x28`/`+0x30` sub-state fields the engine re-reads afterwards.
+
+**The chain, from the store backwards, as it now stands:**
+
+| site | value | verdict |
+|---|---|---|
+| `0x1243a8` store | 0 | explained: accumulate-into, 64 interleaved pairs |
+| `0x124338` product pair | 0 | the first zero found going back |
+| `0x12409c` pair sources (`q1`/`q2`) | 0 | one loop earlier, still zero |
+| prologue inputs | `x17 = 0x55aded23`, `x16 = 0x507aaef2`, `[ADSR+4]` once set | nonzero |
+
+So the two ends of the prologue are healthy and its middle - the pair construction that consumes the
+`+0x28`/`+0x30` sub-state - produces zeros. Those two fields are the ones the engine re-reads after the
+second interface call, and the callback is what the device's host uses to fill them.
+
+**The next action, and it is the decisive one**: service the second interface call by writing the four
+values it is handed into `+0x28` and `+0x30` (four words each) *and* re-running the measurement above, rather
+than writing them into `+0x20` as the earlier attempt did. If the pair sources become nonzero, the engine is
+solved; if they do not, the fields are not what the callback is for and the C's re-read list is the thing to
+re-read.
