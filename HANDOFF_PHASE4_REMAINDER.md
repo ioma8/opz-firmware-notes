@@ -1174,3 +1174,37 @@ The measurement to run next is the one the diagnostic was reaching for: print th
 `gated_note`, `adsr.phase` and `counter` at the sampled blocks. `counter` advancing means the manager
 rendered it; `note` still holding the old hit means the trigger never arrived; `gated_note` non-idle means
 the release did not open the gate.
+
+### The bar's decay: the drum voice goes constant
+
+The voice-level measurement named in the previous note has been run. Printing voice 0 (track 0, the kick) and
+the host's note bookkeeping every 64th block across the bar:
+
+```text
+voice 0: note 48 gated 0xff phase 1 counter  64 engine_prev 512   host notes None
+voice 0: note 48 gated 0xff phase 1 counter 320 engine_prev 512   host notes None
+voice 0: note 48 gated 0xff phase 5 counter  40 engine_prev 512   host notes None   <- re-triggered
+voice 0: note 48 gated 0xff phase 5 counter 335 engine_prev 512   host notes None
+voice 0: note 48 gated 0xff phase 5 counter  55 engine_prev 512   host notes None   <- re-triggered again
+```
+
+What this rules out, and what it leaves:
+
+* **The triggers arrive.** The counter resets (`320 -> 40`, `335 -> 55`) exactly where the kicks fall, the
+  gate byte stays idle (`0xff`), and the manager renders the voice every block (the counter advances by 64
+  between samples). So neither the host's note bookkeeping nor `Chain::note_on`'s voice choice is losing the
+  hit.
+* **The voice's frequency is 512** (`engine_prev`), which is `0x400` - the fixed drum scale factor for an
+  entity below 4 - times a detune of one half. This is early in the chain: it is the *voice's* record, and
+  the sample player may well ignore it, but it is the one field in this record that is obviously not
+  note-like.
+* **What is left** is the drum engine's own output. The group sums fall to zero while the counter keeps
+  advancing, which is the signature of a *constant* (DC) contribution being removed by the track's DC
+  blocker, or of a slice that has run to its end and is never rewound. The next measurement is the engine's
+  own state across two successive hits - the sample position and the slice bounds after `note_on` the second
+  time - which the port keeps inside `DrumEngine` (`state_fields()` exists for exactly this).
+
+Note also that the earlier hand-built-pack experiment and this one agree: a drum voice whose note does not
+land on a slice renders nothing at all, and note 48 with a 24-slice pack is a candidate for that. The app's
+own `initial_values`/`programmed` defaults give note 48 for a drum step, so if the mapping is
+`note - 36` or similar, the port's slice lookup is the first thing to check.
