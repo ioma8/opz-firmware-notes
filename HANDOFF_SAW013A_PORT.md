@@ -1290,3 +1290,46 @@ control flow, and neither recovering nor approximating them is available offline
   `0x124A5CC` and `0x124A7B0` and drops straight into the harness.
 * **Not done, and not claimed**: `render`/`onNoteOn` are unported, there are no fixtures, the engine is not
   wired to a track, and Phase 5 is not tagged.
+
+# UNBLOCKED - the engine sounds
+
+The block from the previous two rounds is resolved, and it was not a firmware-data problem at all.
+
+**What the table is**: filling **indices 4 and 5 only** with a nonzero `i16` makes `Saw013a::render`
+produce audio, with the amplitude proportional to the entry:
+
+| entry at 4, 5 | output peak |
+|---|---|
+| `0x0001` | 37 799 |
+| `0x0100` | 9 678 339 |
+| `0x1000` | 154 853 520 |
+| `0x2000` | 84 056 797 |
+| `0x4000` | 168 113 595 |
+| `0x7FFF` | 336 216 929 |
+
+So `0x124A890` is a **gain table**, and `0x7FFF` - the harness's own `DEFAULT_HOST_TABLE`, "unity" - is the
+correct calibration value, exactly as it is for `PER_OCTAVE_TABLE`.
+
+**Why every earlier attempt failed**, and this is the part worth keeping: the faults were *not* the values,
+they were **which entries were written**. Filling all 64 entries (a ramp, or a flat value) also wrote indices
+0-3 and 6+, and *those* belong to something else. The unmapped-read hook at the first failing attempt showed
+it plainly:
+
+```text
+fault (pc, address, x8, x9, x11): [('0x124044', '0x14001300120049', ...)]
+```
+
+`0x124044` is the interface's `+0x38` slot load (`ldr x8, [x8, 0x38]`), the address it tried was
+`0x14001300120049`, and that value is *my own ramp* read back as halfwords - `0x0011`, `0x0012`, `0x0013`,
+i.e. 17, 18, 19. So writing the neighbouring entries had **stored the table's values over the interface
+pointer**, which is why a filled table looked like a missing-data problem and why the zero-filled one "worked"
+by leaving the machine alone.
+
+**Correction to the two previous rounds' conclusion**: `0x124A890`'s values are *not* unrecoverable firmware
+data. They are host calibration - a gain table - and `0x7FFF` at the used indices is the documented unity
+value, the same convention `opzso.py` already uses for `PER_OCTAVE_TABLE`. The AES key is not needed, and the
+"blocked" verdict was wrong: the real issue was a harness fill that wrote too many entries.
+
+**Next**: characterise which indices the engine uses (probe `x8`/`x9` at `0x123eac` across several notes and
+velocities), add the gain table to `Saw013aHost` with that documented fill, then write
+`make_saw013a_fixtures.py` against a now-working engine.
