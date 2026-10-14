@@ -242,6 +242,21 @@ still has to produce it byte for byte for the fixture to pass.
 | the two modulation-block words | 19 and 38 | the tail's master LFOs (slots 8/9)'s shape output, ~0.03% off |
 | the group sums | word 0 | the mix-down itself, and the four accumulator gains |
 
+**Solved.** A register trace over the preamble's instructions (0xf8204-0xf82c8) gives the mapping
+outright - the four factors are the four *independent* saturating complements, chained
+`w28 * w23 * w22 * w27` and then `* this[0x5188]`:
+
+| register | source |
+|---|---|
+| `w23` | `0x7fffffff - mul31(this[+0x6c40] * v0)` |
+| `w28` | `0x7fffffff - mul31(this[+0x6c44] * v1)` |
+| `w22` | `0x7fffffff - mul31(mute * this[+0x6c48])` |
+| `w27` | `0x7fffffff - mul31(module * duck)` |
+
+and `v0`/`v1` are the modulation block's words **6 and 7** (`0x1228d04`, `0x1228d08` - the block
+starts at `0x1228cec`, so the second is *seven* words in, not eight). Both the level and pan ramps
+then match the device exactly. The older measurements, kept for the record:
+
 Measured with code hooks on the device, for track 0 of the `filled` case, the lane-1 chain is
 `mul31(mul31(mul31(w28 * w23) * w22) * w27) * this[0x5188]` with:
 
