@@ -928,3 +928,38 @@ it consumes; `values` and `targets` are both device bytes at that seam (`setTarg
 
 The off-track case is already handled by the ported call: a track index at or above 12 smooths all
 eighteen parameters rather than the lower twelve.
+
+### The chain exists; it renders, and it is silent
+
+`698e3f8` adds `opz-core/src/chain.rs`: the app's view of the ported path. It owns a `Synth` and a
+`Mixer<VoiceEngine>`, assigns each track's voices that track's engine (through the device's own ranges
+from `InstrumentManager`, clamped to the 44-voice array - the last track's layer-1 range runs off the end
+of it), programs parameters through `set_target_parameters`, starts notes on a track's first ungated voice
+through the same reset seam the loop's voices get, and renders a block through the four ported calls. The
+master buffer it returns is the device's interleaved stereo one, 128 words.
+
+Two pieces of state the device keeps and a fresh `Synth` does not, now settable:
+
+| word | meaning |
+|---|---|
+| `+0x6860` | the master volume; zero means silence, so it must be set before anything is audible |
+| `+0x5108` / `+0x5188` | the per-track level and pan the ramps at `+0x50c8`/`+0x5148` move toward |
+
+**The end-to-end test is ignored: the chain renders but stays silent.** With the master volume, the
+level/pan words and the mute mask all set, the remaining candidates are on the render side, in this
+order:
+
+1. **does the voice run at all** - the app's track index is 0-based and every device seam is 1-based, so
+   a note started on "track 4" lands on device track 5's range (`TRACK_START[5]` = 10). Worth printing
+   the voice's `note` and the engine's call count after a `note_on`, the way the whole-mixer test
+   records `ENGINE_CALLS`;
+2. **the ramps** - both start at zero and move a 128th of the distance to their target per sample, so a
+   handful of blocks should be enough for the level ramp to leave zero; if it does not, the target is
+   still the problem (the level target is `+0x5108`, the pan target is the lane-1 chain times
+   `+0x5188`);
+3. **the fold into the master** - `render_master_mix` reads the two group sums, whose gain comes from the
+   folded `+0x684c`/`+0x6850`; both start at the fixture fill on the device and at zero here, and
+   `render_setup` only folds them one step per block toward the song byte.
+
+The cheapest next measurement is (1): the whole-mixer fixture's own pins show exactly which voice fields
+the device needs before it renders, and the port's `Voice` has them all public.
