@@ -1186,3 +1186,36 @@ pointer, plus coefficient records and rate tables), and it is the shape the fixt
 (`x20` = ADSR, `x13` = the previous phase, `x11`'s zeroing, `x8`'s load) converges on a **16-bit table at
 `0x124a890` that the harness leaves zero**, and filling it changes the control flow. That is the port's
 remaining blocker, stated as a data gap rather than a code one.
+
+### The values exist locally: the firmware image is on this machine
+
+Two things this round settled, and they point the same way.
+
+**1. The table is real and its values are the missing input.** Verifying the write landed (`read back: 32767`)
+and hooking the load (`x8 after the ldrsh: ['0x7fff']`) shows the entry is loaded correctly - and a *nonzero*
+entry then drives the engine into an **unmapped read**. So the entries are not a unity table: their magnitude
+steers a further dereference, which is why a flat `0x4000`, a small ramp and `0x7FFF` all fault while zero
+happens to keep the engine on a safe path.
+
+**2. The harness already documents this class of table.** `opzso.py` carries
+
+```python
+GAIN_CONST_5CC    = 0x124A5CC    # i32 used as a Q31 multiplier in the gain chain
+PER_OCTAVE_TABLE  = 0x124A7B0    # 16 x i16, indexed by octave in onNoteOn and by the count class in render
+DEFAULT_HOST_TABLE = 0x7FFF      # unity for PER_OCTAVE_TABLE
+```
+
+with the comment "Addresses inside the library's `.bss` that the *firmware host* fills; the `.so` ships them
+zeroed. Measured, not guessed". `0x124A890` is a third table in that same region (`0x124A7B0` + 0xE0), so it
+belongs in that list - with the *firmware's* values, not a guess.
+
+**And the values are available**: `~/.opz-decode/` holds `z_firmware_1_2_45.zfw` plus raw installs
+(`raws/install_z_firmware_1_2_45_*.bin`), and this worktree has `decrypt_zfw.sh`. Finding the table's contents
+there is a local, offline job - no device interaction, so it does not touch Phase 5's "no device interaction of
+any kind" criterion.
+
+**Next**: decrypt or read the firmware image and locate the block that initialises `0x124A890`'s region
+(alongside `0x124A5CC` and `0x124A7B0`), then fill the harness from it - the same way the wavetable and the
+five constants were filled, but with recovered values rather than calibration. If the image turns out to be
+encrypted beyond what `decrypt_zfw.sh` handles, that is the blocker to report, with the exact file and the
+script's failure.
