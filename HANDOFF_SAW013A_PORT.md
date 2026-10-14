@@ -91,3 +91,44 @@ So: **the state block is at least `0x68` bytes**, `init` zeroes `0x00..0x67` and
 
 That is the first concrete porting step: the state struct and `init`'s variant matrix, both readable
 directly from the listing.
+
+### The variant matrix, resolved
+
+The dispatch table is at **`0x7db0e`** (`adrp x9, 0x7d000` then `add x9, x9, 0xb0e` - reading `0x7d0b0`
+gives a different table). Its first four bytes are `00 09 0d 12`, and the arm is `0x12391c + byte * 4`:
+
+| `init`'s variant | arm | constant | `.bss` word |
+|---|---|---|---|
+| 4 | `0x12391c` | `0xeccc3340` | `0x124a5d0` |
+| 5 | `0x123940` | - (stored straight) | `0x124a5d4` |
+| 6 | `0x123950` | `0xe66699a0` | `0x124a5d8` |
+| 7 | `0x123964` | `0xf333ccd0` | `0x124a5dc` |
+| outside 4..7 | `0x123930` | - (stored straight) | `0x124a5cc` |
+
+All five source words are zero in the shipped `.so` (`.bss`, firmware-filled), so they are **host input**
+for the port - the same situation as `AnalogA`'s filter banks and rate tables, and they belong in a
+`HostTables`-equivalent.
+
+### `render` (0x123994), the preamble
+
+The first instructions, read straight off `SAW013A.asm`:
+
+```text
+sub sp, sp, 0xb0 ; the frame
+ldr  w8, [x5, 0x10] ; the ADSR's phase
+cbz  w8, 0x1245ac   ; phase 0 renders nothing - the same gate as Digital and AnalogA
+ldrb w8, [x3, 0x65] ; a state byte
+cbnz w8, 0x1245f0   ; ... which selects a second path
+ldpsw x8, x9, [x4]  ; params[0] and params[1], sign-extended to 64 bits
+```
+
+Then the arithmetic starts, and its shape is familiar from the other engines: pairs of
+`subs`/`asr #31`/`eor 0x80000000`/`csel ..., vs` (a saturating subtract), `mul` + `asr #0x20` (a
+multiply narrowed by 32), and `umull` for unsigned 32×32 products. The constants it loads in the first
+few dozen instructions are `0x7fffffff`, `0xd5504300`, `-2`, `0x73ef0d00`, `-0x8a00` and `-0xc000` - so
+it mixes Q31 gains with integer steps, as the other engines do.
+
+**Scope**: 800 instructions in `render` alone (plus 260 in `onNoteOn`), against ~1-2 KB for the engines
+already ported - so this is a multi-pass job in the same class, not a quick one. The right next move is to
+read `render` in the order the state is touched, write the state struct from those offsets, and port the
+per-frame loop, exactly as `Synth::render` and `AnalogA` were done.
