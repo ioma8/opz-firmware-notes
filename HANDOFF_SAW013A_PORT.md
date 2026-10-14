@@ -584,3 +584,35 @@ whether the per-table contributions survive their summation, and then at `0x1243
 
 Everything before that window is now positively verified: the tables, the index, the fraction, all five
 entries, and both interpolation products' operands.
+
+### The lane value is zeroed by its own saturation chain
+
+At `0x1242f4` (`dup v4.2s, w15`, where the per-lane value is broadcast for the blend):
+
+```text
+w15 = 0x0          the lane value that becomes v4
+w16 = 0x0
+w12 = 0x77748916   the running sum (nonzero)
+w0  = 0x77748916
+w1  = 0x77748916
+```
+
+So the *sums* are healthy (`0x77748916`) and the lane value is zero. The three instructions before it are
+the saturation idiom:
+
+```text
+0x1242d8  adds w12, w15, w12        ; the sum
+0x1242dc  asr  w15, w12, 0x1f       ; its sign
+0x1242e0  eor  w15, w15, 0x80000000 ; the saturating clamp value
+0x1242e4  csel w15, w15, w12, vs    ; and the select on overflow
+```
+
+`csel w15, w15, w12, vs` takes w15 *when vs is set* - so on a *signed overflow* the clamp value wins over
+the sum. `w15 = 0` therefore means the select took the `eor`-derived operand, and for it to be zero the
+`asr` must have produced zero, i.e. the sum was non-negative *and* the overflow flag was set. That can only
+happen if the operand *before* the add was not what this reading assumes, so the next step is to read
+`w15`'s value at `0x1242d8` - the instruction *before* the add, at full width - rather than three
+instructions later.
+
+Same lesson as the last two rounds, one more time: **read the register at the instruction that consumes
+it**. Every value in this function is a reused register a few instructions on.
