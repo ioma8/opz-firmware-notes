@@ -933,3 +933,33 @@ accumulated lane values.
 verified by measurement (wavetable, index, fraction, operands, contributions, both host seams, the state map,
 the phase pair) and one *bit-select* is unaccounted for. That is the port's remaining blocker, and it is one
 instruction's provenance rather than a missing host input.
+
+### The products are zero in all 64 iterations - the loss is in the lane pair
+
+Reading the pair the select narrows (`q3`/`q4` at `0x124338`, `shrn v3.2s, v3.2d, 0x1f`):
+
+```text
+iterations 64 with a nonzero product 0
+last two (q3, q4): [('0x0', '0x0'), ('0x0', '0x0')]
+```
+
+So the packed select is not dropping anything: **its operands are already zero**, every iteration. And the
+select itself is now understood - it is the 2^62 sentinel blend, the same idiom the port already has:
+
+```text
+0x124334  cmeq v5.2d, v3.2d, v0.2d   ; v0 = 2^62, so v5 = "this lane's product is the sentinel"
+0x124338  shrn v3.2s, v3.2d, 0x1f    ; the product narrowed by 31
+0x124350  xtn  v5.2s, v5.2d
+0x124364  bic  v5.2s, 0x80, lsl 24   ; the mask with its sign bit cleared
+0x124380  orr  v3.8b, v5.8b, v3.8b   ; blend: narrowed product, or 0x7fffffff where the sentinel was
+```
+
+The scalar lane accumulator `x15` is nonzero in those same iterations (`0x77748916`), so the scalar path and
+the vector path part company somewhere between the accumulator and the `zip1`/`zip2` that build this pair
+(`0x12409c`/`0x1240a0`). That is the last gap, and it is a short one: the pair's two source registers at
+`0x12409c` are the next thing to read.
+
+**Honest summary of this engine's state after this round**: the select is *explained* (sentinel blend, same as
+the port's other engines), the store is *explained* (accumulate-into, 64 interleaved pairs), the products are
+*pinned* as the first zero going backwards, and everything upstream has been verified. One vector pair's
+provenance remains.
