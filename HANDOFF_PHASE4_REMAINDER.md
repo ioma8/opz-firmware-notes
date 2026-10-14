@@ -1280,3 +1280,43 @@ to confirm which branch `renderVoice`'s re-trigger takes for a drum voice - in p
 `pending_note`/`pending_vel` (not `note`) are what it plays, and whether the drum engine's `note_on` is
 reached from there - with the same `state_fields()` dump taken across a *single* re-trigger rather than every
 16 blocks.
+
+### The drum deferral: the deadlock is real, and the host half is what is missing
+
+Reading the re-trigger path settles the mechanism, and shows why both attempted fixes failed.
+
+`Voice::render_voice` ends with:
+
+```rust
+if self.adsr.phase != 0 { return; }
+// The envelope ended: the voice goes idle, and starts the note it was gated on, if any.
+self.reset_note();                       // zeroes level, mul, add and phase
+if self.gated_note != IDLE_NOTE {
+    let (note, velocity, entity, extra) =
+        (self.gated_note, self.pending_note, self.entity, self.pending_vel);
+    self.note_on(note, velocity as u32, entity, extra, params, host, synth);
+}
+```
+
+So the deferred note is played by the *render*, but only once the phase has reached zero - and nothing
+zeroes it. `note_on`'s deferral branch sets `phase = 5` and returns without touching the engine, `reset_note`
+runs only when the phase is already zero, and a drum voice's envelope lives inside the engine (it never
+touches the voice's). The first kick therefore leaves `phase = 5` and every later kick is deferred forever:
+the slice is never rewound, which is the `position` running to 409600 that the dump showed.
+
+**Why the first fix failed**: it cleared the phase for a drum voice whose `gated_note != IDLE_NOTE`, but
+`Chain::note_on` *picks* a voice precisely by `gated_note == IDLE_NOTE`, so the condition could never hold.
+**Why the second failed too**: clearing the phase unconditionally for a drum voice left the pass count at 28
+instead of 29 - it changes behaviour for the *fresh* hit as well, where the phase is the only thing that
+makes the engine's note stick.
+
+**What is actually missing is the host half of the envelope.** On the device the app runs
+`updateParametersADSR` (ported in `adsr.rs`) from the plugin's envelope bytes every block, which is what
+walks `phase` down to zero and lets the re-trigger fire; the interim host faked that by arming the envelope
+per note and calling the engine directly. The port's `Voice` owns the *device's* half faithfully; the Chain
+never runs the host's. So the fix is in the Chain: per block, per voice, run the envelope update from the
+track's ADSR parameters - and since the wiring has no ADSR bytes in `TrackParams` yet, that is the piece to
+add (the device's envelope words are the plugin's, and the app's presets are the place to carry them).
+
+Until then the drum tracks play their first hit and stall, which is exactly what
+`drum_beat_and_synth_line_play_together` measures.
