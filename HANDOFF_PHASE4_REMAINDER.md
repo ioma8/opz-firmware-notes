@@ -238,7 +238,8 @@ still has to produce it byte for byte for the fixture to pass.
 | ~~a voice's `+0x174`~~ | fixed | the `centsDetune` aliasing, above |
 | the level ramp `+0x50c8` | fixed | the lane-1 target chain's first factor |
 | the pan ramp `+0x5148` | ~3% off | one of the four chain factors is still not the one the original multiplies |
-| the counters and peaks | `+0x6aa0` on | the `voices == 0` branch and the 16-bit peak decay |
+| ~~the counters and peaks~~ | fixed | the per-track gate is a byte, and the 1000-block branch |
+| the two modulation-block words | 19 and 38 | the tail's master LFOs (slots 8/9)'s shape output, ~0.03% off |
 | the group sums | word 0 | the mix-down itself, and the four accumulator gains |
 
 Measured for track 0 of the `filled` case, the preamble's four complements are
