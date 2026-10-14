@@ -161,8 +161,12 @@ Goal: a working 4-track drum groovebox built on a ported OP-Z engine.
       byte for byte, with no tolerance and no budget, and passes - the read loop (both position
       accumulators), the release path, non-zero slices and retrigger all agree with the original now
       that the loop is translated. The old per-case budgets were deleted with the last of them.
-- [ ] **Unverified by a human:** nobody has listened to `cargo run -p opz-tui` yet. Everything above is
-      offline evidence; the interactive check is still owed.
+- [ ] **Unverified by ear:** nobody has listened to `cargo run -p opz-tui` yet. Everything above is
+      offline evidence; the interactive check is still owed. What *is* verified is that the app runs and
+      takes keys (driven through a pty: it enters the alternate screen, shows the six tracks, the loaded
+      packs and the grid, and a step programmed by keystroke shows up), and that the same `Engine` writes
+      a non-silent WAV offline (`afinfo`: 1 ch / 44100 Hz / Int16; peak non-zero; byte-identical across
+      runs). Only the listening half needs a person.
 
 **Playable check:** `cargo run -p opz-tui`, programme a beat on tracks 1–4 (each with its own pack),
 press play, hear four distinct drum sounds in time; tempo changes take effect live.
