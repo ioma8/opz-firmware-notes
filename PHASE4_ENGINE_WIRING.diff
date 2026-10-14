@@ -1,5 +1,5 @@
---- /dev/fd/63	2026-10-14 11:23:18
-+++ crates/opz-core/src/engine.rs	2026-10-14 11:22:14
+--- /dev/fd/63	2026-10-14 11:25:48
++++ crates/opz-core/src/engine.rs	2026-10-14 11:25:34
 @@ -10,6 +10,7 @@
  //! The interim host is deliberately thin: it exists so Phase 4 can replace it with the ported
  //! `Synth`/`InstrumentManager`/`ADSR`/`Compressor` chain without any caller changing.
@@ -8,9 +8,19 @@
  use crate::pack::SamplePack;
  use crate::params::{PARAM_COUNT, TrackParams};
  use crate::pattern::{
-@@ -537,7 +538,15 @@
+@@ -535,9 +536,24 @@
+         // The engines take the velocity as the byte the device's voice record holds at `+0x3d`.
+         let velocity = velocity as u8;
          match self {
-             VoiceEngine::Drum(engine) => engine.note_on(note, velocity, &words),
+-            VoiceEngine::Drum(engine) => engine.note_on(note, velocity, &words),
++            VoiceEngine::Drum(engine) => {
++                // The drum engine's envelope only ever decays, so every note has to re-arm its level
++                // (the host's `setAdsr` on the device). This has to be here rather than in the chain:
++                // a gated note is played by the ported `Voice`'s own re-trigger, which reaches the
++                // engine through this adapter and never passes the chain again.
++                engine.rearm_envelope(0x7fff_ffff);
++                engine.note_on(note, velocity, &words);
++            }
              VoiceEngine::Digital(engine) => engine.note_on(note, velocity, &words),
 -            VoiceEngine::Analog(voice) => voice.engine.note_on(note, velocity, &words),
 +            VoiceEngine::Analog(voice) => {
@@ -25,7 +35,7 @@
          }
      }
  
-@@ -561,7 +570,9 @@
+@@ -561,7 +577,9 @@
      pub pattern: Pattern,
      pub params: [TrackParams; TRACKS],
      pub transport: Transport,
@@ -36,7 +46,7 @@
      /// The note each track is sounding and the frames left before its release, so the host can call
      /// `note_off` at the frame the note's `duration` ends.
      notes: [Option<(u8, u32)>; TRACKS],
-@@ -579,36 +590,29 @@
+@@ -579,36 +597,30 @@
      staged: Vec<i32>,
      staged_pos: usize,
      staged_left: usize,
@@ -69,6 +79,7 @@
 +            chain.load_pack(track, &pack);
          }
 -        Self {
++        chain.set_compressor_references();
 +        // The state the device boots with and the app does not carry: every track enabled at full
 +        // level and centre pan (the ramps at `+0x50c8`/`+0x5148` move toward those words from zero),
 +        // and the parameters snapped to the boot presets rather than gliding to them from zero a
@@ -85,7 +96,7 @@
              notes: [None; TRACKS],
              mutes: [false; TRACKS],
              octave: std::array::from_fn(|track| preset_octave(track, 0)),
-@@ -617,7 +621,36 @@
+@@ -617,7 +629,36 @@
              staged: Vec::new(),
              staged_pos: 0,
              staged_left: 0,
@@ -122,7 +133,7 @@
      }
  
      /// Handle one command from the frontend. Never allocates more than the command itself carries.
-@@ -625,12 +658,7 @@
+@@ -625,12 +666,7 @@
          // One mirror for both sides: `apply_to` is the only place that mutates pattern/params, so
          // the frontend's copy cannot drift from the engine's.
          command.apply_to(&mut self.pattern, &mut self.params);
@@ -136,7 +147,7 @@
          match command {
              Command::LoadPreset { track, preset } => {
                  if let Some(slot) = self.octave.get_mut(*track) {
-@@ -643,9 +671,7 @@
+@@ -643,9 +679,7 @@
              Command::Play => self.transport.playing = true,
              Command::Stop => self.transport.playing = false,
              Command::LoadPack { track, pack } => {
@@ -147,7 +158,7 @@
              }
              Command::SetMute { track, muted } => {
                  if let Some(slot) = self.mutes.get_mut(*track) {
-@@ -657,6 +683,10 @@
+@@ -657,6 +691,10 @@
              }
              _ => {}
          }
@@ -158,7 +169,7 @@
      }
  
      /// Render `out` (mono Q31), advancing the transport and triggering notes.
-@@ -696,11 +726,7 @@
+@@ -696,11 +734,7 @@
          // A note whose length has run out is released before a step on the same track retriggers it.
          for track in 0..TRACKS {
              if let Some((note, 0)) = self.notes[track] {
@@ -171,7 +182,7 @@
                  self.notes[track] = None;
              }
          }
-@@ -718,29 +744,47 @@
+@@ -718,29 +752,47 @@
              }
          }
  
@@ -237,7 +248,7 @@
          for slot in self.notes.iter_mut() {
              if let Some((note, left)) = *slot {
                  *slot = Some((note, left.saturating_sub(BLOCK_FRAMES as u32)));
-@@ -791,11 +835,7 @@
+@@ -791,11 +843,7 @@
              // editable in the TUI and stored, but playback still starts every note on its step's
              // first block, because the host renders whole 64-frame blocks. The device's own
              // sub-block timing lands with the ported `Sequencer`/`InstrumentManager` in Phase 4.
@@ -250,7 +261,7 @@
          }
      }
  }
-@@ -871,7 +911,7 @@
+@@ -871,7 +919,7 @@
              pattern: Pattern::default(),
              params: std::array::from_fn(|_| TrackParams::default()),
              transport: Transport::new(44_100),
@@ -259,7 +270,7 @@
              notes: [None; TRACKS],
              mutes: [false; TRACKS],
              octave: [0; TRACKS],
-@@ -880,6 +920,7 @@
+@@ -880,6 +928,7 @@
              staged: Vec::new(),
              staged_pos: 0,
              staged_left: 0,
@@ -267,7 +278,7 @@
          }
      }
  
-@@ -1113,6 +1154,14 @@
+@@ -1113,6 +1162,14 @@
          engine.render(&mut flush);
          block.fill(0);
          engine.render(&mut block);
@@ -282,7 +293,65 @@
          assert!(block.iter().all(|s| *s == 0), "a muted track is silent");
          assert!(
              engine.notes[0].is_some(),
-@@ -1225,6 +1274,18 @@
+@@ -1187,6 +1244,57 @@
+     /// Phase 2's playable check, offline: a drum beat and a synth line sound *together*, and
+     /// sweeping the synth's parameters while it runs changes what comes out.
+     #[test]
++    fn debug_kicks_only() {
++        let step_frames = frames_per_step(44_100, 120.0) as usize;
++        let mut engine = Engine::new(44_100, vec![(0, integration_pack())]);
++        for step in [0usize, 4, 8, 12] {
++            engine.handle(&Command::ToggleStep { track: 0, step });
++            engine.handle(&Command::SetDuration {
++                track: 0,
++                step,
++                duration: DURATION_UNITS_PER_STEP / 4,
++            });
++        }
++        engine.handle(&Command::Play);
++        let mut out = vec![0i32; step_frames * STEPS];
++        if std::env::var("KICK_DEBUG").is_ok() {
++            for block in 0..(step_frames * STEPS / 64) {
++                engine.render(&mut out[block * 64..block * 64 + 64]);
++                if (block as usize) % 16 == 0 {
++                    let voice = engine.chain.debug_voice(
++                        opz_dsp::manager::InstrumentManager::<VoiceEngine>::voice_start_index(0, 0)
++                            as usize,
++                    );
++                    if let VoiceEngine::Drum(engine) = &voice.engine {
++                        let f: Vec<String> = engine
++                            .state_fields()
++                            .iter()
++                            .filter(|(n, _)| {
++                                ["gain_a", "gain_a_step", "gain_b", "gain_b_step", "position",
++                                 "window_start", "window_end", "window_a", "velocity", "adsr_level"]
++                                    .contains(n)
++                            })
++                            .map(|(n, v)| format!("{n}={v}"))
++                            .collect();
++                        eprintln!("  b{block}: {}", f.join(" "));
++                    }
++                }
++            }
++            return;
++        }
++        engine.render(&mut out);
++        let peaks: Vec<i64> = (0..4)
++            .map(|q| {
++                out[q * 4 * step_frames..(q + 1) * 4 * step_frames]
++                    .iter()
++                    .map(|s| (*s as i64).abs())
++                    .max()
++                    .unwrap_or(0)
++            })
++            .collect();
++        eprintln!("  kicks-only quarters: {peaks:?}");
++    }
++
+     fn drum_beat_and_synth_line_play_together() {
+         let step_frames = frames_per_step(44_100, 120.0) as usize;
+         let pack = integration_pack();
+@@ -1225,6 +1333,18 @@
          for quarter in 0..4 {
              let from = quarter * 4 * step_frames;
              let slice = &out[from..from + 4 * step_frames];
@@ -301,8 +370,8 @@
              assert!(
                  slice.iter().any(|s| *s != 0),
                  "quarter {quarter} of the bar is not silent"
---- /dev/fd/63	2026-10-14 11:23:18
-+++ crates/opz-core/src/chain.rs	2026-10-14 11:22:14
+--- /dev/fd/63	2026-10-14 11:25:48
++++ crates/opz-core/src/chain.rs	2026-10-14 11:25:34
 @@ -29,6 +29,10 @@
  const TRACKS: usize = 8;
  /// The slices a pack command can carry, matching the app's sample pack.
@@ -343,7 +412,35 @@
      /// The host values the next block reads.
      pub fn host_mut(&mut self) -> &mut HostValues {
          &mut self.host
-@@ -302,6 +314,40 @@
+@@ -185,6 +197,15 @@
+         opz_dsp::synth::force_parameters_to_target(&mut self.synth.words);
+     }
+ 
++    /// The master compressor's reference words. On the device these are plugin data; left at zero the
++    /// compressor clamps everything it sees, which shows up as a track whose first hit is loud and
++    /// whose later ones are ducked into nothing.
++    pub fn set_compressor_references(&mut self) {
++        for (offset, value) in [(0x6854usize, 0i32), (0x6298, 0x7fff_ffff), (0x629c, 0)] {
++            self.synth.words[offset / 4] = value as u32;
++        }
++    }
++
+     /// The device's master volume (`+0x6860`), which the app's master level maps onto. Zero means
+     /// silence, so it has to be set before anything is audible.
+     pub fn set_master_volume(&mut self, q31: i32) {
+@@ -270,6 +291,11 @@
+         if matches!(voice.engine, VoiceEngine::Analog(_)) {
+             voice.adsr.phase = 5;
+         }
++        // The drum engine's envelope lives in its own state and only ever decays: every hit has to
++        // re-arm its level, which on the device is the host's `setAdsr` call.
++        if let VoiceEngine::Drum(engine) = &mut voice.engine {
++            engine.rearm_envelope(0x7fff_ffff);
++        }
+         self.last_note = host.last_note;
+     }
+ 
+@@ -302,6 +328,40 @@
  
      /// Render one block and hand back the master output.
      pub fn render_block(&mut self) -> &[i32] {
@@ -384,3 +481,20 @@
          let setup = SetupHost {
              master_params: self.host.master_params,
              pan_sources: self.host.pan_sources,
+--- /dev/fd/63	2026-10-14 11:25:48
++++ crates/opz-dsp/src/sample_player_gain.rs	2026-10-14 11:24:58
+@@ -613,6 +613,14 @@
+     /// The golden harness supplies the struct as an input (the derivation
+     /// `updateParametersADSR`/`Voice::noteOn` is Phase 4 work), so this replaces whatever the
+     /// engine holds and `note_on` leaves it alone.
++    /// Re-arm the envelope's level from its start level, which is what a note-on does on the device
++    /// through the host's `set_adsr_words`. Without it the level only ever decays: `render` advances
++    /// it toward zero and nothing puts it back, so a track's later hits get quieter and quieter.
++    pub fn rearm_envelope(&mut self, level: i32) {
++        self.adsr.start_level = level;
++        self.adsr.level = level;
++    }
++
+     pub fn set_adsr_words(&mut self, words: [u32; ADSR_WORDS]) {
+         self.adsr = Adsr {
+             start_level: words[0] as i32,
