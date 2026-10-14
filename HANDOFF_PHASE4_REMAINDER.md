@@ -617,3 +617,18 @@ device's 198 574 080, and the device's number is `256 * 120 * 0x1940`: a rate-ta
 against the port's 1792, with the same tempo. So the two runs disagree about the rate index (or the
 tempo), even though both are handed `params[14] == 0` in this case - which points at the smoothed
 parameter block rather than the rate arithmetic.
+
+### The `silent` case: the LFO phase is a *count* of renders
+
+The 7x is not a rate error: the device's `RATES` are `[256, 128, 64, 32, 16, 8, 4, 2]` and the
+generated table matches, so `256 * 120 * 0x1940 = 198 574 080` is exactly what `RATES[0]` gives at
+120 BPM. The port's phase is **seven times one step**, and seven is the number of LFO renders slot 0
+takes in that block: one from the track loop plus one per voice re-trigger through `Synth::resetLfo`.
+So the port's renders *accumulate* and the device's do not.
+
+`Lfo::reset` re-arms (zeroing the phase) only when `params[16] >> 30 != 0`, and `render` re-arms when
+the LFO's own `enabled` byte is set. In the `silent` case the smoothed block is all zeros and the
+`enabled` byte is zero, so neither gate should fire and both sides should accumulate - yet the device
+ends one step after zero. That is the thing to check next: hook `Lfo::reset` and the rearm inside
+`Lfo::render` (`0x13d0d0`-`0x13d184`) during a re-trigger and see which gate actually fires, rather
+than trusting the two conditions as read.
