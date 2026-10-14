@@ -632,3 +632,37 @@ the LFO's own `enabled` byte is set. In the `silent` case the smoothed block is 
 ends one step after zero. That is the thing to check next: hook `Lfo::reset` and the rearm inside
 `Lfo::render` (`0x13d0d0`-`0x13d184`) during a re-trigger and see which gate actually fires, rather
 than trusting the two conditions as read.
+
+### The track loop matches: `Synth::render`'s loop is verified
+
+`9968d3d` un-ignores `synth_render_tracks_match_the_original`. All **14** whole-mixer cases pass,
+comparing every word the track loop owns:
+
+| verified | |
+|---|---|
+| the setup (interpolate + the four master words + the pan complements) | ✓ |
+| the LFO array, its state, the reset seam | ✓ |
+| the voices, their records, the engine dispatch | ✓ |
+| the eight track filters, the eight DC blockers | ✓ |
+| the counters and peaks, the overload counter | ✓ |
+| both per-track level and pan ramps | ✓ |
+| the group gain, the mix-down, both 128-word accumulator groups | ✓ |
+
+The last two blockers were plumbing rather than arithmetic, and both are worth remembering:
+
+1. **`g_synth` was never set by the whole-mixer fixture**, so every voice re-trigger reset an LFO at
+   address zero plus the offset while the Synth's own LFOs only took the loop's single render. The
+   voice fixtures set it; this one did not.
+2. **The second LFO reset is gated on the sequencer byte at `+0x1c`**, which the test hard-coded to
+   zero instead of passing the fixture's `playing` flag. Slot 1's re-triggers all come from voices
+   whose pins give layer 1, which is what made the gate visible.
+
+Harness traps found on the way, both able to waste a session:
+
+* running the host test with `SYNTH_RENDER_DEBUG=1` **skips the assertions** (the debug path
+  `continue`s), so a green result under that variable means nothing;
+* `memset`/`memcpy`/`memmove` are implemented natively in `opzso.py`, so their writes are invisible to
+  `UC_HOOK_MEM_WRITE`; and Unicorn reports the *old* value in a byte-sized write hook.
+
+What the test deliberately does not look at: the three send buffers, the four output blocks and the
+master tail - those are unported, and the sends' gains are still undecoded.
