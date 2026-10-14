@@ -251,9 +251,20 @@ Note on the group gain: it is **not** the problem. The earlier "1,024 short" was
 conversion of `0x1a1dc8e`; the device's own computation is `0x842f4 + 0x199999a = 0x1a1dc8e` and the
 port's formula gives exactly that.
 
-Next: the track filters (0x688c on) and the DC blockers (0x69ec on) are inside the object and are not
-in any compared region yet, so the one-LSB difference at group 0's sample 4 has not been localised
-past the mix-down. Adding those two regions is the next check.
+The track filters' cutoff and level are the layer-0 modulation block's **words 8 and 9**
+(`DAT_01328d0c`/`DAT_01328d10` are 0x20 and 0x24 bytes in); the port was passing 11 and 12, so every
+filter ran on the wrong parameters. `a9a466c` fixes that, and **the eight track filters and the eight
+DC blockers now match word for word**.
+
+The comparison covers everything the loop owns: the setup, the LFO array and its state, the voices and
+their engine dispatch, the filters, the blockers, the counters and peaks, and both ramps. Two things
+are left in the loop:
+
+1. the two modulation-block words the tail's master LFOs leave (19 and 38, ~0.03% off);
+2. the group sums, one LSB out at group 0's **sample 4** - samples 0..3 match, so it is not a
+   systematic arithmetic difference but something that starts partway. Hooking the device's mix-down
+   loop (`0xf83f0`-`0xf84e8`, with `x11 = 0x10` for sample 4) and comparing its intermediate values is
+   the direct next step.
 
 **The group gain's formula, confirmed from the disassembly** (`0xf7d44`-`0xf7d64`):
 
