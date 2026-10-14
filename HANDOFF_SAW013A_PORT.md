@@ -454,3 +454,41 @@ is still unknown - the same question `AnalogA`'s `_RFilter_fetch` answered by be
 the engine actually consumes after the call, then try the values the callback was *given* as the ones it
 should write back - the C passes four values in, and a callback that stores them somewhere sensible is the
 common shape.
+
+### There are *two* interface calls, and the first is handed the ADSR
+
+The prologue calls the same `+0x38` slot twice, which the earlier "one callback" reading missed:
+
+```c
+(**(code **)(*(long *)PTR_interface_002d6010 + 0x38))(param_6, param_5[2], param_5[3], param_5[4], param_5[5]);
+(**(code **)(*(long *)puVar10 + 0x38))((long)param_4 + 8, uVar21, uVar1, uVar3, uVar24);
+```
+
+* the **first** is handed the **ADSR** (`param_6`) and `params[2]..params[5]` - on the device that is the
+  host's envelope update, the thing that turns the plugin's rates into the `mul`/`add` the engines run;
+* the **second** is handed the engine's sub-state (`param_4 + 8`) and four gain values, and the engine then
+  re-reads `param_4` for the table gains.
+
+The harness's stub records *both* (that is why the earlier trace showed two calls per block). Servicing the
+first by ramping the ADSR's level does not lift the silence, and the level reads back zero afterwards - so
+either the engine resets it, or the amplitude does not in fact come from the ADSR.
+
+**What the amplitude chain uses**, read from the C:
+
+```c
+lVar22 = lVar22 * *(int *)((long)param_4 + 0x38);          // the init word
+lVar19 = ((byte *)(param_4 + 100) * 0x1020408 + ...) * param_5[0xb];   // velocity fraction times params[11]
+uVar32 = NEON_sqsub(CONCAT44(lVar15 * uVar17 >> 0x1f, lVar19 * (iVar13 + 0x40000000) >> 0x1f),
+                    *(undefined8 *)((long)param_4 + 0x28), 4);
+uVar34 = NEON_sqsub(CONCAT44(lVar15 * uVar6   >> 0x1f, lVar38 * (iVar20 + 0x40000000) >> 0x1f),
+                    *(undefined8 *)((long)param_4 + 0x30), 4);
+```
+
+So `uVar32`/`uVar34` - the pair the loop post-accumulates - are `NEON_sqsub`s of the pan/gain products
+against the state's **`+0x28` and `+0x30`**, and *those two* are the fields the callback is expected to
+supply (it is handed `param_4 + 8`, and `+0x28`/`+0x30` are inside that). The harness leaves them zero, and
+a `sqsub` against zero is a no-op - which is consistent with everything measured so far.
+
+**Next**: fill `state + 0x28` and `state + 0x30` (four words each) with the values the second call is handed
+(the C passes `uVar21`, `uVar1`, `uVar3`, `uVar24` into the callback, and those four look like exactly this
+pair), then re-run. That is the last untried input the C points at.
