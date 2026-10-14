@@ -274,11 +274,16 @@ Two verification notes worth keeping:
   and regenerating them still passes byte for byte against the original. The stand-in and
   `FIRST_NOTE` both say why. The mapping is pinned by the port's own
   `note_maps_to_the_24_slice_pad_layout` unit test instead, which fails against the old rule.
-- The **substitute packs** (`fabricated-sample-substitutes/`) are what `drum_pack_name` loads, and
-  their slices are evenly cut rather than at hit boundaries: with the device's window (measured from
-  the descriptor's length) the audio of a later slice can fall outside the window. That is a property
-  of the fabricated data, not of the engine — the real packs symlinked into `samplepacks/`
-  (`redmountKicks.aif`, …) are cut at hit boundaries and sound throughout.
+- The **substitute packs** (`fabricated-sample-substitutes/`) cut their slices evenly rather than at
+  hit boundaries, so with the device's window a later slice's audio can fall outside it. The loaders
+  therefore now take the **vendor packs** first and keep the substitutes as the fallback: commit
+  `35706f4` names them in `plugs::FACTORY_TRACK_PACKS` and the four drum plugs' `samples`, adds
+  `plugs::drum_pack_candidates(track)` (vendor first, substitute second), and walks that list in both
+  loaders — the TUI's `load_packs` and the page's `loadPacks`, whose wasm surface gained
+  `packFallback` beside `packName`. Measured with the vendor packs through the wasm: all four load as
+  "ok (user)", a C major octave on the kick track gives six distinct renders (134, 311, 325, 326,
+  341, 298) where the substitutes gave five, and deleting one vendor pack falls back to its substitute
+  for that track alone. This is what ADR 0002 asked for all along.
 
 65 browser checks, 109 tests, smoke test still byte-identical to the TUI's render.
 
