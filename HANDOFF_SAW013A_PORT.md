@@ -306,3 +306,46 @@ second). The output is silent because the host data behind that table is missing
 to learn the table's shape, fill it with the documented pattern the way `AnalogA`'s banks are filled, and
 then the engine should produce a block - which is the point where `make_saw013a_fixtures.py` becomes worth
 writing.
+
+### The host table is a wavetable, and the engine is still silent
+
+`vtable + 0x28` is an **array of five pointers**, each to a wave table the engine reads as
+`table[0x410 + 4 * index]` with a seven-bit index taken from the phase:
+
+```c
+plVar29 = *(long **)(*(long *)puVar10 + 0x28);
+iVar13 = (int)(uVar23 * *(int *)(*plVar29        + 0x410 + lVar15) >> 0x1f);
+iVar14 = (int)(uVar26 * *(int *)(*plVar29        + 0x410 + uVar25) >> 0x1f);
+... the same for plVar29[1] through plVar29[4] ...
+uVar25 = (uVar1 >> 0x19) << 2;      // a seven-bit index, byte offset
+lVar15 = uVar25 + 4;                // and the next entry, for linear interpolation
+```
+
+That is `Digital`'s host-wavetable arrangement exactly, and it explains both earlier symptoms: a
+zero-filled table leaves the engine silent (it multiplies by what it reads), and a constant-filled one makes
+it read unmapped memory (the pointers are followed). The harness now allocates five Q31 sine tables, each
+with the 130 entries the interpolation needs.
+
+**The state `onNoteOn` leaves**, which the harness reads back:
+
+| offset | value |
+|---|---|
+| `+0x10` | `0x7fffffff` |
+| `+0x18`, `+0x1c` | `1` |
+| `+0x4c`..`+0x58` | nonzero (the NEON block) |
+| `+0x64` | the velocity, `100` |
+
+**Still silent.** Setting the five constants to full scale, and the ADSR's level and mul to `0x7fffffff`
+with `add = 0`, each in turn, leaves every sample zero. So the gain the oscillator multiplies with is still
+zero somewhere, and the candidates are:
+
+1. a **host input not yet identified** - the four values the `+0x38` callback receives (the harness records
+   them: `0x40404040`-derived in the first call and three state values plus a phase in the second) suggest
+   the engine expects something *back* from it, rather than treating it as a pure notification;
+2. the **`+0x65` countdown**, which `init` leaves zero and `render` treats as "return early" only when
+   nonzero - so it is not the gate;
+3. the **ADSR's `+0x14` byte**, which the analogue engine also consults and which the harness never sets.
+
+The cheapest next measurement is to read the callback's *return* expectations out of the C - whether the
+four arguments are an output the engine then reads back - and, failing that, to watch `param_1`'s store in
+the loop with a code hook to see which register value it writes.
