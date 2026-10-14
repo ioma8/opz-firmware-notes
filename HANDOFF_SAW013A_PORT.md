@@ -779,3 +779,30 @@ as well.
 just the prologue - the hook pattern is proven and it shows every write, so it will identify the second zero
 the same way it found the first. Then set the ADSR's level *before* `onNoteOn` rather than after, in case the
 engine's own note-on path rewrites it.
+
+### The ADSR level *is* the first zero, and the second one is the lane accumulator
+
+Re-running the trace with the ADSR's level and `mul` set to `0x7fffffff` changes the picture exactly where
+the last note said it would:
+
+```text
+x13 changes in the first block, with the level set:
+  ... 0x124484 -> 0x0000000080000000
+      0x1244ac -> 0x0000000000c265db
+      0x1240ac -> 0x006132ed7db8ce6f     <- nonzero now
+```
+
+So `0x1240a8`'s `mul x13, x14, x13` is healthy once the ADSR's level is set, and the prologue's gain is no
+longer the problem.
+
+What is still zero is the **lane accumulator**: the loop multiplies that gain into `x15` at
+`0x1242bc` (`mul x15, x13, x15`), and `x15` at that point is the value built by the per-table contributions.
+Those were measured healthy at their *first* accumulation (`0x12425c`: `x15 = 0x3fe395bd`,
+`x16 = 0x3790f359`), and `x15` is `sxtw`-ed at `0x1242a0` before the multiply - so the question is whether the
+accumulation *finishes* nonzero, which is one more trace away (the same hook, on `x15`, from `0x1241b0` to
+`0x1242bc`).
+
+**So the engine's silence is two zeros, not one**: the ADSR's level (found, and fixable by the harness
+setting it - or by servicing the first interface call, which is what the device's app does), and whatever the
+lane accumulator ends at. The first is understood; the second is now the only unknown, and it is inside the
+loop's opening, not the prologue.
