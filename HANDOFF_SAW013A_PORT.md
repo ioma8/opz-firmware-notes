@@ -1052,3 +1052,48 @@ is a git branch, and the trace-based measurement has not produced a wrong answer
 **The next concrete action** is the one written above and not yet run: trace the scalar ancestors of the
 `zip` at `0x12409c` (`v1` and `v2`'s sources) across `0x123994`..`0x124098`, the same way `x20` and `x13`
 were found.
+
+### The pair's sources are healthy and the pair is still zero: the loss is one multiply-subtract
+
+Reading the four scalars the pair is built from, at `0x123ff4` (`mov v1.s[1], w13`):
+
+```text
+at 0x123ff4 (w12, w13, w14, w9): [('0x80000000', '0x1', '0x7fbfbfbf', '0x404041')]
+```
+
+All four nonzero. And reading the packed result only a few instructions later, at `0x124054`
+(`sshr v8.2s, v1.2s, 8`, i.e. right after `sqsub v1.2s, v1.2s, v3.2s`):
+
+```text
+at 0x124054 (q1, q2, q8): [('0x0', '0x0', '0x0')]
+```
+
+So between `0x123ff4` and `0x124054` the value is lost, and that window is short and fully listed:
+
+```text
+0x123ff4  mov   v1.s[1], w13
+0x123ffc  mov   v2.s[1], w9
+0x124004  ushll v1.2d, v1.2s, 0     ; widen the pair
+0x124008  ushll v2.2d, v2.2s, 0
+0x12400c  fmov  x9, d1              ; x9 = v1.d[0]
+0x124010  mov   x12, v1.d[1]
+0x124018  mul   x9, x11, x9         ; the per-lane product
+0x124024  mul   x11, x8, x12
+0x124028  fmov  d1, x9
+0x124034  mov   v1.d[1], x11
+0x124040  shrn  v1.2s, v1.2d, 0x1f  ; narrow by 31
+0x12404c  sqsub v1.2s, v1.2s, v3.2s ; minus the state's 0x4c block
+0x124054  sshr  v8.2s, v1.2s, 8
+```
+
+Two candidates inside it, both cheap to separate:
+
+1. **the multiply** (`0x124018`/`0x124024`): its second operands are `w11` and `w8`, and the state's `+0x50`
+   and `+0x58` load into that area earlier (`ldp w16, w14, [x19, 0x54]` and friends). If either is zero the
+   product is zero;
+2. **the `sqsub` at `0x12404c`**: subtracting the state's `0x4c` block (`ldur q1, [x19, 0x4c]` at `0x123d74`)
+   will cancel the value exactly if the two are equal; in the harness `+0x4c` holds `0x55aded23`, which
+   `onNoteOn` wrote, so this is the more suspicious of the two.
+
+The measurement that separates them is a hook at `0x124040` (the narrowed product, before the subtract) and
+at `0x12404c` (the subtrahend `v3`), which the trace pattern gives directly.
