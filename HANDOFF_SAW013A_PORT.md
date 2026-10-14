@@ -748,3 +748,34 @@ misread, because it shows *every* write rather than a snapshot of a reused regis
 whether `x20` is the wavetable pointer array, one of the five tables, or another host structure - and then
 which of its fields is the entry at `+4` that the harness leaves zero. That is one bounded lookup, and it is
 the last unknown before the engine can be expected to produce a block.
+
+### `x20` is the ADSR, so the gain reads the envelope's level
+
+`x20` is set once, at `0x123b18` (`mov x20, x5`), and `x5` is `render`'s **sixth argument - the ADSR** (the
+signature is `render(out, increment, delta, state, params, adsr)`, so `x0`..`x5` are out, increment, delta,
+state, params, adsr). So:
+
+```text
+0x124098  ldrsw x14, [x20, 4]   ; = the ADSR's level, `+0x04` in the struct
+0x1240a8  mul   x13, x14, x13   ; and the gain is multiplied by it
+```
+
+The harness's ADSR starts with `level = 0` (it only sets the phase, `+0x10`), so the gain is multiplied by
+zero on the first pass - **and that is the zero the trace found**. Setting `level` (and `mul`) to full scale
+alongside the constants does *not* lift the silence on its own, so either the pair at `0x124098`/`0x1240ac`
+runs a second time with a level the engine itself has since rewritten, or another link in the chain is zero
+as well.
+
+**What is now positively known about the prologue**, all by measurement:
+
+* `x20` = the ADSR (`mov x20, x5` at `0x123b18`);
+* the gain `x13` is multiplied by `[ADSR + 4]` at `0x1240a8`, then narrowed and clamped against the 2^62
+  sentinel with `x28 = 0x7fffffff`;
+* the pair `0x124098`/`0x1240ac` executes more than once;
+* everything upstream of it (the wavetable, index, fraction, both interpolation operands, the contributions
+  at their first accumulation) is healthy.
+
+**Next**: run the same instruction-level trace for `x14` (rather than `x13`) across the whole render, not
+just the prologue - the hook pattern is proven and it shows every write, so it will identify the second zero
+the same way it found the first. Then set the ADSR's level *before* `onNoteOn` rather than after, in case the
+engine's own note-on path rewrites it.
