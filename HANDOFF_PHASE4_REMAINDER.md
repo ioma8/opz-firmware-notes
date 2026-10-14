@@ -1077,3 +1077,32 @@ With it, 27 of 30 opz-core tests pass. The three that do not, and their causes a
 Also worth noting for the next pass: `program_chain` must run **after** the command's own effect, not
 before, or `SetMaster` is programmed one command late (that was one of the failures, and the patch has the
 fix).
+
+### The wiring, second pass: 29 of 31, and the two left are expectations
+
+`c98e535` keeps three more gains in the chain, and `PHASE4_ENGINE_WIRING.diff` (regenerated) now carries a
+wiring that passes 29 of 31 opz-core tests.
+
+What the second pass found:
+
+| fix | why |
+|---|---|
+| **mute is the enable byte at `+0x6d1c`** | not the `+0x6848` mask (that only reaches the pan lane) and not the level word. A disabled track runs neither its filter nor its mix-down, *sends included*, so it really leaves the master. Confirmed by measuring the byte after a mute: it reads zero. |
+| **the analogue engine's envelope phase** | the analogue voice sustains in one phase and phases 1..4 run out after a block. The app's own host set it on note-on; the ported voice arms phase 1, so the chain sets 5 for analogue voices. |
+| **snap the boot presets** | a fresh `Synth` starts the smoothed block at zero and glides a sixty-fourth per block. The analogue engine's amplitude scales by `params[11]` and rounds to zero at that size, so the analogue track was silent until the parameters were programmed *and forced*. The Engine does that once at construction; edits afterwards keep the device's glide. |
+
+**The two failures left are expectations, not obvious port bugs, and both need the device as a reference:**
+
+1. `mute_silences_a_track_without_stopping_it` asserts the block right after a mute is *all* zero. It is
+   not - the residual is small (peak 1667 against the unmuted block's thousands) and it drains over the
+   next blocks. The suspects are the master compressor's detector ring and the DC blockers' stored
+   input, both of which carry past samples on the device too. Either the test renders until they drain
+   and then asserts silence, or it asserts a ratio.
+2. `drum_beat_and_synth_line_play_together` asserts every quarter of the bar carries energy. Measured
+   quarter peaks are **511769, 2907, 24, 0** - the audio dies out across the bar, which is far more than
+   a compressor would explain and is worth a real diagnosis. The candidates are the drum voice's slice
+   selection per note, the master compressor's detector filling up, and the per-track level ramp (whose
+   target is set, but which the earlier chain debug showed moving to `0x7fffff80` and staying).
+
+Measuring either against the device means driving the Unicorn harness with the same pattern and
+comparing quarter energies; that is the next step for Phase 4's "measured, explained difference".
