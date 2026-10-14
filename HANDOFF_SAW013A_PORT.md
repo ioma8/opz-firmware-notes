@@ -833,3 +833,31 @@ different shape from everything measured so far (all the earlier zeros were cons
 2. **The per-iteration gain** - zero on the loop's first passes. The next trace is `x13` alone over the loop
    body from `0x1241b0` to `0x1242bc`, logging every write, which will show which of the loop's own
    instructions sets it and from what.
+
+### Two measurements disagree, and that is the next thing to settle
+
+The change-log over the whole render says `x13` is **not written** between the prologue and `0x1242bc`, and
+its last recorded change is to a nonzero value (`0x006132ed7db8ce6f` at `0x1240ac`). The per-iteration probe
+at `0x1242bc` says `x13` is **zero** on the first two iterations. Both cannot be true of the same run.
+
+The two probes are separate `render` calls with the same setup on paper (variant 5, the constants at full
+scale, the ADSR's level and mul at `0x7fffffff`, `note_on(60, 100, params)`), so one of them is not what it
+looks like. The likely candidates, in order:
+
+1. **the ADSR writes land before `onNoteOn` runs**, and `onNoteOn` rewrites the level - in which case the
+   trace run (which wrote them before `note_on`) and the probe run (same order) would agree, so this is only
+   ruled out if the orders actually differ in the two scripts;
+2. **the change-log's hook range** (`0x123994`..`0x1245ff`) does not cover a write that happens on a path
+   taken only in the probe run - the loop's first iterations may take a branch the trace run did not;
+3. **`x13`'s value at the loop is set by the *prologue's tail* through a register the log does not track**,
+   e.g. a `mov x13, xN` where `xN` was already zero, which *is* a change and would have been logged.
+
+Settling it is small and mechanical: run **one** script that does both - the change-log hook and the
+`0x1242bc` probe - in the same `render` call, and print the log entry immediately preceding each probe
+result. That removes the possibility of two differing runs and makes the answer self-consistent.
+
+**Why this is worth writing down**: three consecutive rounds have now produced a measurement that a later
+measurement contradicted, and every one of those was a *measurement* problem rather than a finding. The
+engine's inputs are verified, the prologue's gain is understood and fixable, and the remaining question is
+one register inside the loop's opening - so the cost of one more careful, self-consistent measurement is
+small, and the cost of acting on a contradictory one is large.
