@@ -334,6 +334,11 @@ A third commit, `f28c7a3`, closed the tail: an unbounded `render_q31` that abort
 track's engine with a drum one (`VoiceEngine::for_engine`'s catch-all), `bounce_audio` masking with
 the constant instead of the ring it was handed, and the page's three different tempo ranges.
 
+`f5d3dca` closed the last of them by writing down the buffer contracts the ported engines rely on
+(the saw wavetable's required length, the LFO's 19-word output, the transport reporting *block*
+offsets — which is the microtiming gap stated where a reader will hit it), and two mislabelled
+comments.
+
 Two of its findings were wrong, and are recorded as such: the fallback grid cannot render by default
 (it only exists in the fetch-failure path), and `params::interpolate`'s non-convergence is the
 device's own integer glide, which the fixtures pin.
