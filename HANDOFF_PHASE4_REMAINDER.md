@@ -275,14 +275,18 @@ the *same* address - `0x1228cec + 38*4 = 0x1228d38 + 19*4 = 0x1228d84` - because
 blocks overlap by eight words (layer 0 spans `0x1228cec`..`0x1228d3f`, layer 1 starts at `0x1228d38`).
 The port keeps both as offsets into one scratch buffer, so the aliasing is automatic there.
 
-The value itself is odd and worth chasing carefully: the input (the fixture's LCG prefill at that
-word) is **688567**, which is what the port leaves there, while the fixture's `scratch_changed` says
-the device's value after the call is **688384** - which is one step *earlier* in the same LCG sequence.
-A memory-write watchpoint on `0x1228d84` over a re-run of the same case saw **exactly one** write: a
-byte-sized zero at `0xf88d0`. So the two runs disagree about whether that word is written at all, and
-the next step is to diff the probe's scratch against the fixture's recorded values word by word - if
-they differ anywhere, the probe's setup is not identical to the fixture's (the pins, the FX zeroing,
-the tuning table, the sequencer), and the two-word diff is a red herring rather than a port bug. Both blocks match everywhere else, and an LFO's
+**Settled: it is a port bug, and the fixture is faithful.** A re-run of the same case under the probe's
+own setup produces a scratch that matches the fixture's recorded values **word for word, all 3651 of
+them** - so the harness is not lying, and the device really does leave `688384` at `0x1228d84` while
+the port leaves the prefill (`688567`).
+
+The sharp clue is what `688384` is: it is the prefill value of the **neighbouring word** (word 1248,
+`0x1228d80`), not a shape value. So the device's content at `0x1228d84` equals the scratch word one
+below it, which is what a *block* or *vector* store - or a copy that is off by one - looks like. The
+places that write that region are the LFO renders' parameter copy (`out[i] = params[i]` for 18 words,
+so not on its own), their `out[dest]` shape writes, and `Synth`'s track-6 copy of the FX parameter
+blocks. Hooking the stores in `Lfo::render` (0x13d0b8-0x13d7b8) that land in `0x1228d38`-`0x1228e00`
+is the next step, and a watchpoint that missed the write once already needs a broader filter. Both blocks match everywhere else, and an LFO's
 shape value depends on the destination word's *prior* content, so the cause is a write the final
 content has already overwritten. Hooking the LFO renders of the writes in between is the way in.
 
