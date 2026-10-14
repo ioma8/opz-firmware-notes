@@ -51,6 +51,42 @@ hours once.
    ported chain, then the realtime-safety pass.
 4. **Phase 5**: the fidelity pass, `PORT_METHOD.md` updates, and the repeatable-pipeline check.
 
+## `Synth::render`: the port plan the decompilation supports
+
+The Ghidra C (`analyzeHeadless /tmp/ghidra-p4 p4 -process libSnakePlugin.so -noanalysis`, filter
+`Synth::render`) is 2 350 lines and usable once the register noise is skipped. Its shape:
+
+1. **Setup** (C lines 1260-1700): `memset` a 0x400-byte scratch at `this + 0x288`, zero a 0x200-byte
+   scratch at `this + 0x688`, then read the plug flags (`PlugManager::getPlugFlags` twice), the module
+   sends, the active track, the input selector, the BPM four times, and `get_time_monotonic` twice.
+2. **The track loop** (`do { } while (track != 8)`, C lines 1700-2070): for every track 0..7
+   * track 6 is the FX/master slot: the parameter blocks at `+0x5c78`..`+0x5c90`, `+0x60f8`.. and
+     `+0x5c98`.. are copied into the scratch and two scratch words are set to `0x3fffffff`;
+   * otherwise two `Lfo::render` calls: layer 1 at `this + track*0x2c + 0x4ee4` with the block at
+     `+0x5f48` and out `this + 0x15a0`, then layer 0 at `+0x4d00` with the block at `+0x5ac8` and out
+     `this + 0x1554` (both LFOs take `this + track*4 + 0x6ca4` as an input);
+   * two `InstrumentManager::vibrato` calls, on `clamp(this+0x15a0's first word + 0xc0000001) << 1`
+     and on `clamp(this+0x1554's first word * 2 - 0x7ffffffe)`;
+   * zero the 0x200-byte mix buffer at `this + 0xf08`, then `InstrumentManager::render(track, 0, mix,
+     this + 0x1554, &counter)` and the same for layer 1 with `this + 0x15a0`;
+   * a per-track halfword counter at `this + track*2 + 0x6aac` and a per-track value at
+     `this + track*4 + 0x5108`;
+   * the four `FxManager::render` calls, five `trackFilterProcess` and six `trackFilterDcBlock`.
+3. **The master tail** (C lines 2070-3610): `bounceAudio`, the four `Sequencer::getBPM` reads, the two
+   `masterCompressor`-style blends over the mix buffers at `this + 0xee8`/`0xf08`/`0x1108`, the VU
+   words, and the writes into the four output buffers the caller passed.
+
+Everything the statics cover is *inside* the object in the device (`g_synth` is 0x1227798 and every
+`DAT_01328xxx` the function uses resolves to `this + 0x288` (0x400 bytes, `memset`), `+0x688`
+(0x200), `+0xd08`, `+0xf08`, `+0x1108` (the three 0x200-byte mix buffers, 0x12284a0, 0x12286a0 and
+0x12288a0), `+0x1554` and `+0x15a0` (the two modulation blocks, 0x1228cec and 0x1228d38)), so the
+port keeps them as offsets into the `Synth` word buffer it already has - and the fixture must place
+its Synth at 0x1227798 (write the library's own `.bss`) so the absolute scratch addresses line up
+with the object the same way.
+
+`Synth::render`'s signature is `(fract32_t *a, *b, *c, *d)`; the four blocks are the main output
+plus the two FX returns and the sidechain the master compressor reads.
+
 ## The seam decisions a resuming session must not undo
 
 * **`EngineVoice` (in `voice.rs`)** replaces the original's three per-voice function pointers
