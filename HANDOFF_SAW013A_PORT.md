@@ -642,3 +642,40 @@ zero in the chain - which is the value the port has to reproduce.
 (`0x43db0640`), both interpolation operands, the five constants, the ADSR's level/mul, the pointer array's
 shape, and both interface calls' argument shapes. The output buffer is accumulated into (`NEON_sqadd`), so a
 fixture must hand it zeros.
+
+### The contributions are healthy - the window is between two accumulations
+
+At `0x12425c` (`adds w15, w16, w15`, the *first* per-table accumulation):
+
+```text
+x15 = 0x3fe395bd
+x16 = 0x3790f359
+x3  = 0x1bc879ac96be2005   (the 64-bit interpolation product)
+x30 = 0x1bc879ac96be2005
+x5  = 0x1bc879ac96be2005
+```
+
+All nonzero, and `x3` is the product of the table entry and the fraction whose operands were verified two
+rounds ago (`0x7641af3b * 0x3c24f9bf`). So the per-table contributions start healthy.
+
+At `0x1242d8`, the *next* accumulation in program order, both of its operands read zero. The window between
+the two is therefore where the value is lost, and it is a short one:
+
+```text
+0x124260  lsr  x3, x5, 0x1f        ; the contribution's narrowing
+0x124264  asr  w5, w15, 0x1f       ; the saturation sign
+0x12426c  eor  w5, w5, 0x80000000
+0x124274  csel w15, w5, w15, vs
+0x124278  adds w0, w3, w0
+0x12427c  asr  w3, w0, 0x1f
+0x124284  eor  w3, w3, 0x80000000
+... to 0x1242d8
+```
+
+Reading `w15` and `w0` at *each* of those addresses - at the instruction that consumes them, full width -
+will show the first one that reads zero, and that instruction is the bug.
+
+**Progress so far, stated plainly**: the engine's *inputs* are now positively verified (host sine tables,
+index, fraction, both interpolation operands, both interface calls' shapes, the state map), the per-table
+contributions are healthy at their first accumulation, and the loss is inside one short saturation run in
+the prologue. Everything measured is in this file with its numbers.
