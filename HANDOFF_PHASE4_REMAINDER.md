@@ -746,3 +746,57 @@ The comparison itself was the real weakness this round: the broad region list on
 mismatches, and the assertions covered just the LFO array and the group sums. `834d4f8` asserts every
 region and now also asserts the scratch words the device changed (minus the sends and the master bus),
 so the loop's verification rests on assertions rather than on a debug print.
+
+### The tail is verified; the compressor's references are the last thread
+
+`df4e32a` closes the tail's filter question and takes the whole `Synth::render` to a single
+one-LSB difference in the master's output block.
+
+**The FX passes filter the FX mix in place.** The FX-8 filter's output buffer *is* the FX mix
+(`trackFilterProcess(this + 0x6abc, 0x12282a0, ...)`), so the FX-9 pass reads what the FX-8 pass wrote.
+The port filtered a local copy and left the FX mix raw, which is why FX 9's filter state kept the fill.
+Translated into the port as one write-back, all four tail filters and all four tail DC blockers match.
+
+**The master gain chain, instruction for instruction** (`0xf9ea0`-`0xf9fcc`, and the volume pass at
+`0xfa4c0`):
+
+```text
+x10 = (u64)(this[0x6858]^2) >> 31                 ; lsr, so the narrowed square is its low 32 bits
+x10 = (signed)((i32)x10 * 0x5fffffff)             ; smull, then `lsr x10, x10, #31`
+x10 = (square == 2^62) ? 0x5ffffffe : x10         ; the non-standard sentinel
+gain = sat_add(x10, 0x20000000)
+
+per sample:
+  x16 = (i64)mix[i] * gain
+  x16 = sbfx(x16, #29, #34) & ~3                  ; a 34-bit field: the sign comes from bit 62
+  x16 = clamp(x16, -0x80000000, 0x7fffffff)
+  sq  = mul31_arith(x16 * x16)                    ; sentinel 0x7fffffff
+  cub = mul31_logical(sq * x16)                   ; sentinel 0x7fffffff
+  x17 = sat_add(x16, sat_sub(x16, cub) >> 1)      ; asr #1
+  out = sat_add(mul31_logical(x16 * dry), mul31_logical(x17 * wet))
+  peak = max(peak, out)                           ; stored as a halfword at this + 0x6c34
+volume pass:  out = min(0x7fffffff, mul31_arith(this[0x6860] * out))
+```
+
+The port's earlier form differed in three places (`*2 >> 0x1e` instead of the 34-bit `sbfx`, a
+`-0x7fffffff` lower clamp, the blend written into the scratch) and now matches the assembly.
+
+**Verification state.** The comparison asserts, for all fourteen cases: the setup, the LFO array and its
+state, the voices and their engine dispatch, the eight track filters and eight DC blockers, the tail's
+four filters and four blockers (exact spans, not the unmodelled gaps between them), the counters and
+peaks, both ramps, the group gain, the mix-down, both accumulator groups, the modulation blocks, and
+every scratch word the device changed except the sends. Only the master's output block and the
+compressor's state are still outside the assertions - and since the chain above now matches the
+assembly, **the one-LSB output difference points at the compressor's four references**, which is the
+next thread:
+
+| reference | port reads |
+|---|---|
+| 1 | `this + 0x6854` |
+| 2 | `this + 0x6298` |
+| 3 | `sat_add(mul31(this[0x629c] * 0xc8f040d), 0x734ec8aa)` |
+| 4 | `sat_add(COMPRESSOR_GAIN[bucket], mul31(((bpm - 40) mod 20 * 0x6666666) * (table[bucket+1] - table[bucket])))` |
+
+Also fixed this round: the tail region first compared `0x6abc..0x6c00`, whose gaps hold bytes nothing
+models (the device leaves zero there, the port's fill does not); it now compares the four 10-word filters
+and four 6-word blockers exactly.
