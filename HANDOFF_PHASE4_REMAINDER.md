@@ -70,19 +70,27 @@ The Ghidra C (`analyzeHeadless /tmp/ghidra-p4 p4 -process libSnakePlugin.so -noa
    * zero the 0x200-byte mix buffer at `this + 0xf08`, then `InstrumentManager::render(track, 0, mix,
      this + 0x1554, &counter)` and the same for layer 1 with `this + 0x15a0`;
    * a per-track halfword counter at `this + track*2 + 0x6aac` and a per-track value at
-     `this + track*4 + 0x5108`;
+     `this + track*4 + 0x5108`, and the mix-down into the accumulation buffers at 0x1227a20/0x1227e20
+     (four track groups of 0x200 bytes) plus the scratch at 0x1228020/0x12284a0, with the layer-0/1
+     modulation blocks at 0x1228cec and 0x1228d38 handed to the voices as their parameter block;
    * the four `FxManager::render` calls, five `trackFilterProcess` and six `trackFilterDcBlock`.
 3. **The master tail** (C lines 2070-3610): `bounceAudio`, the four `Sequencer::getBPM` reads, the two
    `masterCompressor`-style blends over the mix buffers at `this + 0xee8`/`0xf08`/`0x1108`, the VU
    words, and the writes into the four output buffers the caller passed.
 
-Everything the statics cover is *inside* the object in the device (`g_synth` is 0x1227798 and every
-`DAT_01328xxx` the function uses resolves to `this + 0x288` (0x400 bytes, `memset`), `+0x688`
-(0x200), `+0xd08`, `+0xf08`, `+0x1108` (the three 0x200-byte mix buffers, 0x12284a0, 0x12286a0 and
-0x12288a0), `+0x1554` and `+0x15a0` (the two modulation blocks, 0x1228cec and 0x1228d38)), so the
-port keeps them as offsets into the `Synth` word buffer it already has - and the fixture must place
-its Synth at 0x1227798 (write the library's own `.bss`) so the absolute scratch addresses line up
-with the object the same way.
+The scratch the function touches is **not** inside the object: the mix buffers and the modulation
+blocks are separate `.bss` objects addressed absolutely - 0x1227a20 (0x400, `memset`), 0x1227e20,
+0x1228020, 0x12284a0, 0x12286a0, 0x12288a0, 0x1228aa0 (`inputBuffer`), 0x1228cec and 0x1228d38 - so
+the port owns one buffer spanning 0x1227a00..0x1228e00 (0x1400 bytes, 1 280 words) and indexes it by
+device offset, while the `Synth` object itself stays wherever its owner puts it. (An earlier reading
+of these as `this + 0x288` and friends was wrong: `memset(&DAT_01327a20, 0, 0x400)` would have wiped
+the voice array at `this + 0x480`, which the device plainly does not do.)
+
+The fixture is already in place: `synth_render_fixtures` in `make_host_fixtures.py` keeps the object
+in an allocation and the scratch in the library's `.bss`, stubs one engine render for all 132 voice
+slots - the stub *fills* the engine's block from the increment, so the mixer has signal to scale -
+and records 8 cases. `synth_render_fixture_is_alive` in `host.rs` checks it drives the real thing
+until the port can replay it.
 
 `Synth::render`'s signature is `(fract32_t *a, *b, *c, *d)`; the four blocks are the main output
 plus the two FX returns and the sidechain the master compressor reads.
