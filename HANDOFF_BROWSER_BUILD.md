@@ -246,6 +246,42 @@ contradicted in prose.
 
 62 checks, 109 tests, the smoke test still reports 85 344 samples identical to the TUI's render.
 
+## Eighth pass: the kit's slices, and the black keys as piano keys (`3df37d4`)
+
+Two reports from use:
+
+- **on a sample-based track, every piano key plays the same sound** — correct, and it was the port's.
+  A drum track spreads its pack's 24 slices over two octaves of notes, and the note selects one
+  through `SampleLoader::getSampleData`, whose rule the module header already documents as
+  `(note + 19) % 24` clamped to the slice count. The code implemented the *golden harness's* stand-in
+  instead, `note - 36` clamped, and the difference that matters is the wrap: two octaves above the drum
+  base it runs off the end and every key lands on the pack's last slice. Measured on the old build,
+  notes 36..59 gave distinct output and every note from 60 up gave peak 234 — one sound for the whole
+  keyboard. Now the same keys give 106, 238, 298, 290, 300, 207, and a transposition walks on through
+  the kit (four octaves returns to the start, since 48 semitones is two pack cycles).
+- **the black keys should be piano keys too.** §2.9's ten black keys now play the semitone above the
+  white key they sit on when no modifier is held (37, 39, 42, 44 for the first four — C major's
+  sharps); with `project`, `tempo`, `track` or `mixer` held they are the value keys 1–0 as before, and
+  with `shift` they report §2.11's punch-in effects as unavailable, like the white keys.
+
+Two verification notes worth keeping:
+
+- The **golden fixtures could never have caught this**, and no longer pretend to. This harness renders
+  the original *silent for any slice but the first* — measured directly: slice 0 peaks at 8.9e8 and
+  slices 2 and 7 come out at 0 — so a fixture generated with the device's rule would be silent. The
+  fixture cases therefore play **note 29**, the one note where the device's rule and the harness's
+  stand-in agree (both give slice 0), which keeps them valid whichever mapping the port implements,
+  and regenerating them still passes byte for byte against the original. The stand-in and
+  `FIRST_NOTE` both say why. The mapping is pinned by the port's own
+  `note_maps_to_the_24_slice_pad_layout` unit test instead, which fails against the old rule.
+- The **substitute packs** (`fabricated-sample-substitutes/`) are what `drum_pack_name` loads, and
+  their slices are evenly cut rather than at hit boundaries: with the device's window (measured from
+  the descriptor's length) the audio of a later slice can fall outside the window. That is a property
+  of the fabricated data, not of the engine — the real packs symlinked into `samplepacks/`
+  (`redmountKicks.aif`, …) are cut at hit boundaries and sound throughout.
+
+65 browser checks, 109 tests, smoke test still byte-identical to the TUI's render.
+
 ## Not verified, and what is out of scope
 
 Nobody has **listened** to the browser build; the offline TUI render is also still unheard. Touch on a
