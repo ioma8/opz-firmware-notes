@@ -616,3 +616,29 @@ instructions later.
 
 Same lesson as the last two rounds, one more time: **read the register at the instruction that consumes
 it**. Every value in this function is a reused register a few instructions on.
+
+### The summation's operands are zero even though the products are not
+
+At `0x1242d8` (`adds w12, w15, w12`, one of the per-table accumulations):
+
+```text
+x15 = 0x0   x12 = 0x0   x13 = 0x0
+```
+
+Three instructions later, at `0x1242f4`, `w12` reads `0x77748916` - because `0x1242e8` does
+`sxtw x12, w0`, overwriting it with an interpolation product. So the earlier note's "the sums are healthy"
+was reading a register that had already been reassigned; the *accumulation* itself receives zero from both
+operands.
+
+Meanwhile the products are healthy: `x3`/`x4`/`x14`/`x15` at `0x124218` are all nonzero, and the table
+values are the host sine entries. So the per-table *contribution* - the `mul` then `lsr #31` that turns the
+64-bit product into the 32-bit addend - is where a nonzero product becomes a zero operand.
+
+**Next**: read the registers at the *first* accumulation (`adds w15, w16, w15` at `0x12425c`) and at the
+`lsr`s immediately before it. Those are the contribution values themselves, and one of them is the first
+zero in the chain - which is the value the port has to reproduce.
+
+**Ruled out, positively or by elimination**: the host sine tables, the index (`24`), the fraction
+(`0x43db0640`), both interpolation operands, the five constants, the ADSR's level/mul, the pointer array's
+shape, and both interface calls' argument shapes. The output buffer is accumulated into (`NEON_sqadd`), so a
+fixture must hand it zeros.
