@@ -104,27 +104,22 @@ Two things repeatedly cost time and are worth doing first next round:
    untested and the port passed anyway. Give host tables *varying* values (and the gain globals
    distinct ones, so a case proves *which* global was read), then regenerate the fixtures.
 
-## Open items (measured, in priority order)
+## Open items
 
-1. **The read loop.** The original advances *two* position accumulators (forward and reverse) in one
-   software-pipelined iteration and derives the interpolation fraction from a separate Q15 accumulator;
-   the port advances one direction and recomputes the fraction from the position. Effect: 29–104 LSB of
-   rounding on ordinary amplitudes (`mid_preset`, `note_started_mid_buffer`, `level_1_velocity_1`,
-   `pan_right`), amplified to 2.5e7 when every parameter is at maximum because the output sits on the
-   clamp.
-2. **Release path after `noteOff`.** `note_off_midway` and `release_tail_4_blocks` still differ
-   structurally (≈2.4e9–2.8e9 LSB); the port's phase handling for the released voice is not the
-   original's.
-3. **Non-zero slices.** `slice_7_note_43_pan_left` differs structurally: the port reads `state[0x18]`
-   semantics as pack-relative, and adding the slice base alone does not fix it, so the window/position
-   arithmetic for slices past the first needs the same read loop translated.
-4. **Retrigger.** `retrigger_same_buffer` (two `noteOn` events in one buffer) differs structurally.
-5. **Phase-4 host chain.** Ported and tagged (`phase-4`): `Synth`, `InstrumentManager`, `Compressor`,
-   `updateParametersADSR`/`updateParametersAHD`, the track filters and the master bus. The whole-mixer
-   fixtures match on all 14 cases including the master's DC-blocked mix.
+None at the engine level. Every ported engine is byte-exact against its fixtures:
 
-Item 1 is what turns items 2–4 from "structurally different" into "exact": all of them live in the same
-loop, which is why they are listed together as the next, and last, piece of engine fidelity.
+| Engine | Fixtures | State |
+|---|---|---|
+| `SamplePlayerGain` | 10 cases | byte-exact, no tolerance (the read loop, the release path, non-zero slices and retrigger were the last four; the per-case budgets are gone) |
+| `Digital` | 35 cases | byte-exact |
+| `AnalogA` | 20 voices + the 50/144/21/36 call replays | byte-exact |
+| `Saw013a` | 19 cases | byte-exact, plus the exact `onNoteOn` state block and one traced block's host calls |
+| the host chain (`Synth`, `InstrumentManager`, `ADSR`, `Compressor`, track filters, master bus) | 14 whole-mixer cases | byte-exact, including the master's DC-blocked mix |
+
+The history of that sample-player work is worth keeping: the four cases that used to differ structurally
+all lived in the read loop, and translating it (two position accumulators, one software-pipelined
+iteration, a separate Q15 fraction accumulator) turned them exact rather than merely closer - which is
+what the per-case budgets had been hiding.
 
 ## The host's mute is a `LoopHost` flag, not port behaviour
 
