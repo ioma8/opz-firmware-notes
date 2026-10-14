@@ -180,3 +180,32 @@ flag.
 **Next**: read the rest of `render` (690 decompiled lines) in the order the state is touched, write the
 state struct from the offsets it uses, and port the per-frame loop. The C makes that a reading job rather
 than a disassembly one.
+
+### `render`'s state map, from the C
+
+Every access to the state block (`param_4`), which fixes the struct:
+
+| offset | width | use in `render` |
+|---|---|---|
+| `+0x00`, `+0x04` | word | read into `uVar24`/`uVar21` after the interface call |
+| `+0x08` | - | passed as the *first argument* of the interface call (see below): the engine's own state block |
+| `+0x20` | word | read into `uVar17` |
+| `+0x28`, `+0x30` | 2 words each | read as 8-byte values (`uVar32`, `uVar34`) |
+| `+0x38` | word | the `init` word: `lVar22 = lVar22 * *(int *)(param_4 + 0x38)` |
+| `+0x4c` | 4 words | a NEON block: `auVar30 = NEON_sqsub(auVar30, *(param_4 + 0x4c))`, i.e. a saturating packed subtract |
+| `+0x5c`, `+0x60` | word | read, then written back *swapped* (`+0x5c` gets the old `+0x60` and vice versa) |
+| `+0x64` | byte | `*(byte *)(param_4 + 100)`: scaled by `0x1020408` plus `>> 4`, then times `params[0xb]` - the same velocity-fraction shape `AnalogA` uses |
+| `+0x65` | byte | the countdown: nonzero decrements and returns |
+
+`init` clears `0x00..0x67`, so 26 words is the block size and every one of these fits.
+
+**The interface call.** `render` reaches a host callback:
+
+```c
+(**(code **)(*(long *)puVar10 + 0x38))((long)param_4 + 8, uVar21, uVar1, uVar3, uVar24);
+```
+
+`puVar10` is `PTR_interface` - the same `Saw013a::interface` object `initModule` stores - and slot `+0x38` is
+called with the engine's sub-state (`state + 8`) plus four values. So the port needs a host seam here, the
+way `AnalogA` needed one for `_RFilter_fetch`: a trait the engine calls, with the fixture recording its
+arguments and return the same way.
