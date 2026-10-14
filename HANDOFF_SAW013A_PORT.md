@@ -415,3 +415,42 @@ The next measurement is therefore on **that blend**: the two operands the select
 last places a zero can come from. Hooking the `ldrsw`s at `0x124200` onwards and following the values into
 the `str` at `0x1243a8` shows which of the two is zero - and the answer names the model parameter the engine
 expects the host to supply.
+
+### Where the zero is now bounded to
+
+Three measurements, in order, each one narrowing it:
+
+| measured | result |
+|---|---|
+| the wavetable load at `0x124200` (`[table0 + 0x410 + 4*index]`, `index` = 24) | **1984016187** - nonzero, so the host tables and the index/fraction arithmetic are right |
+| the NEON registers entering the store (`q1`..`q9` at `0x1243a0`) | **all zero** |
+| the store (`str d3, [x23, x9]` at `0x1243a8`) | zero |
+
+So the zero enters *between* the table load and the store - the interpolation and the per-table scaling.
+
+**The lead worth following** is the callback. The C shows it called with the engine's sub-state and four
+values:
+
+```c
+(**(code **)(*(long *)puVar10 + 0x38))((long)param_4 + 8, uVar21, uVar1, uVar3, uVar24);
+```
+
+and immediately *after* it the engine re-reads the state it handed over:
+
+```c
+uVar24 = *(uint *)param_4;            // +0x00
+uVar21 = *(uint *)((long)param_4 + 4); // +0x04
+uVar17 = *(uint *)((long)param_4 + 0x20);
+uVar32 = *(undefined8 *)((long)param_4 + 0x28);
+uVar34 = *(undefined8 *)((long)param_4 + 0x30);
+```
+
+So the callback is an *input*: the host is expected to leave values in `param_4 + 8` and the engine picks
+them up. Filling the eight words at `state + 8` with `0x40000000` from the stub does not lift the silence,
+so the shape of what it wants (how many words, at which offsets, and whether it wants a count or a pointer)
+is still unknown - the same question `AnalogA`'s `_RFilter_fetch` answered by being a *returning* call.
+
+**Next**: diff the state before and after the callback (`param_4` fully, not just `+8`) to see which fields
+the engine actually consumes after the call, then try the values the callback was *given* as the ones it
+should write back - the C passes four values in, and a callback that stores them somewhere sensible is the
+common shape.
