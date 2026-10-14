@@ -581,9 +581,21 @@ rendered" one.
   parameters, so identical device phases suggest the device's silent run is not using the parameters
   the port thinks it is.
 
-The contradiction to resolve first: every Voice's note byte is `0` in both runs (the fixture's `fill`
-is zero and the pins only touch `+0x35`, `+0x38`, `+0x3D`), so `InstrumentManager::render`'s
-`note != 0xff` test should render them and set the counter - yet the device's `+0x68b4` says it did
-not. Either the device's manager test is not the one the port implements (the manager fixture used a
+Measured further, and the contradiction is sharper than a branch reading:
+
+* with the `silent` inputs a probe run calls `Voice::renderVoice` **38 times** - exactly 19 voices on
+  each of the two layer passes, i.e. every voice in the bank - so the device *does* render;
+* and the fixture's `changed` list for that case shows the per-track byte set to `1` at
+  `0x68b4`, `0x68e0`, `0x690c`, `0x6938`, `0x6964`, `0x6990` and `0x69bc` - tracks 0..6 and *not*
+  track 7 (so the track with the largest bank is the one that does *not* get the byte);
+* the filled cases pass with the port's current `voices == 0` condition, so the condition cannot
+  simply be inverted.
+
+`+0x68b4 + track*0x2c = 1` and a full render therefore hold at the same time on the device, which the
+C's `if ((char)local_a0 == 0) { *pSVar2 += 1; this[...] = 1; }` cannot produce if `local_a0` is the
+manager's rendered-voice counter. The next thing to check is what `local_a0` actually is at that
+point in the disassembly (`0xf8190`-`0xf81bc`) - and note that both paths write the *same* halfword
+(`*pSVar2`), one incrementing it and one zeroing it, so the byte and that counter may be tracking
+different things than the C's naming suggests. Either the device's manager test is not the one the port implements (the manager fixture used a
 spec with explicit sounding voices, so a "note byte equals something else" condition could hide
 there), or the silent case's Synth is not the all-zero one the test builds.
