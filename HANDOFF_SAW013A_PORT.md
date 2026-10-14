@@ -806,3 +806,30 @@ accumulation *finishes* nonzero, which is one more trace away (the same hook, on
 setting it - or by servicing the first interface call, which is what the device's app does), and whatever the
 lane accumulator ends at. The first is understood; the second is now the only unknown, and it is inside the
 loop's opening, not the prologue.
+
+### The gain is zero on the loop's first iterations and nonzero later
+
+With the ADSR's level set, reading the `mul x15, x13, x15` at `0x1242bc` directly, per iteration:
+
+```text
+at mul x15,x13,x15  (x13, x15):
+  ('0x0',        '0x77748916')     first iteration
+  ('0x0',        '0x77748916')     second
+  ('0x12b2f1a',  '0x77748916')     third
+```
+
+So the lane accumulator `x15` is healthy throughout (`0x77748916`), and the **gain `x13` is zero on the first
+two iterations, then nonzero**. `x13` is not written anywhere between the prologue and `0x1242bc` per the
+change-log, so the zero that matters is in the loop's *own* opening - and it is per-iteration, which is a
+different shape from everything measured so far (all the earlier zeros were constant).
+
+**Where that leaves the engine**: two distinct zeros, one understood and one not.
+
+1. **The ADSR's level** - `mul x13, x14, x13` at `0x1240a8` reads `[ADSR + 4]`. Setting it makes the
+   prologue's gain nonzero (`0x006132ed7db8ce6f`). On the device this is the first interface call's job (the
+   host runs the envelope update, and the engine hands it the ADSR for exactly that). The harness should
+   service that call rather than the fixture setting the field directly - and that is a change worth making
+   before the next measurement, because it is what the device actually does.
+2. **The per-iteration gain** - zero on the loop's first passes. The next trace is `x13` alone over the loop
+   body from `0x1241b0` to `0x1242bc`, logging every write, which will show which of the loop's own
+   instructions sets it and from what.
