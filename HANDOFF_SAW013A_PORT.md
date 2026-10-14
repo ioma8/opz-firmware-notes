@@ -132,3 +132,51 @@ it mixes Q31 gains with integer steps, as the other engines do.
 already ported - so this is a multi-pass job in the same class, not a quick one. The right next move is to
 read `render` in the order the state is touched, write the state struct from those offsets, and port the
 per-frame loop, exactly as `Synth::render` and `AnalogA` were done.
+
+### The decompilation, and what it caught
+
+Ghidra is installed after all - `~/Applications/Ghidra_12.1.4/support/analyzeHeadless` - and `/tmp/ghidra-p4`
+already holds an analysed `libSnakePlugin.so` from the Phase 4 work, so no re-import or re-analysis is
+needed:
+
+```sh
+analyzeHeadless /tmp/ghidra-p4 p4 -process libSnakePlugin.so -noanalysis \
+    -scriptPath tools/ghidra-scripts -postScript DecompileTo.java "Saw013a" /tmp/decomp-saw.txt
+```
+
+Seconds, five functions, 986 lines. `SAW013A-decomp.c` next to this file is the result.
+
+**It immediately caught three errors** in the constants I had read off the assembly by eye:
+
+| arm | I wrote | the C says |
+|---|---|---|
+| variant 4 | `0xeccc3340` | **`-0x13333340`** |
+| variant 6 | `0xe66699a0` | **`-0x199999a0`** |
+| variant 7 | `0xf333ccd0` | **`-0xcccccd0`** |
+
+The `mov`/`movk` pairs in the listing are easy to mis-read; the C is not. Everything else about `init`
+matched: the same clearing of `0x00..0x67`, the same variant matrix, and the same
+`mul` / logical-`>>31` / saturating-add / clamp sequence.
+
+**`render`'s setup**, from the C:
+
+```c
+if (*(int *)(param_6 + 0x10) == 0) goto LAB_002245ac;      // the ADSR phase gate
+if (*(char *)((long)param_4 + 0x65) != '\0') {             // a countdown byte in the state
+    *(char *)((long)param_4 + 0x65) = *(char *)(...) + -1;
+    goto LAB_002245ac;
+}
+uVar21 = *param_5;  uVar24 = param_5[1];                   // params[0], params[1]
+... 0x7fffffff - uVar21 (saturating)                       // the same complement pairs as AnalogA
+uVar25 = uVar26 * 0xfffffffe >> 0x20;                      // times -2, narrowed by 32
+iVar13 = (int)((lVar19 * 0xd5504300 >> 0x20) * uVar23 >> 0x1f);
+iVar20 = (int)(uVar25 * uVar23 >> 0x1f);
+```
+
+So the engine opens with the same shape `AnalogA` uses - a saturating complement of each of the first two
+parameters, then pan/gain pairs narrowed by `>>31` - and the state's `+0x65` is a countdown rather than a
+flag.
+
+**Next**: read the rest of `render` (690 decompiled lines) in the order the state is touched, write the
+state struct from the offsets it uses, and port the per-frame loop. The C makes that a reading job rather
+than a disassembly one.
