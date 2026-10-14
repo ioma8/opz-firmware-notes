@@ -136,6 +136,38 @@ every member of the group by the same amount (the clone has per-track levels, no
 panic kills the notes while the master bus's own filter state keeps ringing for a few blocks (nothing
 in `opz-core` clears it).
 
+## Fourth pass: one pointer (commit `32388e3`)
+
+Reported from use: the `+` and `shift` keys seemed mapped onto step icons, and `track` was impossible
+to use with a single mouse. Both were real.
+
+**The one-pointer problem.** The device expects two hands — one holds `track` while the other presses
+a key — and a mouse has one pointer. Every modifier now **latches on a click**: click `track`, click
+the track, click `track` again (or `Escape`) to let go, with the button lit while latched. §2.1's
+index lock (a triple press) was the device's own version of this and now lands in the same state. A
+long press on a step likewise *keeps* it held, which is what makes §3.4's gestures reachable with one
+pointer — its length from another step, its velocity from the pitch bend, its note from the keyboard,
+its microtiming from `−`/`+`. `shift` keeps the manual's distinction (§2.11: "there is a difference
+between holding and momentarily pressing shift"): a momentary press toggles the parameter page, a
+held press latches so a dial edit reverts when shift is released.
+
+**The unreadable left column.** The drawing's left column is three circles whose glyphs (`工`, `●`,
+`—`) sit in the track, middle and step rows; unlabelled, they read as step functions. They are now the
+keys their glyphs name — `track`, `rec`, `−` — each labelled, and the schematic's two omissions,
+`shift` and `+` (the manual's transpose up, §2.10), sit left of that column, also labelled. The volume
+knob and the pitch-bend strip are labelled too, and the header says "click a button to latch it · esc
+releases".
+
+**Three more bugs, all found by driving it**: an index button's second press was swallowed by the
+triple-press chain (so mute-then-unmute did nothing); a stray pointer release on a second key acted as
+a tap and erased a note; and shift's press state was assigned *after* the branches that return early,
+so a shift used with the tempo dial stayed latched and never toggled the page again. The check now
+prints the page's status tail on failure, which is how the last one was found.
+
+`tools/web-check.mjs` is 57 checks (four new: the `−`/`+` panel keys, the latch and `Escape`); the
+workspace stays green at 109 tests and the smoke test still reports 85 344 samples identical to the
+TUI's.
+
 ## Not verified, and what is out of scope
 
 Nobody has **listened** to the browser build; the offline TUI render is also still unheard. Touch on a
