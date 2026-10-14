@@ -1052,3 +1052,28 @@ voice loop with a `Chain`, the app programs `values`/`targets` from `TrackParams
 device bytes) plus a byte-level target, and the master buffer replaces the mono fold. The existing engine
 tests then change, which the plan anticipates: the offline render cannot stay byte-identical once the
 master chain is real.
+
+### The Engine wiring: written, and what it takes to land it
+
+`edadf86` adds pack loading to the chain. Beyond that, the wiring of `Engine::render_block` onto the ported
+chain **was written, compiled and then reverted rather than committed red** - the whole change is in this
+worktree as `PHASE4_ENGINE_WIRING.diff` (`patch -p1 < PHASE4_ENGINE_WIRING.diff` against `edadf86`), and the
+next pass should start from it rather than from scratch.
+
+What it does: `Engine` owns a `Chain` instead of a `Vec<Voice>`; `new` loads the packs, enables every track
+at full level and centre pan and snaps the parameters; `program_chain` hands the app's `TrackParams::values`
+to `set_track_parameters` (the device does the byte → Q31 conversion *and* the glide, so `values` serves as
+both current and target) and sets the master volume; `trigger` and the release call `Chain::note_on`/
+`note_off`; `render_block` takes the chain's interleaved-stereo master and folds it to the host's mono.
+
+With it, 27 of 30 opz-core tests pass. The three that do not, and their causes as far as the pass got:
+
+| failing test | what it needs |
+|---|---|
+| `both_synth_tracks_play_a_note` (track index 4, `analoga.engine`) | the analogue engine's **envelope words** are host state: the interim host wrote `envelope_words()[3] = 0x7fffffff` on every note-on, and without it the engine holds in its filter envelope's attack branch. The patch already does this in the `EngineVoice::note_on` adapter and it was *not* enough - so something else in the analogue setup (the banks/pads/rate tables `AnalogVoice` owns, or the `adsr.phase` value) is also missing. |
+| `mute_silences_a_track_without_stopping_it` | the app's mute is not the device's `+0x6848` mask: that mask multiplies the **pan** lane (its complement is one of the four factors `track_gains` chains), not the level. The patch implements mute as the track's **level word** going to zero, and the track still sounds - so the level ramp is not the gate it looks like, and this needs the same diagnostic treatment the chain's own silence got (`SYNTH_CHAIN_DEBUG`-style prints of the ramp and the mix's first sample). |
+| `drum_beat_and_synth_line_play_together` | "quarter 3 of the bar is not silent": a release-timing difference. The ported `Voice::note_off` gates on `+0x35` and the device's envelope releases over its own frames, so the tail of a note outlives the host's `note.duration` frame count. This is the class of difference the plan *expects* ("the offline render cannot stay byte-identical"), so it may be a test to update rather than code to fix - but it has to be measured before it is called either. |
+
+Also worth noting for the next pass: `program_chain` must run **after** the command's own effect, not
+before, or `SetMaster` is programmed one command late (that was one of the failures, and the patch has the
+fix).

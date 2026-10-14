@@ -1,0 +1,217 @@
+--- crates/opz-core/src/engine.rs	2026-10-14 11:08:52
++++ /tmp/engine_wired_keep.rs	2026-10-14 11:09:01
+@@ -10,6 +10,7 @@
+ //! The interim host is deliberately thin: it exists so Phase 4 can replace it with the ported
+ //! `Synth`/`InstrumentManager`/`ADSR`/`Compressor` chain without any caller changing.
+ 
++use crate::chain::Chain;
+ use crate::pack::SamplePack;
+ use crate::params::{PARAM_COUNT, TrackParams};
+ use crate::pattern::{
+@@ -537,7 +538,15 @@
+         match self {
+             VoiceEngine::Drum(engine) => engine.note_on(note, velocity, &words),
+             VoiceEngine::Digital(engine) => engine.note_on(note, velocity, &words),
+-            VoiceEngine::Analog(voice) => voice.engine.note_on(note, velocity, &words),
++            VoiceEngine::Analog(voice) => {
++                voice.engine.note_on(note, velocity, &words);
++                // The analogue engine's envelope words are host state: the interim host supplied them
++                // on every note-on, and without them the engine holds in its filter envelope's attack
++                // branch and stays silent.
++                let mut envelope = voice.engine.state().envelope_words();
++                envelope[3] = 0x7fff_ffff;
++                voice.engine.set_envelope_words(envelope);
++            }
+         }
+     }
+ 
+@@ -561,7 +570,9 @@
+     pub pattern: Pattern,
+     pub params: [TrackParams; TRACKS],
+     pub transport: Transport,
+-    voices: Vec<Voice>,
++    /// The ported chain: the device's `Synth` (voice allocation, LFOs, filters, the master bus) with
++    /// the host's engines behind its `EngineVoice` seam.
++    chain: Chain,
+     /// The note each track is sounding and the frames left before its release, so the host can call
+     /// `note_off` at the frame the note's `duration` ends.
+     notes: [Option<(u8, u32)>; TRACKS],
+@@ -585,30 +596,23 @@
+     /// Sample rate in Hz. `packs` are pre-loaded packs for drum tracks, as `(track_index, pack)`
+     /// with 0-based track indices.
+     pub fn new(sample_rate: u32, packs: Vec<(usize, SamplePack)>) -> Self {
+-        // Boot with the track's factory preset, the way the device does; parameters left at zero
+-        // would give silence (level 0), because the engine only scales what it is handed.
+-        let mut voices: Vec<Voice> = (0..TRACKS)
+-            .map(|track| {
+-                let params = TrackParams::from_values(initial_values(track));
+-                Voice {
+-                    engine: VoiceEngine::for_track(track + 1),
+-                    params,
+-                    pack: None,
+-                    adsr: DigitalAdsr::default(),
+-                    note: None,
+-                }
+-            })
+-            .collect();
++        let mut chain = Chain::new();
+         for (track, pack) in packs {
+-            if let Some(voice) = voices.get_mut(track) {
+-                load_pack(voice, &pack);
+-            }
++            chain.load_pack(track, &pack);
+         }
++        // The state the device boots with and the app does not carry: every track enabled at full
++        // level and centre pan (the ramps at `+0x50c8`/`+0x5148` move toward those words from zero),
++        // and the parameters snapped to the boot presets rather than gliding to them from zero a
++        // sixty-fourth per block.
++        for track in 0..TRACKS {
++            chain.set_track_level_pan(track, 0x7fff_ffff, 0x4000_0000);
++        }
++        chain.force_parameters();
+         Self {
+             pattern: Pattern::default(),
+             params: std::array::from_fn(initial_values).map(TrackParams::from_values),
+             transport: Transport::new(sample_rate),
+-            voices,
++            chain,
+             notes: [None; TRACKS],
+             mutes: [false; TRACKS],
+             octave: std::array::from_fn(|track| preset_octave(track, 0)),
+@@ -617,7 +621,28 @@
+             staged: Vec::new(),
+             staged_pos: 0,
+             staged_left: 0,
++        }
++    }
++
++    /// Program the ported chain from the app's per-track parameters and its master level. The device
++    /// does the byte → Q31 conversion and the glide, so this hands over bytes and lets the `Synth`
++    /// smooth them; the mute mask is the device's `+0x6848`, where a *set* bit means the track sounds.
++    fn program_chain(&mut self) {
++        let mut mask = 0u16;
++        for (track, muted) in self.mutes.iter().enumerate() {
++            if !muted {
++                mask |= 1 << track;
++            }
++        }
++        for track in 0..TRACKS {
++            let values = self.params[track].values;
++            self.chain.set_track_parameters(track, &values, &values, mask);
++            // The device's `+0x6848` mask reaches the pan lane, not the level, so the app's mute is
++            // the track's level word: the ramp moves to zero and the track stops sounding.
++            let level = if self.mutes[track] { 0 } else { 0x7fff_ffff };
++            self.chain.set_track_level_pan(track, level, 0x4000_0000);
+         }
++        self.chain.set_master_volume(self.master as i32);
+     }
+ 
+     /// Handle one command from the frontend. Never allocates more than the command itself carries.
+@@ -625,12 +650,7 @@
+         // One mirror for both sides: `apply_to` is the only place that mutates pattern/params, so
+         // the frontend's copy cannot drift from the engine's.
+         command.apply_to(&mut self.pattern, &mut self.params);
+-        // Each voice keeps its own copy of its parameters for the host that replaces this mixer in
+-        // Phase 4; syncing on every command keeps the two from drifting. `apply_to` has already
+-        // snapped a loaded preset, so this is also the device's `forceParametersToTarget`.
+-        for (voice, params) in self.voices.iter_mut().zip(self.params.iter()) {
+-            voice.params = params.clone();
+-        }
++
+         match command {
+             Command::LoadPreset { track, preset } => {
+                 if let Some(slot) = self.octave.get_mut(*track) {
+@@ -643,9 +663,7 @@
+             Command::Play => self.transport.playing = true,
+             Command::Stop => self.transport.playing = false,
+             Command::LoadPack { track, pack } => {
+-                if let Some(voice) = self.voices.get_mut(*track) {
+-                    load_pack(voice, pack);
+-                }
++                self.chain.load_pack(*track, pack);
+             }
+             Command::SetMute { track, muted } => {
+                 if let Some(slot) = self.mutes.get_mut(*track) {
+@@ -657,6 +675,10 @@
+             }
+             _ => {}
+         }
++        // After the command's own effect has landed: the device converts the bytes and glides from
++        // what its smoothed block already holds, so the app only hands over the values its presets and
++        // patterns carry.
++        self.program_chain();
+     }
+ 
+     /// Render `out` (mono Q31), advancing the transport and triggering notes.
+@@ -696,11 +718,7 @@
+         // A note whose length has run out is released before a step on the same track retriggers it.
+         for track in 0..TRACKS {
+             if let Some((note, 0)) = self.notes[track] {
+-                if let Some(voice) = self.voices.get_mut(track)
+-                    && voice.is_playable()
+-                {
+-                    voice.note_off(note);
+-                }
++                self.chain.note_off(track, note);
+                 self.notes[track] = None;
+             }
+         }
+@@ -718,27 +736,15 @@
+             }
+         }
+ 
+-        // shortcut: the mixer is mono, so a voice's interleaved stereo pair is folded by halves.
+-        // The device keeps the two channels apart and the ported `Synth` in Phase 4 restores them.
+-        self.staged[..BLOCK_FRAMES].fill(0);
+-        for (track, voice) in self.voices.iter_mut().enumerate() {
+-            if !voice.is_playable() || self.mutes[track] {
+-                continue;
+-            }
+-            voice.render(
+-                &mut self.block[..BLOCK_SAMPLES],
+-                self.params[track].engine_params(),
+-            );
+-            for frame in 0..BLOCK_FRAMES {
+-                let left = self.block[frame * 2] >> 1;
+-                let right = self.block[frame * 2 + 1] >> 1;
+-                self.staged[frame] = self.staged[frame].saturating_add(left.saturating_add(right));
+-            }
+-        }
+-
+-        // The master level is one Q31 multiply over the whole block, like the device's master gain.
+-        for sample in self.staged[..BLOCK_FRAMES].iter_mut() {
+-            *sample = (((*sample as i64) * self.master as i64) >> 31) as i32;
++        // The ported chain renders the whole block: every track's voices, the LFOs, the track
++        // filters and DC blockers, then the master compressor, gain and limiter. Its master buffer is
++        // the device's interleaved stereo one; the host is mono, so the pair is folded by halves the
++        // way the interim host also did.
++        let master = self.chain.render_block();
++        for frame in 0..BLOCK_FRAMES {
++            let left = master[frame * 2] >> 1;
++            let right = master[frame * 2 + 1] >> 1;
++            self.staged[frame] = left.saturating_add(right);
+         }
+ 
+         for slot in self.notes.iter_mut() {
+@@ -791,11 +797,7 @@
+             // editable in the TUI and stored, but playback still starts every note on its step's
+             // first block, because the host renders whole 64-frame blocks. The device's own
+             // sub-block timing lands with the ported `Sequencer`/`InstrumentManager` in Phase 4.
+-            if let Some(voice) = self.voices.get_mut(track)
+-                && voice.is_playable()
+-            {
+-                voice.note_on(sounding, note.velocity, self.params[track].engine_params());
+-            }
++            self.chain.note_on(track, sounding, note.velocity as u32);
+         }
+     }
+ }
+@@ -871,7 +873,7 @@
+             pattern: Pattern::default(),
+             params: std::array::from_fn(|_| TrackParams::default()),
+             transport: Transport::new(44_100),
+-            voices: Vec::new(),
++            chain: Chain::new(),
+             notes: [None; TRACKS],
+             mutes: [false; TRACKS],
+             octave: [0; TRACKS],
