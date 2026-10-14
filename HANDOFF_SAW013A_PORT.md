@@ -1710,3 +1710,36 @@ writes `state[0x00] = w12`, `state[0x04] = w10`, `state[0x20] = w8` (the phase a
 `[+0x4c, +0x50, +0x54, +0x58]`; `render` calls it for `v2` and transcribes only the extras, the pan chain and
 the loop, checking each against the values above. The trace script is throwaway (it lives in `/tmp`) but the
 checkpoints are the acceptance targets for the transcription.
+
+### The prologue chains are ported and device-verified (`72d6328`)
+
+`crates/opz-dsp/src/saw013a.rs` now carries `prologue_chains(p0, p1)` - `render`'s `0x1239d8`..`0x123da0` -
+and the unit test `prologue_chains_match_the_device` pins it to the values read from the device's register
+file:
+
+```text
+lanes  = [1557699545, 1075365509, 3817897951, 3147111936]   = onNoteOn's +0x4c..+0x58
+sp18   = [339411614, 501772359]
+sp10   = [2147483644, 2147483644]
+v1s    = [0, 0, 0, 0]
+```
+
+Two things the transcription had to get right, both invisible in the decompilation:
+
+1. **The saturating `csel` often writes a different register than the `adds`/`subs` it belongs to.**
+   `adds w1, w1, w2` is followed much later by `csel w3, ...`, `csel w16, ...`, `csel w10, ...`,
+   `csel w11, ...` and `csel w9, ...` - so the raw sum stays in the adds' destination and the saturated
+   value lands elsewhere. Collapsing the idiom into `x = sat_add(a, b)` as `onNoteOn` allowed is wrong here.
+   And the saturating result must be computed from the *pre*-add operands, not from the already-wrapped
+   destination.
+2. **One saturating csel fires far from its `adds`** (`0x123d0c`'s is at `0x123d24`), so the destination
+   register holds an intermediate value over several instructions in between.
+
+Also in place for the rest of the port: the `Host` trait (`wavetable(i)`, `octave_gain()`,
+`update_envelope(adsr, [i32;4])`, `notify(state_from_8, [i32;4])`), the state-byte helpers, and the
+primitives `sbfiz`, `clamp32`, `sdiv`, `smull32`, `sqadd`, `sqsub`, `sshr8`, `narrow_lane` and
+`octave_band` (`0x123d90`..`0x123e54` as the linear `>= OCTAVE_THRESHOLDS[band+1]` scan). They carry
+`#[allow(dead_code)]` until `render` uses them.
+
+Next: `0x123e5c`..`0x123fa0` (the band's ratio, the interpolated gain, the velocity byte), then the pan
+chain `0x123fa0`..`0x124094` with the two `+0x38` calls, then the sample loop `0x124098`..`0x1245dc`.
