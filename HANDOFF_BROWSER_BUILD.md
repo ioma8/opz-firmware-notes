@@ -274,6 +274,59 @@ Two verification notes worth keeping:
   and regenerating them still passes byte for byte against the original. The stand-in and
   `FIRST_NOTE` both say why. The mapping is pinned by the port's own
   `note_maps_to_the_24_slice_pad_layout` unit test instead, which fails against the old rule.
+## The full review, and what it turned up
+
+A whole-implementation review (two axes: standards and device-faithfulness, plus my own pass with
+runnable probes) found sixteen defects; all but one are fixed in `opz-clone` commits `7975a11`,
+`aa39f2d`, `90fb327`, `cf3ebdd` and `2181810`.
+
+The four that mattered most, all on the browser panel and all invisible to its 65 checks:
+
+  * **Steps 7–16 could not be programmed.** The ordinary (step) path repeated the *track* bound, so
+    pressing drawn step 7 logged "track 7 (the clone has 6)": `dataset.step` never got set and
+    `stepRelease` bailed. Present since `3a02c26`, when the steps moved to the top row. Every step
+    check had used `emptyStep()` — the *first* unlit key — so the suite could not see it.
+  * **`Enter` threw** a `TypeError`: it called `stepRelease()` with no element.
+  * **shift's revert was never armed for a latched shift** (the one-pointer path): the dial tested
+    `held.shift`, which is false once the button is latched, and every release cleared the snapshot.
+  * **The pack fallback never ran.** A 404 is not an exception and `load_pack` answers with a
+    *string*, so fetching a missing plug pack "succeeded" and the substitute was never tried — the
+    same kind of failure as the smoke test, which had started failing outright on a machine without
+    the vendor packs.
+
+The engine-side findings, each now pinned by a test that was verified to *fail* before the fix:
+
+  * `Transport::advance` allocated a `Vec` per 64-frame block while three docs claimed a callback
+    never allocates, and the doc cited a counting allocator in another crate that cannot see
+    `opz-core`. `Engine::render` now allocates zero (`tests/allocation.rs`; with the old shape it
+    reports 48 allocations).
+  * Every device-fidelity test returned *success* when its fixture file was missing (~25 sites), so
+    the whole evidence base was optional. Now they panic with the generator to run.
+  * The fixture's recorded engine **calls** were compared but only printed, so the one check that
+    proves the device was called at the right *time* could not fail. It asserts now, and passes.
+  * The drum engine's release coefficient was the harness's zero rather than the device's own
+    `0x7fffff` (`sub_13b800`), so a released sustain slice never decayed.
+  * Project files cast `as i32`/`as i8` after an `i64`-only range check, so out-of-range values
+    wrapped silently.
+  * `pack.rs` parsed file data with `unwrap`s whose safety lived in guards, not in the types.
+
+Two documentation failures worth naming: `README` and `project.rs` still printed the drum slice rule
+as `slice = note - 36` after `3df37d4` replaced it with `(note + 19) % 24`, and the harness printed
+the Q31 conversion as `0x80808080` where the library builds `0x00808080`.
+
+The one finding left open: **`AnalogA`'s noise does not share the LFOs' LCG.** The symbol dump shows
+a single `_ZZ20generateRandomNumbervE8randSeed` at `0x1da428` — the address the port's own comment
+cites — and both this handoff and `Synth`'s doc say the LFOs and this noise read it, so the port's
+per-engine copy is the divergence. Fixing it means threading the seed through `EngineVoice::render`,
+and the fixtures set that state directly, so they cannot show whether it worked. It is recorded as a
+`shortcut:` note on the field and in `README`'s "what is not device-verified" section.
+
+`README` now carries that section in full: the host tables the library does not ship, the transparent
+master compressor, playmode-3's unverified branch, microtiming, this seed, and the release
+coefficient's fixture/live split. `tools/check.sh` is the gate (fmt, clippy `-D warnings`, tests,
+wasm smoke), the tree is clippy-silent, and a test that had lost its `#[test]` attribute was
+resurrected, taking the workspace to 113 tests and the browser checks to 76.
+
 - The **substitute packs** (`fabricated-sample-substitutes/`) cut their slices evenly rather than at
   hit boundaries, so with the device's window a later slice's audio can fall outside it. The loaders
   therefore now take the **vendor packs** first and keep the substitutes as the fallback: commit
