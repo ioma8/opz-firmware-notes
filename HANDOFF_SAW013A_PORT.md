@@ -1743,3 +1743,55 @@ primitives `sbfiz`, `clamp32`, `sdiv`, `smull32`, `sqadd`, `sqsub`, `sshr8`, `na
 
 Next: `0x123e5c`..`0x123fa0` (the band's ratio, the interpolated gain, the velocity byte), then the pan
 chain `0x123fa0`..`0x124094` with the two `+0x38` calls, then the sample loop `0x124098`..`0x1245dc`.
+
+## `render` is ported, and it matches all 19 golden cases (clone `2d332c4`)
+
+`crates/opz-dsp/src/saw013a.rs` now carries the whole of `Saw013a::render`
+(`0x123994`..`0x1245dc`): the two gates, the phase update and its wrap handler, the five-table wavetable
+interpolation, the sample loop, the envelope and state maintenance, and the exit. The check is
+`render_matches_every_golden_case` - every recorded case, every block, comparing the 128-word output and
+the ADSR level the call leaves behind.
+
+The `note_60` trace that verified the prologue was not enough: with the fixture's parameters the lane
+machinery is inert (`v8 = v9 = ramp = 0`), so four bugs survived it and only the fixtures caught them.
+
+1. **A 32-bit add whose result feeds a 64-bit `mul`.** `add w14, w26, w14, asr 1` at `0x1241b0` writes
+   `w14`, zero-extending into `x14`, and the `mul x16, x14, x16` two instructions later reads that 64-bit
+   register. Transcribed as a 64-bit `0x4000_0000 + (v >> 1)` the operand keeps a bit above 32, and the
+   `>> 31` of the product then differs. Note 36, 48, 72 and 84 have a non-zero `state+0x3c` and fail;
+   note 60 does not, because its `state+0x3c` is zero and the product is zero either way.
+2. **`sxtw(w11)`.** The loop's phase multiplier is loaded by `sxtw x13, w11` at `0x1244a8` - sign-extended.
+   Zero-extending is identical until the wrap handler leaves `state+0x5c` above `2^31` (note 84, frame 44).
+3. **`dup v4.2s, w15` feeds a `smull`.** The blend's scalar is a *signed* 32-bit operand; zero-extending it
+   shifts every narrowed lane by `2 * lane`. Found by hand-matching the observed difference: the port's
+   value was exactly the device's plus `2 * 845427195`.
+4. **The wrap handler's clamp is on the 64-bit `lsl` result** (`lsl x15, x15, 1` then `cmp x15, x28` /
+   `cmp x15, x24`), not on a 32-bit masked one.
+
+The same debug method as before found them: dump the device's register file at chosen PCs for the failing
+case and frame, and print the port's matching locals behind a `SAW_DEBUG` env gate. Rule of thumb that has
+now held four times: compare the *fixture* output first, then bisect to the first differing frame, then to
+the instruction.
+
+Two further findings worth keeping:
+
+* **`render`'s eight gain chains are `onNoteOn`'s.** `render`'s prologue builds the same four values
+  `onNoteOn` stores at `+0x4c`..`+0x58` - its chain splits them into lane pairs (`v2`) plus a correction
+  (`v1`) whose sum is exactly the stored words. Rather than fix the second, hand-unrolled transcription,
+  the eight chains now live in `lane_words(p0, p1)` and both `on_note_on` and `render`'s ramp use it:
+  `ramp = (lane_words(p0, p1) - state[0x4c..]) >> 6`. (Measured for `p0_top`: `v2 = [1501999974,
+  1075365509]`, `v1 = [-26685643, -32583721]`, sum `= state[0x4c..] = [1475314331, 1042781788]`.)
+* **The harness was recording cumulative blocks.** `render` saturating-adds into the caller's buffer, and
+  `Saw013aHost.render` reused one buffer, so every block after the first in `cases.json` was the sum of all
+  blocks before it. `render` now zeroes the buffer first - the `zero_out` convention the other hosts use -
+  and the fixture was regenerated. `four_blocks`' peak went from `1426469823` to `699960081`, which is one
+  block's worth; the other 18 cases' peaks are unchanged.
+
+### Phase 5, what is left
+
+* the engine test in `crates/opz-dsp/tests/host.rs` (the `onNoteOn` one is there, `render` still is not),
+* the track wiring - `saw013a` is not yet in `VoiceEngine` / `engine_for_track` (`grep Saw013a` finds
+  nothing in `voice.rs`, `plugs.rs` or `chain.rs`; the `saw` plug is already in the catalogue as engine
+  `saw013a.engine`, trackmask 240),
+* the fidelity pass and the docs,
+* then the `phase-5` tag.
