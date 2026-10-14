@@ -53,6 +53,44 @@ theme by inverting the panel layer, so the LEDs keep their true colours.
 - `cargo test --workspace` stays green (100 tests) with `opz-web` as a workspace member, so an
   incompatible `opz-core` edit breaks the native build too.
 
+## Second pass: the panel now works the way the manual says (commit `a4c755b`)
+
+The first version was a reasonable approximation; it is now the device's own control language, taken
+from teenage engineering's [interface overview](https://teenage.engineering/guides/op-z/interface-overview),
+[quick guide](https://teenage.engineering/guides/op-z/quick-guide) and chapter pages (`track`,
+`tracks`, `parameter-pages`, `mixer`, `tempo`, `project`, `general-operation`). The page reads its
+mapping from that documentation, and `docs/WEB.md` records each section's behaviour plus the list of
+device features the clone does not have — each of those answers a gesture with one status line rather
+than doing something else.
+
+What changed, in the manual's terms. Buttons **hold** to change context (§2.1), so one finger can
+hold `track` while another taps a key. The top row is the track/pattern/step row: pressed alone it
+places or clears a step (§3.4 — an empty step takes the last played note, a lit step clears, holding
+a step copies it and a following empty step pastes), with `track` held it selects a track (§2.5),
+with `mixer` held it mutes (§8.3), with `project` held it selects a pattern. The bottom row is the
+**musical keyboard**: it plays the active track and, with `rec` held, records onto the step under the
+playhead; the ten filled circles the drawing prints between the rows are the **value keys 1–0**
+(projects with `project`, bpm digits with `tempo` — 1+2+0 is 120 — plug slots with `track`, mute
+groups elsewhere). The dials are the **parameter pages** (§4.3's chart) over the clone's own
+parameter table, `shift` toggles the page, a *held* `shift` makes a dial edit temporary (§2.11), and
+`track`+dials reach note length, note style, quantize and portamento (§5.2). Transport is §3.2's:
+play restarts, stop pauses, stop again is panic, `track`+stop clears the track. Step lights use the
+device's language — programmed steps red, playhead white, cursor amber, microtiming purple.
+
+It needed four engine commands, added to `opz-core`: `NoteOn`, `NoteOff`, `AllNotesOff` (panic) and
+`SetOctave` (transpose, §2.10 — the sequencer's per-track octave already existed, only the setter was
+missing). `opz-core`'s test `the_keyboard_plays_a_note_and_panic_releases_it` covers a played note
+sounding with an empty pattern, panic releasing every track, and transpose shifting what the
+sequencer plays without changing what the step stores. The workspace is green at 107 tests, and the
+smoke test still reports 85 344 samples identical to the TUI's.
+
+`tools/web-check.mjs` became 25 device gestures driven through synthetic pointers in a real Chrome
+(hold-track select, hold-mixer mute, step programming, page toggle, tempo by dial and by value keys,
+plug select, project select, transpose, play/restart/stop/panic). It caught two more bugs the smoke
+test cannot see: the wasm called from a module-scope constant before `init()` resolved, and a global
+`pointerup` that dropped a held modifier whenever another key was tapped — which breaks exactly the
+two-handed gestures the device is built around.
+
 ## Not verified, and what is out of scope
 
 Nobody has **listened** to the browser build; the offline TUI render is also still unheard. Touch on a

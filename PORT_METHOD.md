@@ -66,6 +66,8 @@ written down with its measured size.
 | `a_saw_track_plays_through_the_ported_chain` (`opz-core`) | a track assigned `saw013a.engine` sounds through the ported mixer |
 | `setting_a_tracks_engine_swaps_its_voices` (`opz-core`) | a `SetTrackEngine` command swaps the track's voices and the track renders audio through the whole `Engine` |
 | `the_engine_key_cycles_the_synth_engines` (`opz-tui`, `opz-core`) | the `e` key cycles the synth engines, wraps, and refuses to turn a drum track into a synth |
+| `the_keyboard_plays_a_note_and_panic_releases_it` (`opz-core`) | the musical keyboard's own note path (`NoteOn`/`NoteOff`/`AllNotesOff`) sounds a track with an empty pattern, panic releases every track, and `SetOctave` shifts what the sequencer plays without changing what the step stores |
+| `tools/web-check.mjs` (browser build, needs Chrome) | 25 device gestures through synthetic pointers in a real Chrome: hold-track select, hold-mixer mute, §3.4 step programming, §4.2 page toggle, §9.3 bpm by dial and by value keys, §5.6 plug select, §7.2 project select, §2.10 transpose, §3.2 play/restart/stop/panic |
 | `tools/web-smoke.mjs` (browser build) | **sample for sample**: a bar rendered through the wasm build equals `opz-tui --render` of the same project, all 85 344 samples, plus a non-zero peak — the wasm and host math hash the same, so identity and not a tolerance is the bar (`HANDOFF_BROWSER_BUILD.md`) |
 
 ## Engines ported so far
