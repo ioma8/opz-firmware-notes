@@ -1488,3 +1488,44 @@ from the C.
 
 The chains run `0x12466c`..`0x1249E0` (the rest of `onNoteOn`), so roughly 370 instructions - mechanical now
 that the key is written down.
+
+### The chains' constants, and where the first four land
+
+Two more decode facts, read off the listing:
+
+**1. The constants are two-instruction `mov`/`movk` pairs and the *low* 32 bits are the i32.** The chain
+opens with `mov w14, 0x4300` / `movk w14, 0xd550, lsl 16` = `0xd5504300`, then `0x73ef0d00`,
+`0x65666680`, `0x7bcfbe00`, `0xff62b700`. For the ones that need more than a `mov`/`movk` on a 32-bit
+register the listing builds them on an `x` register in the *negative* form, and that is where a hand
+conversion slips:
+
+```text
+0x12470c  mov  x4, -0xc000
+0x124714  movk x4, 0xbabd, lsl 16    ; x4 low 32 = 0xbabd4000 = -0x4542c000
+0x12472c  mov  x5, -0x800
+0x124734  movk x5, 0xd36b, lsl 16    ; = -0x2c94
+0x12477c  mov  x5, -0x1400
+0x124784  movk x5, 0xcf3a, lsl 16    ; = -0x30c5
+0x12479c  mov  x5, -0xc400
+0x1247a0  movk x5, 0x772a, lsl 16    ; = -0x88d5
+```
+
+These match the decompilation's `-0x4542c000`, `-0x2c940800`, `-0x30c51400` and `-0x88d5c400` once the low
+32 bits are taken, so the C is right about *which* constant - the listing is needed for the *shifts*, not for
+the values.
+
+**2. The first four words are written by one `stp`**, at `0x12478c`:
+
+```text
+0x12478c  stp w14, w15, [x2, 0x4c]      ; +0x4c = w14, +0x50 = w15
+```
+
+so `+0x4c`/`+0x50` are the two saturating accumulators at that point, and the chains that follow build
+`+0x54`/`+0x58` and then `+0x28`..`+0x34` the same way. That pins where each chain ends, which is what makes
+the transcription checkable: each `stp` is a boundary, and the fixture's `state_after_note_on` gives the
+expected value behind it.
+
+**Standing note on pace**: the chain block is `0x12466c`..`0x1249E0`, roughly 370 instructions of interleaved
+`mul`/`umull`/`lsr`/`asr`/`adds`/`csel`, and transcribing it needs each register's live value tracked by
+hand. It is mechanical now that the key is written down, but it is not one sitting - so each pass takes one
+`stp` boundary at a time and checks it against the fixture.
