@@ -283,3 +283,26 @@ that records the last few PCs before the fault and prints the branch instruction
 **Order of work from here**: fix the harness until `render` produces a block, then write
 `make_saw013a_fixtures.py` (modelled on `make_analoga_fixtures.py`, with the same determinism and
 not-every-case-silent guards), and only then transcribe `render` against recorded output.
+
+### The harness runs `render` now
+
+Three things were wrong, and all three are fixed:
+
+1. **The interface object carries the slots itself.** The call site is
+   `ldr x8, [x25]` / `ldr x8, [x8, 0x38]` / `blr x8`, so what the engine reads at `+0x38` is a field of
+   the object `initModule` was handed - not of a vtable that object points at. The host writes the callback
+   (and the table pointer) into the interface *and* keeps a vtable pointer at `+0x00`, because the C's
+   `*(long *)puVar10 + 0x38` implies one.
+2. **`UC_ARM64_REG_X4` was not imported** in `opzso.py`, so the callback raised `NameError` and the harness
+   reported it as a fault at the stub address - a misleading symptom for a one-line cause.
+3. **The table at `vtable + 0x28` is a table of pointers.** Zero-filled it renders silence; filled with a
+   constant it faults on an unmapped read, because the engine follows what it holds.
+
+With those, `init`, `initModule`, `onNoteOn` and `render` all run, and the callback fires twice per block
+with four values (`0x40404040`-derived in the first call, and three state-derived ones plus a phase in the
+second). The output is silent because the host data behind that table is missing.
+
+**Next**: read the `plVar29` uses in `SAW013A-decomp.c` (it is assigned at line 556 and dereferenced after)
+to learn the table's shape, fill it with the documented pattern the way `AnalogA`'s banks are filled, and
+then the engine should produce a block - which is the point where `make_saw013a_fixtures.py` becomes worth
+writing.
