@@ -895,3 +895,41 @@ executes the whole engine, and every input upstream of the loop has been verifie
 missing is the last hop: the product reaching `param_1` through the packed select at `0x124360`-`0x1243a4`.
 The next measurement is the blend's *mask* - the `bic`/`orr` pair uses a sign-derived mask, and if that mask
 is uniformly one way the blend selects the wrong operand.
+
+### The store is zero 64 times out of 64
+
+Hooking the store (`str d3, [x23, x9]` at `0x1243a8`) for the whole block, with the ADSR's level set:
+
+```text
+store count 64, nonzero stores 0
+last three stores (offset, lo, hi): [(488, 0, 0), (496, 0, 0), (504, 0, 0)]
+```
+
+64 stores of 8 bytes each is the 512-byte block the loop's `lVar19 != 0x200` bound implies (two words per
+iteration, the interleaved stereo pair the other engines also write). They are **all zero**, including the
+late iterations where `x13` (the previous phase) is `0x12b2f1a` and the lane accumulator `x15` is
+`0x77748916` - so a nonzero product exists in the registers and never reaches the buffer.
+
+That makes the **packed select** at `0x124360`-`0x1243a4` the last suspect, and the listing shapes it
+clearly:
+
+```text
+0x124360  bic v3.8b, v3.8b, v5.8b
+0x124364  bic v5.2s, 0x80, lsl 24     ; clear the sign bit
+0x12436c  bic v6.2s, 0x80, lsl 24
+0x124380  orr v3.8b, v5.8b, v3.8b
+0x124388  orr v4.8b, v6.8b, v4.8b
+0x12439c  sqadd v3.2s, v3.2s, v4.2s
+0x1243a4  sqadd v3.2s, v5.2s, v3.2s
+0x1243a8  str  d3, [x23, x9]
+```
+
+A `bic`/`orr` pair against a sign-derived vector is a bit-select, and if its mask is uniformly one way the
+blend consistently keeps the zero operand. The next measurement is that mask's origin - the instruction that
+produces `v3`'s sign bits just before `0x124360`, which the loop's listing shows is a comparison of two
+accumulated lane values.
+
+**Summary of the state of this engine**: 3 180 bytes of dense NEON arithmetic, of which every *input* is now
+verified by measurement (wavetable, index, fraction, operands, contributions, both host seams, the state map,
+the phase pair) and one *bit-select* is unaccounted for. That is the port's remaining blocker, and it is one
+instruction's provenance rather than a missing host input.
