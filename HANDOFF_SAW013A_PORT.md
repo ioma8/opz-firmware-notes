@@ -715,3 +715,36 @@ engine.
 
 That trace is the next action: it is mechanical, it is bounded to the prologue, and it cannot be misread the
 way single-address probes can.
+
+### The mechanical trace found it: `mul x13, x14, x13` with a zero table entry
+
+Hooking every instruction of the prologue (`0x123994`..`0x1241b0`) and logging `x13` whenever it changes
+gives the whole life of the gain in one pass. The tail of the log is the answer:
+
+```text
+0x124098 -> 0x000000002d8fdf54     nonzero
+0x1240ac -> 0x0000000000000000     zero - and the pair repeats
+```
+
+The instruction at `0x1240ac` is `lsr x14, x13, 0x1f` - it writes `x14`, so the *change* the hook saw is the
+effect of the instruction before it:
+
+```text
+0x124098  ldrsw x14, [x20, 4]      ; a table entry, four bytes into whatever x20 points at
+0x1240a8  mul   x13, x14, x13      ; x13 = entry * x13  -> zero
+0x1240ac  lsr   x14, x13, 0x1f
+0x1240b0  cmp   x13, x27
+0x1240b4  csel  w13, w28, w14, eq
+```
+
+So the gain is zeroed because **`[x20 + 4]` is zero**, and that pair (`0x124098`, `0x1240ac`) runs more than
+once - it is a small loop in the prologue, not a single pass.
+
+This is the systematic answer three rounds of single-address probes did not reach: the trace cannot be
+misread, because it shows *every* write rather than a snapshot of a reused register.
+
+**Next**: `x20`'s origin. The earlier reads of this function's prologue show a `ldr`/`adrp` pair building it
+(the decompilation's `plVar29` and the interface's table pointers are nearby), so the remaining question is
+whether `x20` is the wavetable pointer array, one of the five tables, or another host structure - and then
+which of its fields is the entry at `+4` that the harness leaves zero. That is one bounded lookup, and it is
+the last unknown before the engine can be expected to produce a block.
