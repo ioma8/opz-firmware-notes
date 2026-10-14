@@ -861,3 +861,37 @@ measurement contradicted, and every one of those was a *measurement* problem rat
 engine's inputs are verified, the prologue's gain is understood and fixable, and the remaining question is
 one register inside the loop's opening - so the cost of one more careful, self-consistent measurement is
 small, and the cost of acting on a contradictory one is large.
+
+### Self-consistent measurement: `x13` at the multiply is the state's `+0x5c`
+
+Running the change-log and the probe in **one** render call (the fix for the disagreement) gives a consistent
+answer:
+
+```text
+probe (x13 at 0x1242bc, last write pc):
+  ('0x0',       '0x1244ac')     first iteration
+  ('0x0',       '0x1244ac')     second
+  ('0x12b2f1a', '0x124184')     third
+```
+
+and the instruction at the loop's head explains the first two:
+
+```text
+0x124494  ldp  w11, w14, [x19, 0x5c]   ; w11 = state[+0x5c], w14 = state[+0x60]
+0x1244a8  sxtw x13, w11                ; x13 = the *previous* frame's phase
+0x1244b0  stp  w14, w8, [x19, 0x5c]    ; and this frame's is stored back
+```
+
+So `x13` is the state's `+0x5c` - the previous phase - and the `mul` at `0x1242bc` multiplies the lane
+accumulator by it. Early samples being *exactly zero* is then **by design**: a saw's first sample is at phase
+zero. The earlier probe reading zeros was reading the first iterations, not a fault.
+
+**But the output is still all zero even later**, where `x13` is nonzero (`0x12b2f1a`) and `x15` is
+`0x77748916` - so the product is nonzero and something *after* it, in the blend or the store, drops it.
+
+**Where the port stands, stated plainly**: one register (`x13` = the previous phase) is now *explained*
+rather than suspicious, the ADSR's level is *understood* (the first interface call's job), the harness
+executes the whole engine, and every input upstream of the loop has been verified by measurement. What is
+missing is the last hop: the product reaching `param_1` through the packed select at `0x124360`-`0x1243a4`.
+The next measurement is the blend's *mask* - the `bic`/`orr` pair uses a sign-derived mask, and if that mask
+is uniformly one way the blend selects the wrong operand.
