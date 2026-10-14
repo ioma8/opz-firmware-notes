@@ -1135,3 +1135,42 @@ current state and a wiring that can be committed.
 
 The wiring patch (`PHASE4_ENGINE_WIRING.diff`) is unchanged by this round and still passes 29 of 31
 opz-core tests when applied.
+
+### The bar's decay: it is the voice side, not the master
+
+Driving the wired `Engine` with a per-block print of the mix's stages (the level and pan ramps, the track
+mix, the group sums and the staged mono output) localised the `drum_beat_and_synth_line_play_together`
+failure. Sampling every 64th block across the bar:
+
+```text
+block  64: ramp L 0x7fffff80  P 0x3f7f7f00  sums 35384525  staged 117147
+block 128: ramp L 0x7fffff80  P 0x3f7f7f00  sums 42584915  staged  40972
+block 192: ramp L 0x7fffff80  P 0x3f7f7f00  sums    90304  staged  50257
+block 256: ramp L 0x7fffff80  P 0x3f7f7f00  sums     1616  staged   4168
+block 320: ramp L 0x7fffff80  P 0x3f7f7f00  sums        0  staged   4486
+block 384: ramp L 0x7fffff80  P 0x3f7f7f00  sums        0  staged    309
+```
+
+Two things this settles:
+
+1. **The ramps are not the problem.** The level ramp sits at `0x7fffff80` (full scale minus the last step)
+   and the pan ramp at `0x3f7f7f00` from the first sampled block onward, so both have reached their
+   targets and stay there.
+2. **Neither is the master.** The *group sums* - what the mix-down accumulates from the tracks - fall to
+   **zero** by block 320, which is well before the second kick fires (step 4 is block ~344 at 86 blocks per
+   step). The small non-zero `staged` output after that is the tail's own FX path, not the tracks.
+
+So the later kicks never reach the mix at all: the failure is on the voice side. The candidates, in order:
+
+1. the **host's note bookkeeping** in `Engine::trigger`/`render_block`: one `notes[track]` per track, released
+   when its frame count runs out, and the *same* voice re-used for the next hit. If the release leaves the
+   ported `Voice` gated (`+0x35` non-idle) or the next `note_on` lands on the wrong voice, the hit is lost;
+2. the **`Chain::note_on` voice choice** - the first voice whose `gated_note` is idle in the track's range;
+3. the **drum engine's slice selection** - the earlier hand-built-pack experiment showed a note that does not
+   map to a slice renders nothing, and the same is true of a re-trigger if the engine's per-note state is not
+   reset.
+
+The measurement to run next is the one the diagnostic was reaching for: print the voice's `note`,
+`gated_note`, `adsr.phase` and `counter` at the sampled blocks. `counter` advancing means the manager
+rendered it; `note` still holding the old hit means the trigger never arrived; `gated_note` non-idle means
+the release did not open the gate.
