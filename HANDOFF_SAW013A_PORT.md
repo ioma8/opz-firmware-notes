@@ -349,3 +349,31 @@ zero somewhere, and the candidates are:
 The cheapest next measurement is to read the callback's *return* expectations out of the C - whether the
 four arguments are an output the engine then reads back - and, failing that, to watch `param_1`'s store in
 the loop with a code hook to see which register value it writes.
+
+### The silence is upstream of the wavetable
+
+Hooking the loop's output store (`str d3, [x23, x9]` at `0x1243a8`, `x23` = `param_1`, `x9` the byte
+offset) settles where the zero comes from:
+
+```text
+stores (offset, lo, hi, x8): [(0, 0, 0, 12740059), (8, 0, 0, 25480118), (16, 0, 0, 38220177), ...]
+```
+
+`x8` is the running phase - one increment per *frame* (`12740059`, twice it, three times it), exactly the
+128 frames the loop covers. So the phase accumulator, the increment argument and the loop count are all
+right, and **every stored sample is zero**.
+
+Since the stored value is the wavetable interpolation's result, and a zero scale makes the index
+`(uVar1 >> 0x19)` zero, which lands on `table[0x410] = sin(0) = 0`, the zero is *upstream* of the lookup:
+the amplitude that scales it is zero. Things already tried, each in isolation, none of which moved it:
+
+* the five firmware constants at full scale;
+* the ADSR's `level` and `mul` at `0x7fffffff` with `add = 0`;
+* five Q31 sine tables behind the `vtable + 0x28` pointer array;
+* making the `+0x38` callback return `0x7fffffff` in case the engine reads it back.
+
+That leaves the prologue's gain chains between `params`/the state and the loop as the place the zero is
+introduced. The next measurement is a code hook on the loop's *first* instruction that records the registers
+the loop's body reads (the decomp's `uVar26`, `uVar23`, `uVar6`, `uVar1` and the two `iVar`s it enters
+with), then the same hook stepping forward until one of them is zero - the registers are visible at every
+instruction address, so this localises the stage without guessing which host input is missing.
