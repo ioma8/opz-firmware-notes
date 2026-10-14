@@ -1529,3 +1529,38 @@ expected value behind it.
 `mul`/`umull`/`lsr`/`asr`/`adds`/`csel`, and transcribing it needs each register's live value tracked by
 hand. It is mechanical now that the key is written down, but it is not one sitting - so each pass takes one
 `stp` boundary at a time and checks it against the fixture.
+
+### onNoteOn is ported, and the whole block matches the device
+
+`crates/opz-dsp/src/saw013a.rs` now carries `onNoteOn` instruction for instruction from the corrected
+listing, `0x124600`..`0x1249e0`:
+
+* the arm-and-clear (`0x124600`..`0x124668`) - as before, still field for field with the listing;
+* the **eight multiply-and-saturate chains** (`0x12466c`..`0x124878`) - each a saturated complement of the
+  parameter, one or two 64-bit `mul`/`umull` products, a Q31 narrowing, and a saturating accumulate; the
+  four `stp`s at `0x12478c` and `0x124870` are the boundaries, and each is checked;
+* the **octave gain** (`0x124844`..`0x1248f8`) - `(note % 12) * 0x7fff / 12` by the `0x2aaaaaab` magic
+  division, squared and narrowed with `sbfx #15, #16`, times the table's span, then the table entry;
+* the **pan/amp chain** (`0x1248fc`..`0x1249dc`) - `params[0xa]`/`params[0xb]` and the `+0x64` velocity byte
+  (`b * 0x1020408 + (b >> 4)`) folded through four Q31 products into `+0x28`..`+0x34`.
+
+**Verified**: `saw013a_note_on_matches_the_original` (no longer ignored) compares the entire 26-word block
+after `onNoteOn` with the device, case for case - **19 cases, all matching**.
+
+Two bugs found on the way, both in the *harness*, neither in the engine:
+
+1. **The fixtures recorded the octave gain table wrongly.** `make_saw013a_fixtures.py` read it with
+   `read_i32(base + 2*i)`, so each entry overlapped its neighbour and the JSON carried `0x7FFF7FFF` pairs
+   (`0x7FFF` in every low halfword, which is why the engine still sounded). It now uses
+   `read_i16_array(base, 16)` and the file is regenerated - `octave_gain` is a real `[i16; 16]`.
+2. **The test armed `init` with zero host constants.** `HostConstants::default()` is all zeros, so
+   `state+0x38` - the amplitude the pan/amp chain multiplies by - was zero and the four `+0x28`..`+0x34`
+   words came out zero. The case now carries the fixture's `constants` and the test builds `HostConstants`
+   from them.
+
+The second one is worth remembering: the fixture's `state_after_note_on` is only reproducible if the port
+is handed the same host constants the device had, because `onNoteOn` reads the `init` word back out of
+`state+0x38` and multiplies the whole pan chain by it.
+
+**Remaining in Phase 5's Saw013a item**: `render` (0x123994, 3 180 bytes), the engine test against the
+recorded output, the track wiring and the tag.
