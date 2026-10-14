@@ -299,9 +299,32 @@ pre-write content; the poll right after it shows `688384`, i.e. the low byte bec
 follows the loop (`*(long *)(&DAT_00346a50 + seq) == seq + 0x3469b0`), which I had assumed v1 never
 reaches. It does.
 
-So the port is missing that block, not a mix-down detail. The next step is to read the C for it (the
-region around the `if (*(long *)(&DAT_00346a50 + lVar41) == lVar41 + 0x3469b0)` test) and port what
-runs when the input selector is zero.
+That address is the **overload counter**, `DAT_01328d84`, and the block is the one that decides
+whether the mixer is running long enough to kill a voice:
+
+```c
+dVar72 = get_time_monotonic();
+uVar60 = (long)(dVar72 * 4e8) - (long)(dVar70 * 4e8);      /* two readings inside the same call */
+if (*g_renderingSong == 0) {                               /* host flag; zero in v1 */
+    if (uVar60 < 0x46cd1) {
+        if (uVar60 < 0x40b29) { counter = 0; }
+        else { counter += 1; if (counter > 2) goto overload; }
+    } else {
+overload:
+        InstrumentManager::handleOverload();
+    }
+}
+```
+
+The counter is a *persistent byte* in the .bss, which is why the device leaves `0xC0` there: the
+fixture's LCG prefill puts `0xB7` in that byte and each block increments it, so the value depends on
+how many calls ran before. The port has to model it (a byte at `at(0x1228d84)` in its scratch) and
+update it per block, which needs the clock delta as a **host input** - the same `Host::render_units`
+that is already declared and unused.
+
+The fixture cannot supply that delta today, because it is a *local* (`dVar72 - dVar70`), not memory.
+The clean way is to stub `get_time_monotonic` in `synth_render_fixtures`, record both readings per
+case, and have the test pass their difference; then the counter byte is reproducible on both sides.
 
 Polling the word inside hooks that fire during the call *does* bisect it. With polls on the track
 loop's head (`0xf7fb8`), the mix-down's store (`0xf8490`), and every `bl` in the tail's FX/master
