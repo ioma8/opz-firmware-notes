@@ -252,3 +252,34 @@ That is the oscillator's per-sample shape, and it is built from the same primiti
 **Next pass**: write the prologue's gain chains as Rust functions with the decompilation open beside them,
 then the loop body, then the epilogue - checking each against the C as `init` was, since that is what caught
 the three constants.
+
+### The host harness, and the seam that is still missing
+
+`tools/unicorn-harness/opzso.py` gained a `Saw013aHost`, modelled on `AnalogAHost`: the state block, the
+params buffer, the ADSR, the output buffer and the five firmware-filled constants `init` folds. `init`,
+`initModule` and `onNoteOn` run, and the state reads back.
+
+**What this engine needs that `AnalogA` did not.** `AnalogA` dereferences *no* interface slots; `Saw013a`
+does. Two things the C makes explicit:
+
+```c
+bool Saw013a::initModule(uint param_1, ModuleCallbackInterface *param_2, uint *param_3) {
+    *(ModuleCallbackInterface **)PTR_interface_002d6010 = param_2;   // it keeps the *caller's* pointer
+}
+...
+(**(code **)(*(long *)puVar10 + 0x38))((long)param_4 + 8, uVar21, uVar1, uVar3, uVar24);  // the callback
+plVar29 = *(long **)(*(long *)puVar10 + 0x28);                                            // a table pointer
+```
+
+So the host builds the interface object itself - an interface whose first word is a vtable, `vtable[0x28]` a
+host table and `vtable[0x38]` a stub that records its four arguments - and passes it to `initModule`. The
+library's own `Saw013a::interface` symbol is *not* what the engine reads.
+
+**Still faulting.** With that in place `render` reaches a null indirect call: `PC = 0`, with `x0` the state
+and `x1`/`x2` the first two parameters. That signature is not the `+0x38` callback (which passes
+`state + 8` and four values), so there is at least one more host pointer. The way to find it is a code hook
+that records the last few PCs before the fault and prints the branch instruction that took it.
+
+**Order of work from here**: fix the harness until `render` produces a block, then write
+`make_saw013a_fixtures.py` (modelled on `make_analoga_fixtures.py`, with the same determinism and
+not-every-case-silent guards), and only then transcribe `render` against recorded output.
