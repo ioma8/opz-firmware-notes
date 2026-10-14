@@ -1156,3 +1156,33 @@ fixtures should record.
 phase, `x11`'s zeroing) all pointed at the pair construction, and this closes it - the zero is not arithmetic
 at all but a table the host must supply, which is precisely the kind of gap the fixture harness exists to
 find.
+
+### The table's base, and what filling it does
+
+The base is `0x124a890` (probed at `0x123eac`, with indices 4 and 5 in the run) - the same `.data`/`.bss`
+region as the five constants (`0x124a5cc`..`0x124a5dc`), and zero in the shipped library, so it is firmware
+data the same way they are.
+
+Filling it does **not** simply make the engine sound. Both attempts - a full-scale ramp across 64 `i16`
+entries and a small ramp (`1..64`) - make `render` fault on an **unmapped read** instead. That is
+informative rather than discouraging: it says the entries are not consumed as plain scalars but steer a
+further dereference, so this table's *values* index or point at more host data the harness does not have
+either.
+
+**So the remaining gap is host data, and it is layered**: one halfword table at `0x124a890` whose contents
+select what comes next. That is exactly the shape `AnalogA` needed (five filter banks behind an interface
+pointer, plus coefficient records and rate tables), and it is the shape the fixtures exist to record.
+
+**The two candidate routes from here**:
+
+1. **find the firmware's values.** The engine ships as a `dlc-asset` with no data, so this means the app's
+   own `.bss` initialisation - the same place `AnalogA`'s banks and `Digital`'s wavetable come from. If those
+   were recovered from the firmware image, this table's contents should be there too;
+2. **take it as harness calibration**, the way the analogue engine's banks were taken, with a documented
+   monotone ramp - but only after finding what the entries are *used* for, since the unmapped read says the
+   choice of values changes the path rather than just the level.
+
+**What this round establishes**: the engine's silence is not arithmetic. Every register story traced
+(`x20` = ADSR, `x13` = the previous phase, `x11`'s zeroing, `x8`'s load) converges on a **16-bit table at
+`0x124a890` that the harness leaves zero**, and filling it changes the control flow. That is the port's
+remaining blocker, stated as a data gap rather than a code one.
