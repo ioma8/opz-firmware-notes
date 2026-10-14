@@ -1419,3 +1419,35 @@ modulation block whose cutoff falls over the bar closes the filter on the drums,
 first hit followed by silence - and the LFOs' output depends on the track's parameters, which the app's
 `initial_values` supplies rather than the device's own preset data. Print those two words alongside the
 group sums per quarter; if they fall, the fix is in what the app programs, not in the mixer.
+
+### The wiring is a branch now, and the bar decay is fixed
+
+**Working method changed**: the wiring is no longer a patch file. It is committed on the clone's
+`phase4-wiring` branch (`333d1fc`, branched from `75dce01`), with `main` left green. Every earlier round spent
+its first and last minutes re-applying and re-saving a 500-line diff; a branch removes that entirely, and the
+work survives independently of this notes worktree.
+
+**The bar decay is fixed.** It was the drum engine's own envelope after all - but not the one the earlier
+passes touched. `sample_player_gain` keeps its own `Adsr` whose `level` only ever *decays*: `render` walks it
+down and nothing puts it back, so a track's hits get quieter and quieter across the bar. The fix is
+`DrumEngine::rearm_envelope(level)`, called from the `EngineVoice` adapter's `note_on` - *not* from the chain,
+because a gated note is played by the ported `Voice`'s own re-trigger, which reaches the engine through the
+adapter and never passes the chain again. `drum_beat_and_synth_line_play_together` passes.
+
+Also carried on the branch, each found by measurement:
+
+| | |
+|---|---|
+| the per-track enable byte `+0x6d1c` | the app's mute - a disabled track runs neither its filter nor its mix-down, sends included |
+| the level/pan words `+0x5108`/`+0x5188` | the ramps move toward them and start at zero |
+| the master volume `+0x6860` | multiplies the whole master, so zero is silence |
+| the `centsDetune` table | the scratch aliases it; zeroed, every voice's frequency is zero |
+| the host envelope | `updateParametersADSR` per voice per block, plus the level advance the drum engine omits |
+| pack loading | into every voice of a drum track's range, because the host picks which one a note lands on |
+
+**The one failure on the branch**: `mute_silences_a_track_without_stopping_it`. The block after a mute is not
+all zero, and - measured over the following twelve blocks - the residual *grows* (4071, 8630, 16567, ...
+941692) instead of draining. Clearing the sends and the FX mix at the top of the block changed nothing, and
+neither did removing the compressor's reference words, so it is not the FX destinations and not the
+compressor's references. That growth is the next thing to diagnose, and it is new with the master chain: the
+interim host had no compressor, no DC blockers and no limiter.
