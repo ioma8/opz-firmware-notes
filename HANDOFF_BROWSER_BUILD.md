@@ -329,6 +329,11 @@ leftover timers, three a11y attributes, and four harness bugs — `Elf64_Sym`'s 
 `st_size`, `__memcpy_chk`'s length taken from the wrong register, the assert logger's register stride,
 and an overrun in `probe_callbacks.py`. The harness's own proofs still pass.
 
+A third commit, `f28c7a3`, closed the tail: an unbounded `render_q31` that aborted the wasm module
+(now capped at the bounce's ten seconds), an unknown engine name that silently replaced a synth
+track's engine with a drum one (`VoiceEngine::for_engine`'s catch-all), `bounce_audio` masking with
+the constant instead of the ring it was handed, and the page's three different tempo ranges.
+
 Two of its findings were wrong, and are recorded as such: the fallback grid cannot render by default
 (it only exists in the fetch-failure path), and `params::interpolate`'s non-convergence is the
 device's own integer glide, which the fixtures pin.
