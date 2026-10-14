@@ -1024,3 +1024,31 @@ with state-derived values, and the pair construction's zeros come from somewhere
 `0x12409c`. The trace method that found `x20` = ADSR and `x13` = the previous phase works; it has not yet
 been run over `0x123994`..`0x124098` for the *specific* registers the `zip` at `0x12409c` consumes (`v1` and
 `v2`'s scalar ancestors).
+
+## Audit against the objective (this round)
+
+The objective is: finish every phase, each verified exact to the original library functions, committed and
+tagged. Checked against the repo, not against memory:
+
+| phase | state | evidence |
+|---|---|---|
+| 1 | **done, tagged** | `phase-1` |
+| 2 | **done, tagged** | `phase-2` |
+| 3 | **done, tagged** | `phase-3` |
+| 4 | **done, tagged** | `phase-4`; `Synth::render` 14/14 whole-mixer cases with the `CHECK_MASTER` gate removed; the ported chain wired into `Engine` and merged to `main`; realtime safety measured |
+| 5 | **not done** | `Saw013a` is the one outstanding item: `init`/`initModule`/`onNoteOff` are ported and C-verified, `render`/`onNoteOn` are **not ported**, the harness drives the whole engine but it renders silence, there are **no fixtures** for it, it is **not wired** into a track, and Phase 5 is **untagged** |
+
+Everything is committed: the clone's `main` is clean with the Saw013a harness work at `261b624`
+(`c80f660`, `8d3cfae`, `99880a4`, `871d6dc`, `d215af5`, `261b624`), and this worktree holds `SAW013A.asm`,
+`SAW013A-decomp.c` and this file.
+
+**The honest position**: after many rounds on this engine the blocker is a single unknown inside one dense
+3 KB function - the pair construction at `0x12409c` - while every input around it is verified by measurement
+and two of its registers (`x20` = the ADSR, `x13` = the previous phase) are now *explained* rather than
+suspicious. The three frames that were checked and found wanting (a patch file for the wiring, single-address
+register probes, and the low-word/truncated-log readings) have all been replaced by working ones: the wiring
+is a git branch, and the trace-based measurement has not produced a wrong answer yet.
+
+**The next concrete action** is the one written above and not yet run: trace the scalar ancestors of the
+`zip` at `0x12409c` (`v1` and `v2`'s sources) across `0x123994`..`0x124098`, the same way `x20` and `x13`
+were found.
