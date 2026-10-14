@@ -242,7 +242,25 @@ still has to produce it byte for byte for the fixture to pass.
 | the two modulation-block words | 19 and 38 | the tail's master LFOs (slots 8/9)'s shape output, ~0.03% off |
 | the group sums | word 0 | the group gain (see below), then the sends' gains |
 
-**The group gain, measured.** For `filled` track 0 the device's `local_88[0]` at the gain multiply
+**The group gain's formula, confirmed from the disassembly** (`0xf7d44`-`0xf7d64`):
+
+```text
+w10 = 0x199999a                       // the addend
+mul x9, x9, x20                       // x20 = 0x0CCCCCD0, set at 0xf7b40/0xf7b50
+lsr x9, x9, #31                       // logical
+adds w9, w9, w10                      // saturating
+stur w9, [x29, #-0x28]                // local_88[0], a stack slot
+```
+
+so `sat_add((input * 0x0CCCCCD0) >>u 31, 0x199999A)` is right, and the remaining 1,024 is in the
+**input**: the device's value implies an input of `5,425,506` while the recorded folded `+0x684c` is
+`5,414,283`, so the register feeding the multiply (`w9` at `0xf7d44`) does not hold the folded
+`+0x684c`. Note that the branch two instructions earlier (`0xf7d40`) tests the *current* fold (`w10`,
+the `+0x6858` one), which means the compiler kept an earlier fold in `w9` across the three later ones.
+The next step is to hook `0xf7c40`-`0xf7d44` and watch `w9` - the same trace that settled the lane-1
+chain.
+
+The measurement, for the record: for `filled` track 0 the device's `local_88[0]` at the gain multiply
 (`0xf83f8`) is `0x1a1dc8e = 27,385,998`, and the word it comes from - the *folded* `+0x684c`, which
 the fixture records - is `5,414,283`. The formula is `sat_add(mul31(folded * 0xcccccd0), 0x199999a)`
 with `0x199999a = 26,843,546`: that gives `541,428 + 26,843,546 = 27,384,974`, i.e. exactly **1,024
