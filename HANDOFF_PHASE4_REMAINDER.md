@@ -874,3 +874,40 @@ Phase 4's remaining item is the wiring itself: delete the interim host and have 
 The seam it needs is an `EngineVoice` implementation for `VoiceEngine`, and the two blockers there are
 that `AnalogAEngine::render` wants the host's banks/pads/rates (which `AnalogVoice` already owns) and that
 the engines take `DigitalAdsr` while the mixer's trait takes the device's `Adsr`.
+
+### The engine seam exists: `EngineVoice for VoiceEngine`
+
+`73c4865`. The ported `Mixer` drives its engines through the `EngineVoice` trait, and the host's three
+engines never implemented it - so nothing in the app could drive the ported chain. The adapter is now in
+`opz-core/src/engine.rs`, with a test that walks every non-drum track in the factory map, starts a note,
+renders a block through the trait and asserts sound *and* an advancing envelope.
+
+Two shape differences it bridges, both worth knowing before the wiring:
+
+1. **The envelope.** The device hands its engine a *pointer* to the voice's `Adsr`; the port's engines were
+   written against the four words they actually use (`level`, `mul`, `add`, `phase`). The adapter passes
+   those four and takes `level` and `phase` back - which is everything any of the three engines writes
+   (`digital.rs:569`, `analog_a.rs:666`/`766`). The `rate` word and the re-arm byte stay with the `Adsr`,
+   and `Voice::note_off` already sets the flag before calling the engine, so `note_off`'s `&Adsr` being
+   immutable is not a loss.
+2. **The host tables.** `AnalogAEngine::render` wants banks, pads and two rate tables; the enum's `Analog`
+   variant owns them, so the adapter can reach them. The two rate arguments are the *same* table, as the
+   interim host also passes them.
+
+The engine's third argument is the glide input, which the port's engines call `track`; the adapter passes
+the mixer's `delta` there and the increment as the phase increment. Velocity narrows to the byte the
+device's voice record holds at `+0x3d`.
+
+**What the wiring still needs**, in the order it should be done:
+
+1. `Engine` owns a `Synth` and a `Mixer<VoiceEngine>`, and something programs the `Synth`'s parameter
+   blocks from the app's per-track `TrackParams` (18 bytes) through `set_target_parameters`,
+   `interpolate_parameters` and `force_parameters_to_target`;
+2. note allocation: the device's sequencer picks the voice; the host has to pick the first idle voice in
+   the track's range (`InstrumentManager::voice_start_index`) and write the voice record's note/velocity
+   (`+0x20`, `+0x3c`, `+0x3d`, `+0x38`), the way the fixture's pins do;
+3. per-block host inputs: BPM, the clock delta, the detune index, the module gates and gains, the plug ids
+   and flags - all of which `LoopHost` already takes;
+4. the master output replaces `Engine::render_block`'s mono fold, and the existing engine tests change
+   accordingly: the plan already says the offline render cannot stay byte-identical once the master chain
+   is real, and asks for a measured, explained difference instead.
