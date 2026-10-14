@@ -270,8 +270,19 @@ So the whole track loop is verified: the setup, the LFO array and the reset seam
 engine dispatch, the eight track filters, the eight DC blockers, the counters and peaks, both ramps,
 the group gain, the mix-down and the two 128-word accumulator groups.
 
-**What is left in the loop** is two modulation-block words - layer 0's word 38 and layer 1's word 19 -
-where the port has 688567 against the device's 688384. Both blocks match everywhere else, and an LFO's
+**What is left in the loop** is *one* word, reported twice. Layer 0's word 38 and layer 1's word 19 are
+the *same* address - `0x1228cec + 38*4 = 0x1228d38 + 19*4 = 0x1228d84` - because the two modulation
+blocks overlap by eight words (layer 0 spans `0x1228cec`..`0x1228d3f`, layer 1 starts at `0x1228d38`).
+The port keeps both as offsets into one scratch buffer, so the aliasing is automatic there.
+
+The value itself is odd and worth chasing carefully: the input (the fixture's LCG prefill at that
+word) is **688567**, which is what the port leaves there, while the fixture's `scratch_changed` says
+the device's value after the call is **688384** - which is one step *earlier* in the same LCG sequence.
+A memory-write watchpoint on `0x1228d84` over a re-run of the same case saw **exactly one** write: a
+byte-sized zero at `0xf88d0`. So the two runs disagree about whether that word is written at all, and
+the next step is to diff the probe's scratch against the fixture's recorded values word by word - if
+they differ anywhere, the probe's setup is not identical to the fixture's (the pins, the FX zeroing,
+the tuning table, the sequencer), and the two-word diff is a red herring rather than a port bug. Both blocks match everywhere else, and an LFO's
 shape value depends on the destination word's *prior* content, so the cause is a write the final
 content has already overwritten. Hooking the LFO renders of the writes in between is the way in.
 
