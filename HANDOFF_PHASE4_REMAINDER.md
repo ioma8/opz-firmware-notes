@@ -275,6 +275,15 @@ the *same* address - `0x1228cec + 38*4 = 0x1228d38 + 19*4 = 0x1228d84` - because
 blocks overlap by eight words (layer 0 spans `0x1228cec`..`0x1228d3f`, layer 1 starts at `0x1228d38`).
 The port keeps both as offsets into one scratch buffer, so the aliasing is automatic there.
 
+**Why the watchpoint missed it.** `opzso.py` implements `memset`, `memcpy`, `memmove` and
+`__memcpy_chk` *natively* in Python (`so.write` -> `uc.mem_write`), so their writes never go through a
+CPU store and a `UC_HOOK_MEM_WRITE` hook cannot see them. The device's unseen write at `0x1228d84` is
+therefore a *libc* copy, and a block copy reaching it is easy to find: the shared parameter block at
+`0x1228ca0` is 0x150 bytes, which covers `0x1228d84` (word 57 of that block). The port's Voice path
+calls `reset_lfo` rather than the device's `Synth::noteOn` parameter-block copy. To catch it, wrap the
+harness's own `write`/`mem_write` (a monkey-patched logger) instead of relying on a CPU hook, and log
+which libc call and which PC performs it.
+
 **Settled: it is a port bug, and the fixture is faithful.** A re-run of the same case under the probe's
 own setup produces a scratch that matches the fixture's recorded values **word for word, all 3651 of
 them** - so the harness is not lying, and the device really does leave `688384` at `0x1228d84` while
