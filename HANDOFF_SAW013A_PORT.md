@@ -1399,3 +1399,31 @@ is simply the entry.
 **Next**: transcribe these three parts into `crates/opz-dsp/src/saw013a.rs` as `on_note_on`, then verify the
 resulting state against `cases.json`'s `state_after_note_on` - which is the whole state block, so a partial
 port will not match and the comparison pins every field.
+
+### Address correction: `onNoteOn` is 0x124600, not 0x124480
+
+The inventory table at the top of this file lists `onNoteOn` at `0x124480` and `onNoteOff` at `0x124864`.
+Both are wrong, and the error was mine: I converted the symbol table's decimal addresses by hand. The
+symbols are
+
+```text
+1197568  _ZN7Saw013a8onNoteOnEihPvPKj   996 bytes
+1198564  _ZN7Saw013a9onNoteOffEiPv        4 bytes
+```
+
+and `1197568` is **`0x124600`**, not `0x124480`; `1198564` is **`0x1249E4`**. The disassembly confirms it -
+`0x1249E0` is a `ret`, `0x1249E4` is the next function's `ret`, and 0x124600 + 996 (0x3E4) = 0x1249E4
+exactly.
+
+**What that means**: the `SAW013A.asm` block I had labelled `onNoteOn` was actually **`render`'s sample
+loop** (starting at `0x124494`, the target of the loop's `b.hs 0x124098`) - which is why reading it to
+transcribe `onNoteOn` looked like the wrong function. The corrected listing is appended to `SAW013A.asm`
+under a `;; ---- onNoteOn 0x124600 (996 B) - corrected address ----` header.
+
+Nothing else depends on the wrong number: the **fixture generator resolves symbols through the harness's own
+symbol table** (`opzso`), not by address, so `cases.json` is correct and the engine it records really is
+`onNoteOn`.
+
+**Standing rule**, since this is the second hand-converted address to bite: take addresses from
+`hex(...)` in a command's output rather than converting decimals by eye, the same way the register readings
+had to come from the consuming instruction at full width.
