@@ -242,6 +242,26 @@ still has to produce it byte for byte for the fixture to pass.
 | the two modulation-block words | 19 and 38 | the tail's master LFOs (slots 8/9)'s shape output, ~0.03% off |
 | the group sums | word 0 | the mix-down itself, and the four accumulator gains |
 
+Measured with code hooks on the device, for track 0 of the `filled` case, the lane-1 chain is
+`mul31(mul31(mul31(w28 * w23) * w22) * w27) * this[0x5188]` with:
+
+| step | pc | value |
+|---|---|---|
+| `w28` (the chain's first factor) | — | `0x7fffffff` (1.0) |
+| partial after `mul31(w28 * w23)` | `0xf8344` | `0x7bc22c39` |
+| partial after `× w22` | `0xf8364` | `0x7bc22c38`, with `w22 = w27 = 0x7fffffff` |
+| final `× this[0x5188]` | `0xf8378` | `this[0x5188] = 0xd2a98 = 862872` |
+
+So `w23 = 0x7fffffff - 71,103,942`, and the *earlier* product at `0xf8254` is
+`x10 = 0xfdf114b2841dd69b` from `x13 = 0x7fffffff` and `x17 = -69,064,347` (the raw `d04`), with
+`x25 = 0x43dd3c6 = 71,103,942` at that point. The narrowing of `x10` cannot produce `x25` (a logical
+`>> 31` gives `0xfbe22965`, an arithmetic one `0xffbe2296`), so one of the two chains feeding `w23`
+is not the multiply I mapped it to - `x25` is set by `sxtw x25, w9` two instructions earlier, so the
+next thing to hook is `0xf8250` to see where that value comes from. For track 1 the same dump is
+`x17 = 663,280` and `x25 = 0xfffffffffba7c872`, which rules out a fixed relationship between them.
+
+The older numbers, for track 0:
+
 Measured for track 0 of the `filled` case, the preamble's four complements are
 `[0x7fffffff, 2145157886, 0x7fffffff, 0x7fffffff]` where the device's chain product implies
 `0.9667` instead of my `0.9989` - so one factor is roughly 0.967 against my 1.0. The inputs are
