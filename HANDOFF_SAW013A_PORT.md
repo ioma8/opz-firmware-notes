@@ -492,3 +492,26 @@ a `sqsub` against zero is a no-op - which is consistent with everything measured
 **Next**: fill `state + 0x28` and `state + 0x30` (four words each) with the values the second call is handed
 (the C passes `uVar21`, `uVar1`, `uVar3`, `uVar24` into the callback, and those four look like exactly this
 pair), then re-run. That is the last untried input the C points at.
+
+### The zero is one operand of the pan/gain product
+
+`0x124394` is where the loop's post-accumulated pair begins (`subs w14, w15, w14`), and the operands there
+read:
+
+```text
+at 0x124394 (x16, x8, q3lo, q4lo): [('0x0', '0xc265db', 0, 0), ('0x0', '0x184cbb6', 0, 0), ...]
+```
+
+`x8` is nonzero and advances by one increment per frame (the phase), while **`x16` is zero on every frame** -
+so of the two operands the pan/gain product is built from, one is zero and the other is fine. The product
+itself (`q3`/`q4`) is therefore zero, which is what the loop accumulates and stores.
+
+That is as far as measurement has taken it, and it is a sharp place to pick up: walk the assembly backwards
+from `0x124394` for the instructions that define `x16` and find which of the prologue's chains leaves it
+zero. Everything downstream has been checked - the tables, the index, the fraction, the state fields, and
+both interface calls - and the remaining unknown is one register's origin.
+
+**Tried and ruled out so far** (each in isolation, none lifting the silence): the five firmware constants at
+full scale; the ADSR's level and mul at `0x7fffffff`; five Q31 sine tables behind the pointer array; making
+the `+0x38` callback return a value; servicing the first call by ramping the ADSR; writing the second
+call's four arguments into `state + 0x20`; filling eight words at `state + 8`.
