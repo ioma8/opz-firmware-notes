@@ -241,7 +241,18 @@ still has to produce it byte for byte for the fixture to pass.
 | the group sums | word 0 | the mix-down itself, and the four accumulator gains |
 
 The words *before* those match, so the LFO phase (both layers, including the reset seam) and the
-setup are right. The three send buffers are not compared: their gains are the one part of the
+setup are right.
+
+The `+0x174` diff is precise and surprising: for a voice whose every other field matches (note,
+variant, the ADSR words, the step at `+0x17c`, the bend and vibrato, the legato byte, and both the
+current frequency at `+0x170` and the previous one at `+0x178`), the port's target is
+`note_frequency(note, variant < 4, centsDetune[0])` while the device's is a value that is **not**
+`table[note] * detune >> 30` for any table entry or any `centsDetune` entry (implied detunes come out
+at 0.003 of full scale, and the table's whole range is 0.5 to 1.0). `Voice::renderVoice` does store
+exactly `(table[note] * detune) >> 30 & ~1` at `+0x174` (0x13dbcc), so something writes it
+afterwards - the fresh path of `Voice::noteOn` stores the *same* value at both `+0x174` and
+`+0x178`, and the legato path does not touch it. The next thing to check is which of `renderVoice`'s
+callers can overwrite it, and whether the fixture's voice went through `noteOn` at all. The three send buffers are not compared: their gains are the one part of the
 preamble's `mul31` chains that is not decoded yet.
 
 The test's own machinery, worth keeping: it rebuilds the `Synth`'s structured parts (23 LFOs, 13
