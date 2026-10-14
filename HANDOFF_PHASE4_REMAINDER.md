@@ -171,6 +171,43 @@ out = min(0x7fffffff, mul31(this[0x6860] * out))                              //
 0x7d064) and the compressor's third and fourth reference arguments come from `this + 0x629c` and that
 table. The table is `.rodata` and belongs in a generator.
 
+### The track loop's mix-down, decoded from the disassembly
+
+The C for this loop reuses registers past the point of readability, so this comes from the asm at
+`Synth::render+0x91c` (0xf830c..0xf84ec):
+
+```text
+per track t (the group is t >> 2, the group gain `local_88[group]`):
+  ramp  = [this[t*4 + 0x50c8], this[t*4 + 0x5148]]      // lane 0: level, lane 1: pan
+  target = [this[t*4 + 0x5108],
+            mul31_logical(mul31_logical(mul31_logical(g1 * g2) * g3) * g4) * this[t*4 + 0x5188] >>u 31]
+  step  = sqsub(target, ramp) >>a 7 per lane            // 64 frames to converge
+  mix   = 0x12288a0                                     // the DC blocker's output, in place
+  for i in 0..128:
+      product = mix[i] * group_gain
+      gain = product == 2^62 ? 0x3fffffff8 : (product >>a 28) & ~7
+      gain = clamp(gain, -0x80000000, 0x7fffffff)
+      a = mul31_arith(gain * ramp[0])                   // `sbfx #31` + sentinel, no clamp
+      b = mul31_logical(gain * module_gain)
+      sum0[i] = sat_add(sum0[i], mul31_logical(a * ramp[1]))          // 0x1227a20 + group*0x80
+      sendA[i] = sat_add(sendA[i], mul31_logical(a * gain_a))         // 0x1227e20
+      sendB[i] = sat_add(sendB[i], mul31_logical(a * gain_b))         // 0x1228020
+      sendC[i] = sat_add(sendC[i], mul31_logical(a * gain_c))         // 0x12284a0
+      out2[i]  = sat_add(out2[i], mul31_logical(b * gain_d))          // the caller's second buffer
+      ramp += step                                      // after the samples are read, not before
+  this[t*4 + 0x50c8] = ramp[0]; this[t*4 + 0x5148] = ramp[1]          // the ramp carries across blocks
+  peaks at this[t*2 + 0x6c10] and `local_88`                          // decayed by * 0x7ed9 >> 15
+```
+
+The gain words come from the module-sends structure the sequencer holds (`getModuleSends` returns a
+pointer; the mixer reads a halfword at `+0x1760` and words at `+0x1b58`/`+0x1b5c`/`+0x1b60`), from
+`this + 0x6c48`, from the mute bit in `this + 0x6848` and from the two LFO blocks at `this + 0x1554`/
+`+0x15a0`. The four accumulator gains (`gain_a`..`gain_d`) are four `mul31` chains over those, which
+is the one part still worth reading line by line from the asm when the port lands.
+
+`param_2` (the caller's second buffer) is written by this loop, so v1 - which has no FX tracks -
+still has to produce it byte for byte for the fixture to pass.
+
 ## The seam decisions a resuming session must not undo
 
 * **`EngineVoice` (in `voice.rs`)** replaces the original's three per-voice function pointers
