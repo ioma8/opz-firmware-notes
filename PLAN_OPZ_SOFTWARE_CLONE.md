@@ -273,19 +273,42 @@ A Rust test asserts each synth track is audible on its own.*
 
 Goal: the app sounds and behaves like the device’s own voice path, not our approximation.
 
-- [ ] Port `ADSR` + `updateParametersADSR`/`AHD` + `DcBlocker`, golden vectors passing.
+- [x] Port `ADSR` + `updateParametersADSR`/`AHD` + `DcBlocker`, golden vectors passing.
+      (`83ba50d`: 288 + 141 + 18 cases over the whole input domain; 1 312 + 1 677 calls replayed.)
+- [x] Port `Compressor` + `masterCompressor` for the master bus.
+      (`28849a2` set/update/compressStereo, 880 calls; `0333db1` masterCompressor, 72 cases over the
+      whole 256-word detector ring and the 64 running sums.)
+- [x] Port the `Lfo` — the trigger path, `render` and `reset` (`60bb7a4`, `3d47736`; 246 + 504 + 48
+      cases, the whole shape machine and its five tables).
+- [x] Port `Voice` (0x190 bytes: `renderVoice`, `noteOn`, `noteOff`, `killNote`, `pitchBend`,
+      `vibrato`, `resetNote`, `getIdle`) with `Tuning::detuneCents` and the `centsDetune` table
+      (`1e4731b`, `13b9dd7`; 1 337 + 73 cases). The engine seam is an `EngineVoice` trait where the
+      original has three function pointers, so the engine's state block (`+0x58`..`+0x16f`) stays in
+      the engine.
 - [ ] Port `InstrumentManager` — voice start/end indices, overload handling, vibrato/pitch bend.
 - [ ] Port `Synth` (`Synth::render` 11 072 B and the latch/target/interpolate/LFO paths); the two
       extra output buffers stay zeroed (no FX tracks in v1).
-- [ ] Port `Compressor` + `masterCompressor` for the master bus.
 - [ ] Delete the interim host; the `Engine` now calls the ported chain. Where Unicorn cannot reach a
       slice, invariants stand in and are recorded in `PORT_METHOD.md`.
 - [ ] Check realtime safety (no `malloc`/`new` in the callback) from the Unicorn traces; pre-warm if
       anything allocates.
 
+**What `Synth::render` actually is** (measured, and wider than this checklist assumed): it is the
+*global mixer*, not a per-track render. Its 11 KB covers six tracks - `interpolateParameters`, the LFOs,
+`InstrumentManager::render` twice per track (layers 0 and 1), `trackFilterProcess` and
+`trackFilterDcBlock` per track - then `masterCompressor` and `bounceAudio`. It also calls
+`Sequencer::getBPM` (×4), `Sequencer::getInputSelector`/`getModuleSends`/`getActiveTrack`,
+`PlugManager::getPlugFlags` (×2), `FxManager::render` (×4) and `InstrumentManager::handleOverload`.
+So Phase 4 additionally needs `TrackFilter`, `bounceAudio` and three `Sequencer` getters +
+`PlugManager::getPlugFlags` before `Synth::render` can be wired, and the FX path needs `FxManager`
+unless the two extra buffers really can stay zeroed.
+
 **Playable check:** the six-track groove from Phase 3 plays through the ported chain, audibly
 better-behaved at the edges (param glide, voice stealing on rapid re-triggering, master compression),
 with the offline render byte-identical to the Phase 3 output for the same preset vectors and events.
+(The engine-level renders stay byte-identical by their own tests; the *master* output cannot be
+byte-identical once the ported chain replaces the interim host, since the interim host has no master
+compressor and one voice per track. Expect a measured, explained difference instead.)
 
 ### Phase 5 — Fidelity pass, method notes, and the repeatable pipeline
 
