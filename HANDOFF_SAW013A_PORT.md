@@ -1097,3 +1097,30 @@ Two candidates inside it, both cheap to separate:
 
 The measurement that separates them is a hook at `0x124040` (the narrowed product, before the subtract) and
 at `0x12404c` (the subtrahend `v3`), which the trace pattern gives directly.
+
+### The pair's multiplier `w11` is zeroed at `0x124024`
+
+Tracing `x11` across the prologue gives its last writes:
+
+```text
+0x123f88 -> 0x0
+0x124020 -> 0x7fbfbfbf
+0x124028 -> 0x0            (the effect of 0x124024's `mul x11, x8, x12`)
+```
+
+So the multiplier the pair is built with is **zeroed by `mul x11, x8, x12` at `0x124024`**, and the earlier
+direct probe at `0x12404c` confirms the consequences: `w11 = 0`, `x9 = 0` (`mul x9, x11, x9`), the narrowed
+pair `q1 = 0`, and the `sqsub`'s subtrahend `q3 = 0` as well.
+
+Two facts worth keeping from that probe:
+
+* `x8` at that point held a **harness address** (`0x200000111314` - inside the stub page the harness
+  allocated for the engine's callbacks), which means `x8` is a *host pointer* the engine is multiplying
+  *by*; that is worth checking against the C, because a pointer used as a multiplicand suggests the register
+  holds something else by then;
+* `x12` = `1`, so the `mul`'s zero must come from `x8`.
+
+**Next**: read `x8` and `x12` at `0x124024` itself (full width), and if `x8` is genuinely zero there, trace
+`x8`'s writes over the same range. The trace pattern has now found four registers' stories - `x20` = the
+ADSR, `x13` = the previous phase, `x11`'s last write, and the pair's zeroing - so it is the right tool for
+the last link too.
