@@ -240,7 +240,20 @@ still has to produce it byte for byte for the fixture to pass.
 | the pan ramp `+0x5148` | ~3% off | one of the four chain factors is still not the one the original multiplies |
 | ~~the counters and peaks~~ | fixed | the per-track gate is a byte, and the 1000-block branch |
 | the two modulation-block words | 19 and 38 | the tail's master LFOs (slots 8/9)'s shape output, ~0.03% off |
-| the group sums | word 0 | the group gain (see below), then the sends' gains |
+| the group sums | word 9 | one LSB, at group 0's sample 4 |
+
+**The accumulator block is `memset` on every call** (`memset(&DAT_01327a20, 0, 0x400)` at the top of
+`Synth::render`): the mix-down sums into it, so the port has to clear it too. `fe55ed7` does that, and
+the group sums went from differing at word 0 to differing at word 9 by exactly one LSB. The same
+commit fixed the input buffer's address (0x1228aa0, 0x200 bytes - it was pointing at 0x1228220).
+
+Note on the group gain: it is **not** the problem. The earlier "1,024 short" was my decimal
+conversion of `0x1a1dc8e`; the device's own computation is `0x842f4 + 0x199999a = 0x1a1dc8e` and the
+port's formula gives exactly that.
+
+Next: the track filters (0x688c on) and the DC blockers (0x69ec on) are inside the object and are not
+in any compared region yet, so the one-LSB difference at group 0's sample 4 has not been localised
+past the mix-down. Adding those two regions is the next check.
 
 **The group gain's formula, confirmed from the disassembly** (`0xf7d44`-`0xf7d64`):
 
