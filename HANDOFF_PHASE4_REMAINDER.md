@@ -1532,3 +1532,44 @@ blocks while the track mix is already zero), the compressor's gain recovers as i
 now renders that drain and compares against the sounding level, with the numbers in the comment.
 
 **What is left in Phase 4**: the master's DC-blocked mix, and then the phase can be tagged.
+
+# PHASE 4 IS COMPLETE - tagged `phase-4` (clone commit 2d8aa92)
+
+The last diff in the whole-mixer comparison is closed, and with it the phase.
+
+**What the 4.5% at `0x12288a0` actually was: the compressor's own state.** Three suspects were eliminated by
+measurement first, and each elimination is worth keeping because it was cheap and decisive:
+
+| suspect | how it was cleared |
+|---|---|
+| the compressor's references | a Unicorn hook on `masterCompressor`'s call site (`0xf9e5c`) dumps its four arguments; the device's are `[-332010, 1708015, 1935102319, 2147035189]`, exactly the port's |
+| the master filter's input | the same probe reads `param_1` at the filter call (`0xf9cf4`); it is `[-12412448, -1606875, -12397228]`, exactly the port's |
+| the word `+0x629c` | the port's value is 5700496 through the whole render, the same as the generator's LCG and the device's live input - so the port does not write it |
+
+**What was missing**: the generator boots the compressor from the same LCG as the rest of the case -
+`lcg(256, master_fill)`, six constants, `lcg(64, master_fill + 1)`, 326 words - and the test never seeded it,
+so the port's compressor started zeroed. The same input and the same references through a different state
+give a different answer, which is the whole 4.5%.
+
+**Why it hid for so long**, and this is the transferable lesson: the comparator builds `expected_words` from
+*this test's own prefill* plus the device's `changed` list. A word the device leaves *unchanged* is therefore
+compared against the reconstruction, not against the device - so a divergence in the *input* is invisible
+unless something downstream amplifies it. `+0x629c` is one such word, and it happens to be the third
+compressor reference. The prefill is now pinned at that index in the test, so the blind spot cannot move
+silently again.
+
+**Result**: 14 of 14 whole-mixer cases match with the `CHECK_MASTER` gate *removed*. The master's output
+block, the compressor's state it leaves behind, and every scratch word the device changed are asserted
+rather than gated. `Synth::render` is verified.
+
+**Phase 4's checklist, closed**:
+
+| item | evidence |
+|---|---|
+| ADSR/AHD/DcBlocker, Compressor + masterCompressor, Lfo, Voice, InstrumentManager | ported and tagged with Phases 1-3 |
+| `Synth` (`Synth::render`) | 14/14 whole-mixer cases, every compared word |
+| the prerequisites (`trackFilterProcess`, `bounceAudio`) | ported |
+| delete the interim host; `Engine` calls the ported chain | `Engine::render_block` asks a `Chain` for the master block |
+| realtime safety | measured: the render path allocates nothing |
+
+**The next phase is Phase 5**: `Saw013a`, the fidelity pass, and the docs - see `PLAN_OPZ_SOFTWARE_CLONE.md`.
