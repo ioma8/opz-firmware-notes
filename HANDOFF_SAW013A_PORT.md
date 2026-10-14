@@ -1365,3 +1365,37 @@ Determinism and the not-every-case-silent guard are both enforced, as in the oth
 touched (the handoff carries the state map, the two interface seams, the wavetable access pattern, the
 per-octave gain lookup and the phase pair's semantics), write it against `cases.json`, and iterate until the
 19 cases match sample for sample - the same loop that closed `Digital` and `AnalogA`.
+
+### `onNoteOn`'s shape, and the gain table's interpolation
+
+Reading the decompilation (lines 772-978), `onNoteOn` is three parts:
+
+**1. Arm and clear.** It saves `state[+0x38]`, zeroes `0x00..0x67`, restores `+0x38`, then writes the fixed
+fields: `+0x3c = note * 0x100000 - 0x3c00000`, `+0x10 = 0x7fffffff`, `+0x14 = state[+8]`, `+0x18 = 1`,
+`+0x1c = 1` (a byte), `+0x64 = velocity` (a byte), `+0x65 = 0`.
+
+**2. The gain chains.** Eight long multiply-and-saturate chains, all built from `params[0]` and `params[1]`
+and their complements (`0x7fffffff - x`), ending in the four words at **`+0x4c`**, **`+0x50`**, **`+0x54`**
+and **`+0x58`**. These are the same `mul31`-plus-saturating-add idiom the prologue of `render` uses, so they
+transcribe mechanically.
+
+**3. The octave gain lookup, and here is the part worth recording** - the table at `0x124A890` is not read
+directly, it is **linearly interpolated by the semitone within the octave**:
+
+```c
+lVar10 = (long)(param_1 / 0xc) * 2;
+iVar8  = ((param_1 % 0xc) * 0x7fff) / 0xc;
+iVar9  = (int)*(short *)((long)&DAT_0134a890 + lVar10);            // this octave's entry
+iVar15 = *(short *)((long)&DAT_0134a890 + lVar10 + 2) - iVar9;     // the next octave's, minus it
+if (0x7ffe < iVar15) { ... }
+```
+
+(`DAT_0134a890` is Ghidra's name for `0x124A890`; its output carries the usual `0x100000` image-base
+offset.) That explains the earlier probe exactly: note 60 reads slots 4/5, 72 reads 5/6, and so on - the
+index is the octave and the fraction is the position within it. It also means the fixture's 16-entry unity
+table is the right calibration: with every entry equal, the interpolation's difference is zero and the gain
+is simply the entry.
+
+**Next**: transcribe these three parts into `crates/opz-dsp/src/saw013a.rs` as `on_note_on`, then verify the
+resulting state against `cases.json`'s `state_after_note_on` - which is the whole state block, so a partial
+port will not match and the comparison pins every field.
