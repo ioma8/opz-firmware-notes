@@ -1320,3 +1320,36 @@ add (the device's envelope words are the plugin's, and the app's presets are the
 
 Until then the drum tracks play their first hit and stall, which is exactly what
 `drum_beat_and_synth_line_play_together` measures.
+
+### The host envelope: implemented, four variants tried, none landed
+
+The previous note identified the missing host half. It exists in the port (`adsr::update_parameters_adsr`,
+which walks phase 1 -> 2 -> 3 and, via the re-arm flag `note_off` sets, 4 -> 0), so the fix looked
+mechanical. Four variants were written and measured; none cleared
+`drum_beat_and_synth_line_play_together`, and three of them also cost a test that was passing.
+
+| variant | result |
+|---|---|
+| clear `adsr.phase` for a drum voice whose `gated_note != IDLE_NOTE` | never fires: `Chain::note_on` *picks* a voice by `gated_note == IDLE_NOTE` |
+| clear `adsr.phase` for any drum voice after `note_on` | passes 28/31: it breaks the fresh hit, where the phase is what makes the engine's note stick |
+| run `update_parameters_adsr` per voice per block from a per-track envelope | 28/31, bar decay unchanged: with a sustaining envelope the phase never leaves 3, and a drum never reaches phase 4 -> 0 |
+| the above, plus advancing the *voice's* level for drum voices (`level = sat(mul31(level*mul) + add)`) | 28/31, bar decay unchanged |
+
+The two facts the last two variants establish, both worth keeping:
+
+1. **The drum engine does not advance the voice's `adsr.level`.** The digital and analogue engines do it
+   inside their render; `sample_player_gain` keeps its *own* `adsr_level`/`adsr_rate`/`adsr_inc`/`adsr_phase`
+   (the `state_fields()` dump shows them). So a released drum voice sits in phase 4 forever unless something
+   else advances that level - the host, or a different mechanism entirely.
+2. **A sustaining envelope can never release a deferred note.** `update_parameters_adsr` reaches phase 0 only
+   from phase 4, and phase 4 is entered only through the re-arm flag that `note_off` sets. With a short
+   enough release the level does fall below `0x0010624e`, but the *drum* hit that follows is deferred until
+   then, and at the bar's density (a kick every 86 blocks) that still leaves quarters with no energy.
+
+**What to try next** (not yet tried): treat the drum as the device's *voice-steal* case. The device's
+sequencer does not defer a second hit on the same voice - it picks another voice, and when a track's voices
+are all busy it kills one. `VOICES` is 44 and the drum tracks' ranges are wider than one voice (`TRACK_START`
+puts track 0 at 0 and track 1 at 2), so the port's `Chain::note_on` picking "the first ungated voice" is the
+part that does not match: it should prefer a voice that is *free*, and fall back to killing one, rather than
+re-using the gated voice whose deferral then swallows every later hit. That is also the behaviour the plan's
+Phase 4 playable check describes ("voice stealing on rapid re-triggering").
