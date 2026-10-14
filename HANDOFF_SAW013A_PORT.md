@@ -209,3 +209,46 @@ Every access to the state block (`param_4`), which fixes the struct:
 called with the engine's sub-state (`state + 8`) plus four values. So the port needs a host seam here, the
 way `AnalogA` needed one for `_RFilter_fetch`: a trait the engine calls, with the fixture recording its
 arguments and return the same way.
+
+### `render`'s shape
+
+Three parts:
+
+1. **the prologue** (decomp lines 79-410): the ADSR gate and the `+0x65` countdown, then a long run of
+   multiply chains that build the per-note gains, then the interface call. Nothing here is per-sample.
+2. **the sample loop** (lines 411-750): `do { ... } while ((int)lVar19 != 0x200)` - 512 bytes of output,
+   which at two words a frame is the same 128-word block the other engines render.
+3. **the epilogue** (lines 680-771): the state write-back and the ADSR update.
+
+**The phase accumulator is `+0x5c`/`+0x60`**, and the loop's first statements say exactly how:
+
+```c
+uVar17 = uVar17 + param_2;                     // param_2 is the increment
+uVar6  = uVar17 ^ 0x80000000;
+*(int *)(param_4 + 0x5c) = iVar14;             // last iteration's phase
+*(uint *)(param_4 + 0x60) = uVar17;            // this iteration's
+```
+
+So `+0x60` is the running phase (advanced once per *frame* by the increment, which is the second
+argument, `param_2`) and `+0x5c` is the previous frame's value - the same "phase, previous phase" pair
+`Digital` and `AnalogA` keep, and the wrap detection that follows (`uVar6 < param_2`) is the overflow test
+that turns the phase into a per-frame fraction:
+
+```c
+iVar13 = 0x7fffffff;
+if (uVar6 < param_2) {                          // the phase wrapped
+    lVar22 = ((long)uVar6 << 31) / (long)param_2;   // the fraction of the way through
+    ... clamp to +/-0x7fffffff ...
+    lVar15 = lVar22 * lVar22 * 2 >> 0x20;       // squared, the usual Q31 pair
+    iVar16 = (lVar15 * lVar22) >> 0x1f;         // cubed
+    ... iVar16 - ((iVar16 * (iVar28 >> 1)) >> 31) ...   // the soft ramp the engines share
+}
+uVar6 = iVar14 - iVar16 ...                     // and the previous phase minus it
+```
+
+That is the oscillator's per-sample shape, and it is built from the same primitives the port already has
+(`mul31`, saturating add/sub, `>> 0x1f`, `>> 0x20`). The work left is transcription, not decoding.
+
+**Next pass**: write the prologue's gain chains as Rust functions with the decompilation open beside them,
+then the loop body, then the epilogue - checking each against the C as `init` was, since that is what caught
+the three constants.
