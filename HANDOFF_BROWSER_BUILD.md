@@ -91,6 +91,51 @@ test cannot see: the wasm called from a module-scope constant before `init()` re
 `pointerup` that dropped a held modifier whenever another key was tapped — which breaks exactly the
 two-handed gestures the device is built around.
 
+## Third pass: 1:1 with the manual (commit `3a02c26`)
+
+The gestures are now the manual's own, and a gesture the clone can back does the real thing instead
+of reporting itself. What the second pass had approximated:
+
+- **§3.2's panic ladder, all four rungs**: stop while stopped is panic, twice is super panic (kill
+  every voice), `track`+stop is track panic (a release), twice is track super panic (a kill).
+  `InstrumentManager::killAllNotes` and `killTrackNotes` were already ported in `opz-dsp` but had no
+  caller, so these are the library's own functions now.
+- **§3.4**: holding a *lit* step and pressing another step sets its **note length** (it used to paste),
+  playing a note replaces the step memory, and holding a lit step while the sequencer is stopped
+  previews it.
+- **§5.2's note length** became an engine concept rather than the cursor step's duration:
+  `TrackPattern` carries `note_length`, a newly entered note gets it, the dial moves only the notes
+  still at the previous default, and the dial's far right is the manual's **drone mode**
+  (`pattern::DRONE_DURATION`, a note the sequencer never releases).
+- **§5.7 randomize preset** (`track`+`rec`) and **§7.10 bounce** (`project`+`rec`: ten seconds
+  rendered by a second, silent `Engine`, handed to the page as a WAV download). The bounce is the
+  device's own gesture, so `docs/WEB.md`'s earlier "no export in v1" line no longer describes it.
+- **§9.3/§9.5**: tap tempo is the manual's — hold tempo and tap a white piano key; nudge is tempo
+  with `–`/`+`, lock is tempo with shift. **§2.1's index lock** is a triple press that any index press
+  releases.
+- **§2.12's pitch bend** is real: the ported chain already had `Voice::pitchBend` and
+  `InstrumentManager::pitchBend`, so a drag bends ±200 cents and springs back, and a held lit step
+  turns the same drag into a velocity edit.
+- **§1.1's volume knob** is the drawing's own left tab (SVG path 2), which also corrected the crop.
+  **§2.10's transpose is "visualised by the value keys"**, so the current octave lights its value key.
+- The rest of the manual's gestures exist and answer in one status line: §5.4 step length, §5.6
+  presets, §5.10 track linking, §7.3-7.12 copy/chain/snapshot/autosave, §8.4-8.5 mute groups and
+  mute-audio mode, §9.6-9.7 swing and metronome, §2.1's screen button and tempo+screen's MIDI
+  settings, §3.4's per-step parameter locks.
+
+Two bugs this pass found in the page: an index button's second press was swallowed as part of a
+triple-press chain (so mute-then-unmute did nothing), and a stray pointer release on a second key
+acted as a tap and erased a note — each top-row press is now paired with its own key.
+
+`opz-core` gained `SetNoteLength`, `ClearBuffers`, `KillTrackNotes` and `PitchBend` with tests; the
+workspace is green at 109 tests, the smoke test still reports 85 344 samples identical to the TUI's,
+and `tools/web-check.mjs` is 53 checks of documented gestures, all passing in a real Chrome.
+
+Two device behaviours remain approximations, both stated where used: the mixer's group gains move
+every member of the group by the same amount (the clone has per-track levels, not a bus), and super
+panic kills the notes while the master bus's own filter state keeps ringing for a few blocks (nothing
+in `opz-core` clears it).
+
 ## Not verified, and what is out of scope
 
 Nobody has **listened** to the browser build; the offline TUI render is also still unheard. Touch on a
