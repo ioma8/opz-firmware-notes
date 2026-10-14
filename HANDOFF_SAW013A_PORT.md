@@ -1459,3 +1459,32 @@ status.
 The chains proper start at `0x12466c` (`subs w12, w8, w10`, a saturating complement) and use the same
 constants the `render` prologue does, so they transcribe from here with the signed/unsigned shift choice read
 off each `mul`/`lsr`/`asr` pair.
+
+### The transcription key for this engine's arithmetic
+
+Reading the chains at `0x12466c` onward gives the handful of idioms the whole engine is built from. Each is
+a *pair* of instructions, and the pair is what decides signedness - which is why the decompilation alone is
+not enough and the assembly has to be beside it:
+
+| assembly | meaning | Rust |
+|---|---|---|
+| `subs wA, wB, wC` + `asr wD, wA, #31` + `eor wD, wD, #0x80000000` + `csel wA, wD, wA, vs` | saturating subtract | `b.saturating_sub(c)` |
+| `adds wA, wB, wC` + the same `asr`/`eor`/`csel` | saturating add | `b.saturating_add(c)` |
+| `mul xA, xB, xC` + `asr xA, xA, #0x20` | signed 64-bit product, narrowed by 32 | `((b as i64 * c as i64) >> 32) as i32` |
+| `umull xA, wB, wC` + `lsr xA, xA, #0x20` | **unsigned** 32x32 product, narrowed by 32 | `(((b as u32 as u64) * (c as u32 as u64)) >> 32) as u32 as i32` |
+| `mul xA, xB, xC` + `asr xA, xA, #0x1f` | Q31 multiply, arithmetic | `((b as i64 * c as i64) >> 31) as i32` |
+| `mul xA, xB, xC` + `lsr xA, xA, #0x1f` | Q31 multiply, **logical** | `(((b as i64 * c as i64) as u64) >> 31) as u32 as i32` |
+| `cmp xA, x27` (= 2^62) + `csel xA, x28` (= 0x7fffffff) | the 2^62 sentinel | `if p == 1 << 62 { 0x7fffffff } else { ... }` |
+| `mul`/`umull` + `lsr #0x20` where the C shows `>> 0x20` | the shift is over the *unsigned* product | as above |
+
+The complement that opens each chain is the first row: `subs w12, w8, w10` with `w8 = 0x7fffffff` and
+`w10 = params[0]`, i.e. `0x7fffffff - params[0]` saturating.
+
+**Why this matters**: the decompilation writes both cases as `>> 0x20` / `>> 0x1f`, and the *only* thing that
+distinguishes them is whether the instruction is `mul` (signed) or `umull` (unsigned) and whether the shift is
+`asr` or `lsr`. That is precisely the class of mistake that cost time on `init`'s constants and on the
+register readings, so the chains are to be transcribed *from the listing with this table beside them*, not
+from the C.
+
+The chains run `0x12466c`..`0x1249E0` (the rest of `onNoteOn`), so roughly 370 instructions - mechanical now
+that the key is written down.
