@@ -599,3 +599,21 @@ point in the disassembly (`0xf8190`-`0xf81bc`) - and note that both paths write 
 different things than the C's naming suggests. Either the device's manager test is not the one the port implements (the manager fixture used a
 spec with explicit sounding voices, so a "note byte equals something else" condition could hide
 there), or the silent case's Synth is not the all-zero one the test builds.
+
+### The `silent` case, continued
+
+Two things closed it further:
+
+* **`+0x68b4 + track*0x2c` *is* the track filter's own `+0x28` rescan byte** - the filters start at
+  `0x688c` with a `0x2c` stride, so track `t`'s filter `+0x28` lands on exactly that address. The port
+  modelled a separate "silence marker" and wrote the byte directly, which the test's filter write-back
+  then clobbered; writing it through `TrackFilter::reset` fixed the marker diff.
+* The disassembly at `0xf8160` shows the write exists in the *other* arm too: a track that **rendered
+  but is not enabled** (its `+0x6d1c` byte clear) marks itself rather than running its filter. That is
+  implemented now.
+
+Left in the case: the LFO phase, and it is **exactly 7x** - the port's step is 1 390 018 560 and the
+device's 198 574 080, and the device's number is `256 * 120 * 0x1940`: a rate-table entry of 256
+against the port's 1792, with the same tempo. So the two runs disagree about the rate index (or the
+tempo), even though both are handed `params[14] == 0` in this case - which points at the smoothed
+parameter block rather than the rate arithmetic.
