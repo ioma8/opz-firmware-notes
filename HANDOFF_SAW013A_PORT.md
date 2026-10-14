@@ -1427,3 +1427,35 @@ symbol table** (`opzso`), not by address, so `cases.json` is correct and the eng
 **Standing rule**, since this is the second hand-converted address to bite: take addresses from
 `hex(...)` in a command's output rather than converting decimals by eye, the same way the register readings
 had to come from the consuming instruction at full width.
+
+### The arm-and-clear port verified against the correct listing
+
+With `onNoteOn` at its real address, the first 30 instructions are:
+
+```text
+0x124600  movi v0.2d, 0                 ; the zero vector
+0x124604  mov  w8, -0x3c00000
+0x124608  ldrsw x9, [x2, 0x38]          ; the saved +0x38 word
+0x12460c  add  w10, w8, w0, lsl 20      ; +0x3c = (note << 20) - 0x3c00000
+0x124618  str  xzr, [x2, 0x60]
+0x124620  stp  q0, q0, [x2]             ; the block zeroed
+0x124628  stp  q0, q0, [x2, 0x20]
+0x124638  stp  q0, q0, [x2, 0x40]
+0x124630  stp  w9, w10, [x2, 0x38]      ; restore +0x38, store the pitch
+0x124634  ldr  w10, [x2, 8]
+0x124640  str  w8, [x2, 0x10]           ; +0x10 = 0x7fffffff
+0x124648  stp  w10, w11, [x2, 0x14]     ; +0x14 = state[+8], +0x18 = 1
+0x124650  strb w11, [x2, 0x1c]          ; +0x1c = 1
+0x124660  strb w1, [x2, 0x64]           ; +0x64 = velocity
+0x124668  strb wzr, [x2, 0x65]          ; +0x65 = 0
+0x12466c  subs w12, w8, w10             ; and the gain chains begin
+```
+
+That matches the committed port field for field, including the three 16-byte zero stores, the order, the
+wrapping `(note << 20) - 0x3c00000` for `+0x3c`, and the three byte writes. The hand-written part of
+`on_note_on` is therefore verified against the listing - the first piece of this engine's port with that
+status.
+
+The chains proper start at `0x12466c` (`subs w12, w8, w10`, a saturating complement) and use the same
+constants the `render` prologue does, so they transcribe from here with the signed/unsigned shift choice read
+off each `mul`/`lsr`/`asr` pair.
