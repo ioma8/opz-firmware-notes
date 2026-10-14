@@ -1000,3 +1000,27 @@ values it is handed into `+0x28` and `+0x30` (four words each) *and* re-running 
 than writing them into `+0x20` as the earlier attempt did. If the pair sources become nonzero, the engine is
 solved; if they do not, the fields are not what the callback is for and the C's re-read list is the thing to
 re-read.
+
+### The second callback's four values do not fill the pair inputs either
+
+Servicing the second interface call by writing its four arguments into `+0x28` and `+0x30` (four words
+each, the fields the C re-reads) leaves the output silent. Combined with the earlier write into `+0x20` and
+the eight-word write at `+8`, all three plausible shapes for that callback have now been tried.
+
+**What that means**: the callback's *arguments* are not what the engine wants back - so the C's
+`(**(code **)(*(long *)puVar10 + 0x38))((long)param_4 + 8, uVar21, uVar1, uVar3, uVar24)` is a *notification*
+with state-derived values, and the pair construction's zeros come from somewhere else entirely.
+
+**Ruled out for the pair construction**, each by a measurement rather than an argument:
+
+* the ADSR's level (set, and the prologue's gain became nonzero);
+* the five constants (at full scale);
+* the callback's four values, written to `+8`, `+0x20`, `+0x28`, `+0x30`;
+* the host tables' contents (Q31 sines, and the load was verified nonzero);
+* the first callback serviced by ramping the ADSR.
+
+**What has not been checked**: the *scalar* register file between the prologue's verified inputs
+(`x17 = 0x55aded23`, `x16 = 0x507aaef2`, and the products at `0x124218`) and the pair construction at
+`0x12409c`. The trace method that found `x20` = ADSR and `x13` = the previous phase works; it has not yet
+been run over `0x123994`..`0x124098` for the *specific* registers the `zip` at `0x12409c` consumes (`v1` and
+`v2`'s scalar ancestors).
