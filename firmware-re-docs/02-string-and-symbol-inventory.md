@@ -267,3 +267,46 @@ project.opz      %02d.opz       <- single-project and bare-number forms
 
 That matches the `project01.opz`…`project10.opz` files observed on the content-disk dump, and the
 `%s` variant slot implies projects can carry a suffix (likely a backup or export marker).
+
+### 2.11b Where the ten-project limit actually lives
+
+The readme's *"ten OP-Z projects"* claim now has a mechanism behind it, and the mechanism is not a check
+that can simply be raised.
+
+**The bound is `if (9 < param_1)`, in two places, and it only logs.** Both the save path (`FUN_801118b0`,
+`Serialize.cpp:685`) and the load path (`FUN_80111a14`, `Serialize.cpp:674`) test the project index against
+`9` and, on failure, call `FUN_80135b50` and the logger with the string
+**`trying to save illegal project %d`** (`0x8110e408`) — and then **fall through into the strided access
+anyway**. There is no return and no clamp, so the guard is an assertion trail rather than a bound. The index
+is 0-based: the filename is built by `FUN_80111934` as `project%02d%s.opz` with `param_2 + 1`, which is why
+the files run `project01.opz` to `project10.opz`.
+
+**The real limit is that every project is resident in RAM.** Per-project state lives in two arrays inside
+the system context `DAT_81059d1c`:
+
+```
+ctx+0x0b90 + i * 0x53900     10 entries x 342,272 B = 3,422,720 B, ending at ctx+0x344590
+ctx+0x344594 + i * 0x238     10 entries x 568 B,      ending at ctx+0x345bc4
+```
+
+The two arrays are **adjacent** — a 4-byte gap — and `SnakeSystem.cpp`'s initialiser operates on
+`ctx+0x3463c0`, only `0x7fc` bytes past the end of both. So the project store is one contiguous 3.27 MiB
+block with its neighbours packed hard against it on both sides. That, not the guard, is the 10.
+
+**Because every accessor indexes with the same two strides** (`FUN_801117bc` and the
+`0x80111fe2`–`0x801122b2` cluster in `Serialize.cpp`), the code itself is index-agnostic: the `%02d`
+filename scheme would allow 99, and nothing iterates over a fixed count when touching a slot. So the count
+is a *memory-residency* decision rather than a format or logic one. Raising it would take all of:
+
+1. **~0.33 MiB of free RAM per extra project** (six more ≈ 2 MiB) — plausible from the DDR2/LPDDR heap at
+   `0x80000000`+, but the OP-Z's real headroom is not something this analysis establishes;
+2. **repointing both array bases** in every stride accessor, or relocating the whole context, since the
+   neighbouring subsystems sit immediately after the block;
+3. **a selection mechanism**, because the device has exactly ten number keys — ten projects is as many as
+   can be addressed that way, and that is a UI design question rather than a patch;
+4. raising the **content-disk importer's** expectations, which accept only `project01`…`project10` and
+   route anything else to `rejected/` (documented in §2.8b).
+
+> **A caution worth recording.** Because the guard does not clamp, any path that computes an index above `9`
+> will write into whatever follows the arrays — the neighbouring subsystem state — rather than failing. A
+> project-slot experiment is therefore a silent-corruption experiment, not a rejected-operation one.
