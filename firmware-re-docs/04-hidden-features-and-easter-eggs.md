@@ -412,13 +412,38 @@ context the light engine's ticker sends its type-`0x10` flush on** (`FUN_801313f
 |---|---|---|---|
 | `0x10` | a light-flush packet, up to `0x9a` bytes | `FUN_801313f4` via `FUN_8003d620` | **PSoC** (same context as `0x90`) |
 | `0x13` | one byte | `command_handler_ble.cpp` (codes 2/3/4 above) | BLE |
-| `0x14` | two bytes `{1, value}` — the button debounce | `command_handler_kb.cpp` | PSoC |
+| `0x14` | two bytes `{1, value}` — the button debounce | `command_handler_kb.cpp` (`FUN_80131700`) | PSoC — **disputed**, see below |
 | `0x20` | two bytes `{3, value}` | `FUN_801314d8`, right after the light ticker | not established |
 | `0x21` | four bytes — `set mode`, above | `FUN_80123064` (`&DAT_81ae586c`) | not established |
 | `0x90` | two bytes — the debug flags | `FUN_80123828` (slot 9) | **PSoC** (named by its own log string) |
 
 The two rows with a stated destination use *different* contexts, so the pair also shows the rule: **the context
 object is the destination handle**, and the type is interpreted within it.
+
+**The type byte is a shared enum value, verified on one type and disputed on another.** Type `0x90` is the
+strongest cross-image match in this document set: the Blackfin sends a **two-byte** payload under the log string
+`send debug flags to psoc: %d`, and the PSoC image's own handler for dispatch index **`144` = `0x90`** is
+described in doc `07` §7.4c as *"set debug flags: stores the payload's 16-bit value and logs through
+`FUN_0001006c(…, "Set debug flags %d")`"* — same name, same **16-bit** payload width, on the other CPU. So the
+two sides number these messages identically, which is what a `src/shared/` header would produce (doc `07` §7.4c
+already reaches the same conclusion from the power-mode table).
+
+**But one row then disagrees with doc `07`, and this document does not paper over it.** The debounce setter is
+confirmed by decompilation — `FUN_80131700` logs `Set button debounce: %d` at `command_handler_kb.cpp:139`, caches
+the value at `ctx + 0x394c`, and sends **`FUN_11a01d24(ctx + 4, 0x14, &two, 2, …)` with payload `{1, value}`** — so
+type `0x14` = decimal `20`. Doc `07` §7.4c assigns the PSoC's index **`20`** to its **power-state receive path**
+("sets its own power-state byte and latches it"), which cannot also be a two-byte button-debounce setting. Exactly
+one of the two readings is wrong:
+
+- either the Blackfin's second argument to `FUN_11a01d24` is not the PSoC dispatch index and the `0x90` match is
+the exception rather than the rule, or
+- doc `07`'s index-`20` row is mis-assigned and the PSoC's debounce handler sits at `20`.
+
+The experiment that settles it is cheap and named: decompile the PSoC image's index-`20` handler and read whether
+it expects a **two-byte** payload whose first byte is `1` (a debounce) or a **one-byte** power state. Until that is
+done, the type table above should be read as "type `0x90` is confirmed shared, `0x14`'s PSoC-side owner is
+in dispute", and the type-to-chip rule stated in doc `08` §8.5 (the **context** is the destination handle) is
+what the light-flush conclusion actually rests on.
 
 **One data constant worth recording, because it corrects a scope.** Immediately after slot 9 sits
 `0x81113ac0 = 0xBEBAFECA`, and a `FindDword` over the whole `opz.ldr` finds that value **exactly once** — at that
