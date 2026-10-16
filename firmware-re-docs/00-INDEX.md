@@ -41,6 +41,7 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
 | `07-companion-processors.md` | the other two CPUs: the nRF52832 BLE image (load base corrected, dispatcher and transport decompiled), its protobuf descriptor with hash + 64-byte signature, the PSoC 5LP power/USB-PD controller (CYACD format, 387 functions, two-level dispatch), and the **`.engine` container + module ABI** |
 | `08-colour-slots-and-light-flush.md` | the light-slot engine: 5-byte RGBA+mode slot records, the two-variant 20-entry palette and its interpolating lookup, the three parallel buffers, the change-only packet builder with its 60-tick blink phase, and the **Blackfin→PSoC type `0x10`** transport it leaves on |
 | `09-ghidra-harness-and-process.md` | **the working method**: the four-image harness and its invocation form, the ten analysis scripts with what each answers *and cannot* answer, the analysis loop, the rules for making a claim, and the traps with their cost |
+| `10-architecture-diagrams.md` | the whole system as three Mermaid diagrams — the three processors and the two Blackfin images, the runtime sound/note/light flows, and the content-and-update path — plus an explicit list of what the diagrams do not claim |
 
 ## Headline findings
 
@@ -345,6 +346,18 @@ control, a raw dword scan is invalid for Blackfin split immediates, a missing `F
 address means nothing, `(none)` from `FnAt2` is coverage and not reachability, a decompiler "unreachable block"
 can contain the payload, and a retraction is recorded at the claim it overturns. See doc `09` §9.1, §9.2 and
 §9.4.
+
+26. **The whole system is drawn, not just described.** Doc `10` carries three Mermaid diagrams. The first shows the
+    three processors and the *two* Blackfin images side by side: uC/OS-III for the music application, SMX for
+    USB, the nRF52832 as a **peer** rather than a modem (its own 129-slot dispatcher, its own protobuf
+    descriptor, and a Direct Test Mode the Blackfin commands), the PSoC 5LP as the power/USB-PD subsystem that
+    merely also scans the keys and drives the LEDs, and one `src/shared/` tree linked into *both* Blackfin
+    images. The second is the runtime flow — key and MIDI input into the seven context objects, out to the
+    engines, the codec, the change-only light flush and the DMX frame. The third is the content-and-update path
+    from the ZIP's entry CRCs through `dlm` to the PSoC's `.cyacd` rows. It closes with an explicit list of what
+    the diagrams do **not** claim: the physical wires between the chips, the PSoC-to-Blackfin direction type by
+    type, the codec's register sequence, what `jack_task`'s jack actually is, and the contents of the L1
+    overlay. See doc `10` §10.1, §10.2, §10.3 and §10.4.
 
 ## Confidence levels
 
