@@ -229,6 +229,112 @@ Two of the rows above are worth calling out as more than trivia:
   is not gated behind a separate factory port. Treat both as documented factory surfaces, not as user
   features.
 
+## 4.6b The Score context's hidden command panel: a signal generator and a routing switch
+
+The `ScoreContext.cpp` translation unit installs a context vtable at **`0x81113a98`** — its constructor
+`FUN_8012378e` writes that pointer into the object and zeroes the byte at `+4` — and two of its vtable slots are
+thin thunks onto functions that are pure hidden-feature surface:
+
+```asm
+80123802  method -> FUN_80123274(player, code)     ; the command dispatcher
+80123818  method -> FUN_80123568()                 ; the light-slot writer (doc 08)
+801237e8  method -> FUN_8012320c(...)
+801237aa  method -> if (B[0x81113a60] != 0) FUN_80117b82(0x802ee3c, 2, 0xff)
+```
+
+The vtable sits at `0x81113a98`, its `__FILE__` string (`…\src\sequencer\contexts\ScoreContext.cpp`) at
+`0x81113b70`, and the context's own state block in between (`0x81113a60`–`0x81113ac8`). Everything below is gated
+on `DAT_81113a60 != 0`, i.e. on the **Score context being the active one**, which is why none of it is reachable
+from the documented UI.
+
+**A signal generator with a 6 dB step attenuator** (command code `0xc`):
+
+```c
+if (code == 0xc) {
+  if (DAT_81113a79 == 0) {                       /* off -> on, at 0 dB          */
+    DAT_81113a7c = 0;  FUN_80023cc0(&DAT_0801fb40, 0);
+    DAT_81113a64 = 1;  DAT_81113a79 = 1;
+    LOG("…ScoreContext.cpp", 0x1b6, "Signal generator enabled, gain: 0dB");
+  } else if ((int)DAT_81113a7c < -0x3b) {         /* below -59 dB -> off         */
+    DAT_81113a64 = 0;  DAT_81113a79 = 0;
+    FUN_80023cc0(&DAT_0801fb40, 0);
+    LOG("…ScoreContext.cpp", 0x1c3, "Signal generator disabled");
+  } else {                                        /* otherwise step down 6 dB    */
+    DAT_81113a7c -= 6;
+    FUN_80023cc0(&DAT_0801fb40);
+    LOG("…ScoreContext.cpp", 0x1bc, "Signal generator enabled, gain: %ddB", DAT_81113a7c);
+  }
+}
+```
+
+So a repeated press steps the gain **down from 0 dB in 6 dB increments**, and past −59 dB the generator switches
+itself off: `DAT_81113a7c` is a signed dB value, `DAT_81113a64` the enable flag, and `FUN_80023cc0(&DAT_0801fb40,
+…)` reconfigures the audio graph whose context is `0x801fb40`. The three log strings
+(`Signal generator enabled, gain: 0dB` at `0x81113bc4`, `… gain: %ddB` at `0x81113be8`, `Signal generator
+disabled` at `0x81113c10`) sit in the same rodata window as the `__FILE__`, which is what identifies the owner.
+
+**An audio-routing A/B switch** (command code `0xe`) rewrites four audio-graph connections and flips two GPIO
+direction lines, then toggles its own state byte:
+
+```c
+if (code == 0xe) {
+  FUN_80023a58(&DAT_0801fb40);
+  if (DAT_81113a78 == 0) {
+    FUN_80023bb8(&DAT_0801fb40, 0xc,  6, 0x80);   FUN_80023bb8(&DAT_0801fb40, 0xc,  7, 0x80);
+    FUN_80023bb8(&DAT_0801fb40,   6, 10, 0x80);   FUN_80023bb8(&DAT_0801fb40,   7, 11, 0x80);
+    FUN_8002544c(&DAT_0801fb40, 1);
+    FUN_8002b3b6(DAT_0801ed7c, DAT_0801ed80);     /* GPIO direction set   */
+    FUN_8002b388(DAT_0801ed84, DAT_0801ed88);     /* GPIO direction clear */
+  } else {
+    FUN_80023bb8(&DAT_0801fb40, 6, 6, 0x80);      FUN_80023bb8(&DAT_0801fb40, 7, 7, 0x80);
+    FUN_80023bb8(&DAT_0801fb40, 0xc, 10, 0x80);   FUN_80023bb8(&DAT_0801fb40, 0xc, 0xb, 0x80);
+    FUN_8002544c(&DAT_0801fb40, 0);
+    FUN_8002b388(DAT_0801ed7c, DAT_0801ed80);     /* the same two, swapped */
+    FUN_8002b3b6(DAT_0801ed84, DAT_0801ed88);
+  }
+  DAT_81113a78 ^= 1;
+}
+```
+
+`FUN_80023bb8(ctx, from, to, 0x80)` is an audio-graph connection setter, so this is a **two-position routing
+switch**: one position sends `0xc` to outputs `6` and `7` and takes `6`/`7` to inputs `10`/`11`, the other sends
+`6` and `7` straight through and `0xc` to `10`/`11`. The GPIO pair is the hardware side of the same switch, and
+it is the **same two helpers** (`FUN_8002b388`/`FUN_8002b3b6`) that doc `08` §8.5 found behind the light flush —
+so "drive a pin" versus "release a pin" is a shared idiom in this image, not a light-specific one.
+
+**The remaining codes**, all requiring the second argument to be `0xffffffff`:
+
+| code | action |
+|---|---|
+| `0`, `1` | `FUN_801231a0()` / `FUN_801231d4()`, both of which re-enter `FUN_80123064` |
+| `2`, `3`, `4` | `FUN_8012fed6` / `FUN_8012ff1c` / `FUN_8012ff98`, each with `&DAT_81ae5868` |
+| `8`, `9`, `10` | toggle bits `1`, `2`, `4` of the byte `DAT_81113a62` |
+| `0xb` | toggle `DAT_81059d41` |
+| `0xc` | the signal generator above |
+| `0xe` | the routing switch above |
+
+`DAT_81113a62` is the same per-bit flag set the light writer reads — `FUN_80123568` lights slots 8, 9 and 10 when
+bits `1`, `2` and `4` are set (doc `08` §8.1's slot API) — so commands 8/9/10 drive three light slots directly.
+The slot setters themselves have ~200 call sites across the sequencer (doc `08` §8.7), so this panel is one
+contributor among many rather than the reason they exist.
+
+**It also talks to the companion chips.** `FUN_80123064` builds a four-byte argument block from
+`DAT_81113a68` (values 1–3) plus an index (`0`, `0x14`, `0x27`, or `DAT_81113a70`), logs `set mode %d %d %d %d` at
+`ScoreContext.cpp:326`, and sends it as message **type `0x21`** over the same L1 sender doc `08` §8.5 describes:
+
+```c
+FUN_11a01d24(&DAT_81ae586c, 0x21, &uStack_c, 4, 0xffffffff, 0, 0xff, 0xff);
+```
+
+and the same file carries the string **`send debug flags to psoc: %d`** (`0x81113c2c`), so this context is a
+Blackfin→companion command source in its own right. Two further strings in the same window — `SoloMute`
+(`0x81113c4c`) and `StepComponent` (`0x81113d18`) — name UI components of the same translation unit.
+
+**Why this counts as hidden.** Nothing in the official product documentation exposes a signal generator, a 6 dB
+attenuator, an audio routing A/B switch or a `set mode` companion message. The whole vocabulary lives in one
+rodata window whose `__FILE__` is `ScoreContext.cpp`, the entry points are vtable slots rather than named
+commands, and every one of them is additionally gated on the Score context being active.
+
 ## 4.7 Method note: how these commands were found
 
 For anyone continuing this work, the technique that worked:

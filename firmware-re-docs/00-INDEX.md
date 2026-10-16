@@ -294,6 +294,17 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
     ends with `DAT_81015e9c = param_1` and its single caller passes the literal `0x802d2f0`. See doc `08` §8.1,
     §8.3, §8.5 and §8.6.
 
+24. **The Score context hides a signal generator and an audio routing switch behind a vtable slot.**
+    `ScoreContext.cpp` installs a context vtable at `0x81113a98`, and one slot wraps a **numbered command
+dispatcher** (`FUN_80123274`) gated on the Score context being active. Its codes include a **signal generator
+with a 6 dB step attenuator** — the gain byte steps down from 0 dB in 6 dB increments, `… gain: %ddB` is logged
+each time and below −59 dB the generator switches itself off — and a **two-position audio routing switch** that
+rewrites four audio-graph connections (`0xc`→`6`/`7` with `6`/`7`→`10`/`11`, or `6`→`6`, `7`→`7` with `0xc`→
+`10`/`11`) and flips a pair of **GPIO direction** lines with the same two helpers the light flush uses. Three
+further codes toggle light slots 8–10 through the slot API of doc `08`, and the same file sends a 4-byte
+**type `0x21`** companion message (`set mode %d %d %d %d`) and carries the string `send debug flags to psoc: %d`.
+None of it appears in the official documentation. See doc `04` §4.6b.
+
 ## Confidence levels
 
 Every fact in these documents is marked, implicitly or explicitly, as one of:
