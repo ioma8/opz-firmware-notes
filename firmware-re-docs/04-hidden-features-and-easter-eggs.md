@@ -232,7 +232,9 @@ Two of the rows above are worth calling out as more than trivia:
   and this document does not claim the Blackfin ever sends it. See §4.6b.
 - **Direct Test Mode is reachable over the same framing as ordinary messages**, so the radio's test interface
   is not gated behind a separate factory port. Treat both as documented factory surfaces, not as user
-  features.
+  features. §4.6b adds a **second, host-side route**: the Score context's `set mode %d %d %d %d` command builds
+  the four DTM bytes itself (command, frequency, length, payload) and sends them as message type `0x21`, with its
+  frequency selector clamped to exactly `[-1, 0x27]` — the last legal DTM channel.
 
 ## 4.6b The Score context's hidden command panel: a signal generator and a routing switch
 
@@ -410,16 +412,22 @@ context the light engine's ticker sends its type-`0x10` flush on** (`FUN_801313f
 
 | type | payload | sender | destination |
 |---|---|---|---|
-| `0x10` | a light-flush packet, up to `0x9a` bytes | `FUN_801313f4` via `FUN_8003d620` | **PSoC** (same context as `0x90`) |
-| `0x13` | one byte | `command_handler_ble.cpp` (codes 2/3/4 above) | BLE |
-| `0x14` | two bytes `{1, value}` — the button debounce | `command_handler_kb.cpp` (`FUN_80131700`) | PSoC — index `20` |
-| `0x20` | two bytes `{3, value}` | `FUN_801314d8`, right after the light ticker | not established |
-| `0x21` | four bytes — `set mode`, above | `FUN_80123064` (`&DAT_81ae586c`) | not established |
-| `0x90` | two bytes — the debug flags | `FUN_80123828` (slot 9) | **PSoC** (named by its own log string) |
+| `0x10` | a light-flush packet, up to `0x9a` bytes | `FUN_801313f4` via `FUN_8003d620` | **PSoC**, index `16` (`0x5818` inside `FUN_000057fa`) |
+| `0x13` | one byte | `command_handler_ble.cpp` (codes 2/3/4 above) | **BLE** — index `19` is not implemented on the PSoC |
+| `0x14` | two bytes `{1, value}` — the button debounce | `command_handler_kb.cpp` (`FUN_80131700`) | **PSoC**, index `20` (`0x55b4`) |
+| `0x20` | two bytes `{3, value}`, `payload[0]` a sub-command | `FUN_801314d8`, right after the light ticker | **PSoC**, index `32` (`0x57ac`; `3` is one of its six populated sub-commands) |
+| `0x21` | four bytes — the DTM command, above | `FUN_80123064` (`&DAT_81ae586c`) | **BLE** — index `33` is not implemented on the PSoC |
+| `0x90` | two bytes — the debug flags | `FUN_80123828` (slot 9) | **PSoC**, index `144`, `"Set debug flags %d"` |
+
+**The two chips separate cleanly by the PSoC's implemented-type list.** Of the six types, the four whose index
+appears in doc `07` §7.4c's 39-entry list are the four the context object already pointed at the PSoC, and the two
+whose index is **absent** from that list — `0x13` (19) and `0x21` (33) — are the two independently placed on the
+BLE (the first by its source file, the second by the BLE's DTM handler). Two independent signals agreeing on all
+six rows is what makes this table usable: **the type byte is a shared enum value looked up in each chip's own
+dispatch, and the context object selects which chip**.
 
 The two rows with a stated destination use *different* contexts, so the pair also shows the rule: **the context
 object is the destination handle**, and the type is interpreted within it.
-
 **The type byte is a shared enum value, verified on one type and disputed on another.** Type `0x90` is the
 strongest cross-image match in this document set: the Blackfin sends a **two-byte** payload under the log string
 `send debug flags to psoc: %d`, and the PSoC image's own handler for dispatch index **`144` = `0x90`** is
@@ -488,17 +496,41 @@ bits `1`, `2` and `4` are set (doc `08` §8.1's slot API) — so commands 8/9/10
 The slot setters themselves have ~200 call sites across the sequencer (doc `08` §8.7), so this panel is one
 contributor among many rather than the reason they exist.
 
-**It also talks to the companion chips.** `FUN_80123064` builds a four-byte argument block from
-`DAT_81113a68` (values 1–3) plus an index (`0`, `0x14`, `0x27`, or `DAT_81113a70`), logs `set mode %d %d %d %d` at
-`ScoreContext.cpp:326`, and sends it as message **type `0x21`** over the same L1 sender doc `08` §8.5 describes:
+**It also talks to the companion chips — and the “mode” it sets is a radio test mode.** `FUN_80123064` builds a
+four-byte argument block from `DAT_81113a68` (values 1–3) plus an index (`0`, `0x14`, `0x27`, or
+`DAT_81113a70`), logs `set mode %d %d %d %d` at `ScoreContext.cpp:326`, and sends it as message **type `0x21`**
+over the same L1 sender doc `08` §8.5 describes:
 
 ```c
 FUN_11a01d24(&DAT_81ae586c, 0x21, &uStack_c, 4, 0xffffffff, 0, 0xff, 0xff);
 ```
 
-and the same file carries the string **`send debug flags to psoc: %d`** (`0x81113c2c`), so this context is a
-Blackfin→companion command source in its own right. Two further strings in the same window — `SoloMute`
-(`0x81113c4c`) and `StepComponent` (`0x81113d18`) — name UI components of the same translation unit.
+Type `0x21` = index `33`, which is **not** in the PSoC's implemented-type list (doc `07` §7.4c enumerates its 39
+types) but *is* one of the **Nordic BLE** image's twenty handlers: *“**Bluetooth Direct Test Mode command** — 4
+payload bytes drive `dtm_init()`, `dtm_set_txpower(4)`, `dtm_cmd()` setup-reset, then
+`dtm_cmd(freq, length, payload)`”*. The black box's message is therefore a **DTM command**, and every one of its
+four bytes lands inside the Bluetooth test parameters:
+
+| byte | what the panel puts there | DTM parameter and legal range |
+|---|---|---|
+| 0 | `1` or `2` | the DTM command — receive test / transmit test |
+| 1 | `0`, `0x14` (20), `0x27` (39), or `DAT_81113a70` clamped to **`[-1, 0x27]`** | **frequency**, `0x00`–`0x27` — the 40 BLE RF channels |
+| 2 | `0` or `0x17` (23) | **length**, `0x00`–`0x25` |
+| 3 | `3` or `0` | **payload**, `0x00`–`0x07` |
+
+**The frequency field is what proves it.** `FUN_8012320c` (vtable slot 2) clamps `DAT_81113a70` to exactly
+`[-1, 0x27]`, and `0x27` = 39 is the *last* legal DTM channel — a bound with no other reason to exist. The panel's
+other codes read as the rest of the control: code `1` advances `DAT_81113a6c` **modulo 3**, choosing frequency `0`,
+`20` or `39` (the bottom, middle and top of the band), code `0` resets both selectors, and the `0x26`/`0x27` keys
+step the frequency up and down one channel at a time.
+
+That makes this a **second, independent route to the radio's test interface**. Doc `04` §4.6 already notes that
+DTM is reachable over the ordinary BLE framing; here the *Blackfin itself* computes the four DTM bytes, so the
+test surface is exposed on the host side as well, from a context panel whose commands are otherwise about signal
+generation and audio routing. And the same file carries the string **`send debug flags to psoc: %d`**
+(`0x81113c2c`) and sends it as type `0x90` from slot 9, so this context is a Blackfin→companion command source in
+its own right. Two further strings in the same window — `SoloMute` (`0x81113c4c`) and `StepComponent`
+(`0x81113d18`) — name UI components of the same translation unit.
 
 **Why this counts as hidden.** Nothing in the official product documentation exposes a signal generator, a 6 dB
 attenuator, an audio routing A/B switch or a `set mode` companion message. The whole vocabulary lives in one

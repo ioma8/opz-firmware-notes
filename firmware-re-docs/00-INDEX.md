@@ -312,10 +312,16 @@ direction** lines with the same two helpers the light flush uses. Three further 
 through the slot API of doc `08`. **Slot 9 is the anchor for the whole Blackfin→companion message bus**: it sends
 `send debug flags to psoc: %d` (line 640) as a two-byte **type `0x90`** message from `&DAT_0801fb94` whenever the
 flag byte changes, which both names a PSoC type and fixes the light flush's receiver by sharing its context, and
-the same file sends a 4-byte **type `0x21`** `set mode %d %d %d %d` message. The message types read so far are
-`0x10` (light flush → PSoC), `0x13` (BLE abort family), `0x14` (button debounce → PSoC), `0x20`, `0x21` and
-`0x90` (→ PSoC), and the **context object is the destination handle**. None of it appears in the official
-documentation. See doc `04` §4.6b.
+the same file sends a four-byte **type `0x21`** message whose own log reads `set mode %d %d %d %d` — and type
+`0x21` is the **Nordic BLE's Bluetooth Direct Test Mode command**, so the panel is a **radio test control**: its
+four bytes are the DTM command, frequency, length and payload, and its frequency selector is clamped to exactly
+`[-1, 0x27]`, the last legal DTM channel. Type `0x13` is BLE and type `0x14`/`0x20`/`0x90` are PSoC, and the two
+chips separate by whether the type index appears in the PSoC's 39-entry implemented list — two independent
+signals agreeing on all six rows, so **the type byte is a shared enum looked up in each chip's own dispatch and
+the context object selects the chip**. The message types read so far are `0x10` (light flush → PSoC index `16`),
+`0x13` (BLE abort family), `0x14` (button debounce → PSoC index `20`), `0x20` (→ PSoC index `32`), `0x21` (DTM →
+BLE) and `0x90` (debug flags → PSoC index `144`). None of it appears in the official documentation. See doc `04`
+§4.6b.
 
 ## Confidence levels
 
