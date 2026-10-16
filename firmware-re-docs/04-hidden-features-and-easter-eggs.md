@@ -307,11 +307,39 @@ so "drive a pin" versus "release a pin" is a shared idiom in this image, not a l
 | code | action |
 |---|---|
 | `0`, `1` | `FUN_801231a0()` / `FUN_801231d4()`, both of which re-enter `FUN_80123064` |
-| `2`, `3`, `4` | `FUN_8012fed6` / `FUN_8012ff1c` / `FUN_8012ff98`, each with `&DAT_81ae5868` |
+| `2`, `3`, `4` | `FUN_8012fed6` / `FUN_8012ff1c` / `FUN_8012ff98`, each with `&DAT_81ae5868` — see below |
 | `8`, `9`, `10` | toggle bits `1`, `2`, `4` of the byte `DAT_81113a62` |
 | `0xb` | toggle `DAT_81059d41` |
 | `0xc` | the signal generator above |
 | `0xe` | the routing switch above |
+
+**Codes 2, 3 and 4 are a companion abort/release family, and they identify the sender.** All three are in
+**`command_handler_ble.cpp`** (the file that owns the `0x8012fe60` log site, immediately before them) and all
+three have the same shape, gated on the state byte at `ctx + 0x3938`:
+
+```c
+void FUN_8012fed6(int ctx)                     /* code 2 : notify only          */
+{ if (ctx[0x3938] == 0) return;
+  FUN_11a01d24(ctx + 4, 0x13, &byte, 1, 0xffffffff, 0, 0xff, 0xff); }
+
+void FUN_8012ff1c(int ctx)                     /* code 3 : + release the buffer */
+{ if (ctx[0x3938] == 0) return;
+  FUN_11a01d24(ctx + 4, 0x13, &byte, 1, 0xffffffff, 0, 0xff, 0xff);
+  if (ctx[0x393c] != 0) { FUN_80040220(DAT_81018320, buf[4], buf[8]); ctx[0x393c] = 0; } }
+
+void FUN_8012ff98(int ctx)                     /* code 4 : + clear ctx[0x4952]  */
+{ ... the same, then ctx[0x4952] = 0; }
+```
+
+So each sends a **one-byte message of companion type `0x13`**, and codes 3 and 4 additionally hand the pending
+message buffer at `ctx[0x393c]` to `FUN_80040220` — the MIDI/SysEx transmitter whose context is
+`DAT_81018320` — before dropping the pointer, which is what a transfer **abort** looks like.
+
+That also corrects a reading in doc `08` §8.5: `FUN_11a01d24` is **not** the PSoC's private sender but the
+**shared L1-overlay companion sender**, used by both companion handlers — `command_handler_kb.cpp` for the PSoC
+(`0x14`, the button debounce) and `command_handler_ble.cpp` here (`0x13`). So the light flush's `0x10` message
+and this context's `0x21` `set mode` message travel on a channel that both chips share, and which chip receives
+a given type is a property of the type, not of the call.
 
 `DAT_81113a62` is the same per-bit flag set the light writer reads — `FUN_80123568` lights slots 8, 9 and 10 when
 bits `1`, `2` and `4` are set (doc `08` §8.1's slot API) — so commands 8/9/10 drive three light slots directly.

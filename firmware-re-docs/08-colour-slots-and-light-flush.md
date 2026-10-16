@@ -3,8 +3,9 @@
 Doc `05` §5.8b/§5.8c ended on two named next steps: `FUN_8003d56e` (the "16-slot writer") and the block at
 `0x801fa74`. This document is the first of those. It turned out to be a complete **lighting engine**: a per-slot
 RGBA-plus-mode record, a two-variant colour palette with an interpolating lookup, three parallel buffers, a
-**change-only** packet builder with a **60-tick blink phase**, and a transport that hands the packet to the
-**PSoC** — which is the chip whose own image contains `..\PSOCCommon\leddriver.c` (doc `07` §7.4).
+**change-only** packet builder with a **60-tick blink phase**, and a transport that hands the packet to a
+**companion chip** — a receiver inferred from the payload's shape, since the sender turned out to be shared
+(§8.5). The most likely one is the PSoC, whose own image contains `..\PSOCCommon\leddriver.c` (doc `07` §7.4).
 
 Everything here is `[FW]` — statically recovered from `opz.ldr` — except where a sentence says otherwise.
 
@@ -199,15 +200,22 @@ void FUN_801313f4(int ctx, int table)
 multiplied back by `0x3c`, and the product subtracted — the compiler's divide-by-constant, so the counter really
 is a 0–59 tick and the phase really is "first half".
 
-**The transport is the PSoC's.** `FUN_11a01d24` is the **L1-overlay sender** already documented as the
-Blackfin→PSoC channel (doc `04` §4.6, where the `Set button debounce` setter calls
-`FUN_11a01d24(ctx+4, 0x14, buf, 2, 0xffffffff, 0, 0xff, 0xff)` for a two-byte message). The call here matches
-that signature argument for argument — **`ctx + 4` as the first argument, the same
-`0xffffffff, 0, 0xff, 0xff` tail** — and its second argument is the message type. So the light flush is a
-Blackfin→PSoC message of **type `0x10`** carrying up to 154 bytes, as against `0x14` for the debounce setter.
-That is the piece that closes the loop: the PSoC image contains `..\PSOCCommon\leddriver.c` and a 256-entry
-brightness curve fed by a 144-field register set (doc `07` §7.4), so **the Blackfin's slot table is the PSoC
-LED driver's input, not a DMX channel buffer.**
+**The transport is the shared companion sender, and its receiver is inferred.** `FUN_11a01d24` is the
+**L1-overlay sender** already documented as the Blackfin→companion channel (doc `04` §4.6, where the
+`Set button debounce` setter calls `FUN_11a01d24(ctx+4, 0x14, buf, 2, 0xffffffff, 0, 0xff, 0xff)` for a
+two-byte message). The call here matches that signature argument for argument — the context as the first
+argument, the same `0xffffffff, 0, 0xff, 0xff` tail, the second argument as the message type — so the light
+flush is a companion message of type **`0x10`** carrying up to 154 bytes, against `0x14` for the debounce
+setter.
+
+**The sender is shared, so the receiver does not follow from the call.** Doc `04` §4.6b found the same sender in
+`command_handler_ble.cpp` sending a one-byte type `0x13` message — the **Nordic BLE** handler, not the PSoC. So
+which chip receives a given type is a property of the type and not of the call site, and type `0x10`'s receiver
+is **inferred, not read**. What supports the PSoC reading is the payload's shape rather than the transport: the
+PSoC image contains `..\PSOCCommon\leddriver.c` and a 256-entry brightness curve fed by a 144-field register set
+(doc `07` §7.4), which is the kind of receiver an RGBA-and-blinking slot table is for. An independent check is
+available for a future session: `ScoreContext.cpp` carries the string `send debug flags to psoc: %d`, so a
+type-to-chip mapping can be built from that handler's call site, and `0x10` can then be placed on it.
 
 The two fallback lines are unambiguous *because their callees are*: `FUN_8002b388` and `FUN_8002b3b6` write
 **GPIO direction registers** —
@@ -274,11 +282,11 @@ no other `C:\snake-software` string between `0x81015a00` and `0x81015e78` — so
 individually. A one-line experiment for a future session: find a log call inside `FUN_8003d1e0`'s or
 `FUN_8003d56e`'s neighbourhood and decode its file-path immediate.
 
-**One consequence for doc `05` worth naming.** If the slot table is the DMX controller's and the packet goes to
-the PSoC, then the "OP-Z DMX preview" the vendor readme describes is realised as **the OP-Z's own LEDs being
-driven from the DMX fixture state** — which is what §5.8c already concluded from the other direction, when it
-found that the twelve "ignored" notes own preview slots 1–12. The two readings agree; only the ownership of the
-table's base address is unsettled.
+**One consequence for doc `05` worth naming.** If the slot table is the DMX controller's and the packet reaches a
+companion that drives the unit's own lights, then the "OP-Z DMX preview" the vendor readme describes is realised
+as **the OP-Z's own LEDs being driven from the DMX fixture state** — which is what §5.8c already concluded from
+the other direction, when it found that the twelve "ignored" notes own preview slots 1–12. The two readings
+agree; only the ownership of the table's base address is unsettled.
 
 ## 8.7 Method notes
 

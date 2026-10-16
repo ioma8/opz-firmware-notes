@@ -274,7 +274,7 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
     a single zip entry named `../firmware_auto.zip` — so an update can be staged to install itself on the next
     boot. Payload validation and per-entry zip CRCs still apply. See doc `03` §3.3 and doc `04` §4.5c.
 
-23. **The light engine is a slot table, a two-variant palette and a change-only flush to the PSoC.** Lighting
+23. **The light engine is a slot table, a two-variant palette and a change-only companion flush.** Lighting
     state is a **5-byte record per slot** (four colour components plus a mode tag) in one global array at
     `0x802d3a4`, written by a small API (`FUN_8003d3be` raw, `FUN_8003d56e` / `FUN_8003d352` / `FUN_8003d3f0`
     palette-driven) where the second argument is a **colour-wheel index** (`value >> 4`) rather than a channel
@@ -285,14 +285,15 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
     current table against a previous copy and emits only **changed** 6-byte records `00 <index> <c> 00 00 <c2>`
     into a packet buffer capped near `0xa0` bytes (max `0x9a` = 25 records), re-sending entries whose mode tag
     is `1` whenever a **60-tick blink phase** (counter modulo `0x3c` at `0x815c94b0`, phase = first half) flips.
-    The ticker `FUN_801313f4` then sends the packet with the **L1-overlay sender `FUN_11a01d24(ctx+4, 0x10, …)`**
-    — the same Blackfin→PSoC channel and the same `0xffffffff, 0, 0xff, 0xff` tail the documented
-    `Set button debounce` message uses, but message **type `0x10`** instead of `0x14` — which lands it on the
-    PSoC's own `..\PSOCCommon\leddriver.c` (doc `07` §7.4); when nothing changed it instead flips two **GPIO
-    direction lines** (`FUN_8002b388`/`FUN_8002b3b6` write `REG_PORTA_DIR_SET`/`CLR` and `INEN_SET`/`CLR` with the
-    `0x20`/`0x80` port stride). The DMX controller's own address is now read rather than inferred: `FUN_8003c5a4`
-    ends with `DAT_81015e9c = param_1` and its single caller passes the literal `0x802d2f0`. See doc `08` §8.1,
-    §8.3, §8.5 and §8.6.
+    The ticker `FUN_801313f4` then sends the packet with the **shared L1-overlay companion sender
+    `FUN_11a01d24(ctx+4, 0x10, …)`** — the same `0xffffffff, 0, 0xff, 0xff` tail the documented
+    `Set button debounce` message uses, but message **type `0x10`** instead of `0x14`; the sender is used by
+    **both** companion handlers (doc `04` §4.6b), so the receiver is *inferred* from the payload's shape
+    (`..\PSOCCommon\leddriver.c`, doc `07` §7.4) rather than read from the call. When nothing changed it instead
+    flips two **GPIO direction lines** (`FUN_8002b388`/`FUN_8002b3b6` write `REG_PORTA_DIR_SET`/`CLR` and
+    `INEN_SET`/`CLR` with the `0x20`/`0x80` port stride). The DMX controller's own address is now read rather
+    than inferred: `FUN_8003c5a4` ends with `DAT_81015e9c = param_1` and its single caller passes the literal
+    `0x802d2f0`. See doc `08` §8.1, §8.3, §8.5 and §8.6.
 
 24. **The Score context hides a signal generator and an audio routing switch behind a vtable slot.**
     `ScoreContext.cpp` installs a context vtable at `0x81113a98`, and one slot wraps a **numbered command
