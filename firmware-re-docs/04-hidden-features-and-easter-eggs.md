@@ -412,7 +412,7 @@ context the light engine's ticker sends its type-`0x10` flush on** (`FUN_801313f
 |---|---|---|---|
 | `0x10` | a light-flush packet, up to `0x9a` bytes | `FUN_801313f4` via `FUN_8003d620` | **PSoC** (same context as `0x90`) |
 | `0x13` | one byte | `command_handler_ble.cpp` (codes 2/3/4 above) | BLE |
-| `0x14` | two bytes `{1, value}` — the button debounce | `command_handler_kb.cpp` (`FUN_80131700`) | PSoC — **disputed**, see below |
+| `0x14` | two bytes `{1, value}` — the button debounce | `command_handler_kb.cpp` (`FUN_80131700`) | PSoC — index `20` |
 | `0x20` | two bytes `{3, value}` | `FUN_801314d8`, right after the light ticker | not established |
 | `0x21` | four bytes — `set mode`, above | `FUN_80123064` (`&DAT_81ae586c`) | not established |
 | `0x90` | two bytes — the debug flags | `FUN_80123828` (slot 9) | **PSoC** (named by its own log string) |
@@ -428,22 +428,44 @@ described in doc `07` §7.4c as *"set debug flags: stores the payload's 16-bit v
 two sides number these messages identically, which is what a `src/shared/` header would produce (doc `07` §7.4c
 already reaches the same conclusion from the power-mode table).
 
-**But one row then disagrees with doc `07`, and this document does not paper over it.** The debounce setter is
-confirmed by decompilation — `FUN_80131700` logs `Set button debounce: %d` at `command_handler_kb.cpp:139`, caches
-the value at `ctx + 0x394c`, and sends **`FUN_11a01d24(ctx + 4, 0x14, &two, 2, …)` with payload `{1, value}`** — so
-type `0x14` = decimal `20`. Doc `07` §7.4c assigns the PSoC's index **`20`** to its **power-state receive path**
-("sets its own power-state byte and latches it"), which cannot also be a two-byte button-debounce setting. Exactly
-one of the two readings is wrong:
+**The type byte *is* the PSoC's dispatch index — and the one apparent conflict sharpened doc `07` rather than
+breaking it.** Three types now line up across the two images, each with the payload shape agreeing:
 
-- either the Blackfin's second argument to `FUN_11a01d24` is not the PSoC dispatch index and the `0x90` match is
-the exception rather than the rule, or
-- doc `07`'s index-`20` row is mis-assigned and the PSoC's debounce handler sits at `20`.
+| Blackfin type | PSoC index | agreement |
+|---|---|---|
+| `0x90` | `144` = `0x4a92` | `send debug flags to psoc: %d` ↔ the PSoC's `"Set debug flags %d"`, both **16-bit** payloads |
+| `0x20` | `32` = `0x57ac` | the Blackfin sends `{3, value}`; the PSoC's index-32 handler indexes a 19-entry table at `0x1ad74` by `payload[0]` and `3` is one of its six populated slots |
+| `0x14` | `20` = `0x55b4` | the Blackfin sends `{1, value}`; the PSoC's index-20 handler reads **exactly two** payload bytes |
 
-The experiment that settles it is cheap and named: decompile the PSoC image's index-`20` handler and read whether
-it expects a **two-byte** payload whose first byte is `1` (a debounce) or a **one-byte** power state. Until that is
-done, the type table above should be read as "type `0x90` is confirmed shared, `0x14`'s PSoC-side owner is
-in dispute", and the type-to-chip rule stated in doc `08` §8.5 (the **context** is the destination handle) is
-what the light-flush conclusion actually rests on.
+That third row is the one that looked wrong, because doc `07` §7.4c files index `20` under *"power-state
+receive path — sets its own power-state byte and latches it"*. Decompiling it shows why both are true:
+
+```c
+void FUN_000055b4(void)                     /* PSoC, index 20 */
+{
+  _DAT_20000690 = (uint)**(byte **)(unr6 + 4);          /* payload[0]  -> dword at 0x20000690  */
+  DAT_200000cd  = (*(byte **)(unr6 + 4))[1];            /* payload[1]  -> byte  at 0x200000cd  */
+  FUN_000047b4();                                       /* the shared tail                    */
+  uVar1 = **(byte **)(unr6 + 4) - 0x10 & 0xff;          /* payload[0] - 0x10                   */
+  *(byte *)(unr7 + 0x58) = *(byte *)(unr6 + 1) >> 4;    /* the record's command nibble         */
+  if (8 < uVar1) { FUN_000067cc(); uVar1 = ...; }        /* out of range -> default handler     */
+  (**(code **)(DAT_0000577c + uVar1 * 4))();            /* else the 9-entry power table        */
+}
+```
+
+**The two stores are unconditional**, and only *then* does it interpret `payload[0] - 0x10` as a power mode
+through the 9-entry table at `0x577c`. So the handler is a **generic two-byte `{field, value}` setter with an
+optional power-mode tail**, and doc `07`'s row described only the in-range case: a debounce payload of `{1,
+value}` legitimately lands here, stores its two bytes, and falls to the default handler because `1 - 0x10` is out
+of range. Nothing is mis-assigned; the row was incomplete.
+
+**The light flush's receiver is therefore named as well.** Its type `0x10` is index `16`, whose entry is
+`0x5818` — the **interior** offset `+0x1e` inside `FUN_000057fa` (one of the 11 shared-body entries doc `07`
+§7.4c counts). That body reads `payload[0]` and dispatches through a table under a `5 < uVar1` guard, i.e. six
+sub-commands, and the flush's first byte is the **constant `0x00`** that `FUN_8003d1e0` writes unconditionally
+(doc `08` §8.4) — so every light update enters **sub-command 0**. That is the most economical explanation of the
+otherwise-unexplained zero byte at the head of every flush record, and it is recorded as the reading it is: the
+handler's *first* byte is a sub-command selector, which the flush always sets to zero.
 
 **One data constant worth recording, because it corrects a scope.** Immediately after slot 9 sits
 `0x81113ac0 = 0xBEBAFECA`, and a `FindDword` over the whole `opz.ldr` finds that value **exactly once** — at that

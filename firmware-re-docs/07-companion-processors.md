@@ -1515,14 +1515,19 @@ CPUs and carried in both directions* — not a one-way request from the Blackfin
 document ("the Blackfin's power request is one message format addressed to two chips") was right about the
 sharing and wrong about the direction, and it is corrected here.
 
-**One open conflict with that reading, recorded rather than resolved.** Doc `04` §4.6b reads the Blackfin's
-button-debounce setter directly (`FUN_80131700`): it sends a **two-byte** payload `{1, value}` under type
-**`0x14` = 20**, i.e. at this document's index `20`. The same section verifies the shared numbering on another
-type (Blackfin `0x90` ↔ this table's index `144`, "set debug flags", with a matching 16-bit payload width), so
-"the Blackfin's type byte is this table's index" is established for `0x90` and *contradicted* for `0x14`. Either
-the debounce really lands on the index-`20` handler and this row's *power-state* description is wrong, or the
-type bytes are not the dispatch index after all. The check is one decompile of the index-`20` body: does it read
-a two-byte payload whose first byte is `1`, or a one-byte power state?
+**One open conflict with that reading, now resolved in this document's favour by decompiling the handler.**
+Doc `04` §4.6b reads the Blackfin's button-debounce setter directly (`FUN_80131700`): it sends a **two-byte**
+payload `{1, value}` under type **`0x14` = 20**, i.e. at this document's index `20` — the row above that reads as
+*"sets its own power-state byte and latches it"*. Decompiling `FUN_000055b4` (index `20`) shows the row is
+**incomplete rather than wrong**: the handler stores `payload[0]` into the dword at `0x20000690` and `payload[1]`
+into the byte at `0x200000cd` **unconditionally**, and only afterwards interprets `payload[0] - 0x10` as a power
+mode through the 9-entry table at `0x577c`. A debounce payload of `{1, value}` therefore stores its two bytes and
+falls to the default handler, which is why it works. So the handler is a **generic two-byte `{field, value}`
+setter with an optional power-mode tail**, and the Blackfin's type byte is this table's index — verified on three
+types (`0x90`↔`144`, `0x20`↔`32` with `payload[0] = 3` in the populated set, `0x14`↔`20` with a two-byte
+payload). The same match names the receiver of doc `08`'s light flush: type `0x10` is index `16`, i.e. the
+interior entry `0x5818` inside `FUN_000057fa`, a body that reads `payload[0]` as a sub-command under a `5 < uVar1`
+guard — and that byte is the constant `0x00` the flush writes.
 
 **2. Message type `112` with the payload `DE AD BE EF` is a system reset** (`FUN_00004f3c`). The guard is
 exact — length 4 and the four bytes compared individually — and the effect is a write to the Cortex-M's

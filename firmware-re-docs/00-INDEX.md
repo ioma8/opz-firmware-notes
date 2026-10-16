@@ -291,7 +291,10 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
     **both** companion handlers (doc `04` §4.6b), so the call site alone would not say which chip receives it;
     the **context object** does: the ticker is handed `&DAT_0801fb90` and sends from `0x0801fb94`, and the one
     companion message in the image whose own log string names its destination — `send debug flags to psoc: %d`,
-    type `0x90` — sends from `&DAT_0801fb94` as well, so the light flush goes to the **PSoC** (whose image carries
+    type `0x90` — sends from `&DAT_0801fb94` as well; the type byte is the PSoC's own dispatch index (verified on
+    three types), so type `0x10` is the PSoC's index `16` — `0x5818` inside `FUN_000057fa`, which reads
+    `payload[0]` as a sub-command and therefore always takes the flush's **sub-command 0**, the constant `0x00`
+    the record builder writes. So the light flush goes to the **PSoC** (whose image carries
     `..\PSOCCommon\leddriver.c`, doc `07` §7.4). When nothing changed it instead flips two **GPIO direction
     lines** (`FUN_8002b388`/`FUN_8002b3b6` write `REG_PORTA_DIR_SET`/`CLR` and `INEN_SET`/`CLR` with the
     `0x20`/`0x80` port stride). The DMX controller's own address is now read rather than inferred: `FUN_8003c5a4`

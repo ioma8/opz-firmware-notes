@@ -207,16 +207,17 @@ two-byte message). The call here matches that signature argument for argument �
 argument, the same `0xffffffff, 0, 0xff, 0xff` tail, the second argument as the message type — so the light
 flush is a companion message of type **`0x10`** carrying up to 154 bytes, against `0x14` for the debounce
 setter.
-
-**The sender is shared, so the call site alone would not say which chip receives it** — doc `04` §4.6b found
-the same sender in `command_handler_ble.cpp` sending a one-byte type `0x13` message, i.e. the **Nordic BLE**
-handler, not the PSoC. What *does* settle it is the **context object**: `FUN_801313f4` is called as
-`FUN_801313f4(&DAT_0801fb90, &DAT_0802d3a4)` from `FUN_8003d620`, and inside it the sender is handed
-`0x0801fb90 + 4` — while the one companion message in the image whose own log string names its destination,
-`send debug flags to psoc: %d`, sends from `&DAT_0801fb94` (`FUN_80123828`, doc `04` §4.6b). **The same context.**
-So the light flush and the PSoC debug-flag message travel on one channel, and the flush's receiver is the
-**PSoC** — which is also the chip whose image carries `..\PSOCCommon\leddriver.c` and a 256-entry brightness
-curve fed by a 144-field register set (doc `07` §7.4), the receiver an RGBA-and-blinking slot table implies.
+**The receiver is the PSoC, and its handler is named.** Two independent things say so. First the **context
+object**: `FUN_801313f4` is called as `FUN_801313f4(&DAT_0801fb90, &DAT_0802d3a4)` from `FUN_8003d620`, and inside
+it the sender is handed `0x0801fb90 + 4` — while the one companion message in the image whose own log string names
+its destination, `send debug flags to psoc: %d`, sends from `&DAT_0801fb94` (`FUN_80123828`, doc `04` §4.6b). **The
+same context.** Second the **type byte**: doc `04` §4.6b verifies on three types that the Blackfin's second
+argument to `FUN_11a01d24` is the PSoC image's own dispatch index, so this type `0x10` is the PSoC's index **`16`**
+— the interior entry `0x5818` inside `FUN_000057fa` (doc `07` §7.4c). That handler reads `payload[0]` as a
+sub-command under a `5 < uVar1` guard, and the flush's first byte is the **constant `0x00`** §8.4 writes
+unconditionally, so every light update enters that handler's **sub-command 0**. This is also the chip whose image
+carries `..\PSOCCommon\leddriver.c` and a 256-entry brightness curve fed by a 144-field register set (doc `07`
+§7.4), the receiver an RGBA-and-blinking slot table implies.
 
 The two fallback lines are unambiguous *because their callees are*: `FUN_8002b388` and `FUN_8002b3b6` write
 **GPIO direction registers** —
