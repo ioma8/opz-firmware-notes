@@ -776,6 +776,34 @@ early for modes `4` and `8`), i.e. a per-fixture state reset.
 | `profiles`, `profile`, `fixture`, `channels`, `name`, `rgb`, `config`, `%s%s` | the config's own key vocabulary |
 | `Failed to write dmx data` | the **output** write failure |
 
+**The whole `DmxController.cpp` is mapped by its own log call sites.** A log-call resolver over
+`0x8003a000`–`0x8003d800` finds exactly **six** calls to the `(file, line, format)` logger in that
+2400-byte region, and every one of them names the same file with a line number:
+
+| call site | file and line | format |
+|---|---|---|
+| `0x8003b7ea` | `DmxController.cpp:316` | `dmx config not found: %s` |
+| `0x8003b82e` | `DmxController.cpp:324` | `failed to read dmx config: %s` |
+| `0x8003b9f4` | `DmxController.cpp:353` | `load dmx config %s` |
+| `0x8003bfbc` | `DmxController.cpp:358` | `Invalid dmx config json: %s` |
+| `0x8003c086` | `DmxController.cpp:480` | `failed to find dmx fixture mode %s` |
+| `0x8003aefc` | `DmxController.cpp:620` | `Failed to write dmx data` |
+
+Three things follow. The **config loader is lines ~316–358** — read, parse and the two failure paths sit
+within 42 lines of each other; the **fixture-mode lookup is line 480**; and the **wire write failure is line
+620**, which was already the one hand-verified line. So `DmxController.cpp` is at least 620 lines long, and the
+separation of 480 → 620 between the mode lookup and the frame send is the room the animation and packing code
+lives in.
+
+**The fixture-mode registry is a 14-entry table at `0x810159e0`.** The routine that logs line 480 resolves a
+configured mode **by name** in a loop whose bound is the literal `0xe` — `LSETUP … LC0 = 0xe` from
+`0x8003c052` — and stores a pointer per iteration with `StDregToM32bit [0x810159e0] = P5`. So there are **14
+fixture modes** in the controller's registry, and `0x810159e0` is the table base. That also places the
+controller's state words (`0x810159d4`, `0x810159d8`, `0x810159dc`, `0x810159e0`, `0x810159e4`, `0x810159e5`) in
+one contiguous run just before the file's `__FILE__` string, with the light palette of doc `08` at
+`0x81015fec` further along in the same region — see doc `08` §8.8 for what that contiguity is and is not
+evidence for.
+
 **The wire-side packing is read too** (the frame sender, the transport and the pump: §5.8b) — the per-fixture
 encoders that turn sequencer state into channel bytes are `FUN_8003a34a`, `FUN_8003a46e`, `FUN_8003a5d6`,
 `FUN_8003a718` and `FUN_8003ab0e`, and they are **mode-driven**:

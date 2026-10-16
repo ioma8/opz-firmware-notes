@@ -345,6 +345,39 @@ in the standard Ghidra distribution — without it the `.ldr` files do not impor
 `Blackfin:LE:32:default` language id, which is a different, ARM-like id that does not exist here). The two
 companion images need no extension at all.
 
+**The analysis scripts.** The six scripts the method notes in this document set rely on are in
+`ghidra-scripts/` at the repository root, and they are all standalone `GhidraScript`s — no build step. Run any of
+them with `-postScript <Name>.java <outfile> <args…>` and `-scriptPath` pointing at that directory; **use the
+resolved (symlink-free) path**, because `analyzeHeadless` canonicalises the argument and then fails to match it
+against the script path it printed:
+
+```bash
+GH=/path/to/Ghidra_12.1.4/support/analyzeHeadless
+S=ghidra-scripts
+
+# decompile functions by address (creates them if the region is unanalysed)
+$GH /tmp/opz-proj OPZ -process opz.ldr -noanalysis -scriptPath $S \
+    -postScript Decomp2.java /tmp/out.c 0x8003ae20 0x8003d1e0
+
+# raw disassembly of a range, N instructions, following instruction lengths
+$GH /tmp/opz-proj OPZ -process opz.ldr -noanalysis -scriptPath $S \
+    -postScript DumpRange.java 0x8003ae20 60
+
+# who calls this, and where is this function
+$GH /tmp/opz-proj OPZ -process opz.ldr -noanalysis -scriptPath $S \
+    -postScript CallersOf.java /tmp/callers.txt 0x8003c5a4 \
+    -postScript FnAt2.java /tmp/fn.txt 0x8003ae60
+
+# find a materialised address (the split-immediate scan) and map a region's log call sites
+$GH /tmp/opz-proj OPZ -process opz.ldr -noanalysis -scriptPath $S \
+    -postScript FindXImm.java /tmp/xref.txt 0x81015ccc \
+    -postScript LogMap.java /tmp/logmap.txt 0x8012f1e4 0x8003a000 0x8003d800
+```
+
+The limits of each are stated where they are used — in particular `FindXImm` finds materialised addresses and
+**never function calls** (doc `05` §5.8c, doc `08` §8.7), and `LogMap`'s line number is only correct when it is
+read from the `LdImmToReg R1` that immediately precedes the call (doc `08` §8.8).
+
 ## Load bases
 
 The thing that silently breaks a raw-binary import, so it is worth stating once:

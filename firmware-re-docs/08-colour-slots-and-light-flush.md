@@ -299,3 +299,48 @@ table's base address is unsettled.
 - **Register-carried arguments look like missing parameters.** Several calls decompile as
   `FUN_8003d48a(idx, 1)` with the third argument gone; the third argument is still in `R2` from the caller and
   is the level. Count the arguments in the disassembly before concluding a callee takes fewer.
+
+## 8.8 Method: binding a function to its source file
+
+Two attempts are worth recording, because one of them works and the other is a trap.
+
+**It works to resolve the log call sites.** Every `(file, line, format)` log in the image goes through
+`FUN_8012f1e4`, and all three arguments are materialised addresses or literals at the call site. A short script
+(`LogMap.java`) that walks a code range, finds every `CALL FUN_8012f1e4`, and then walks **backwards** over the
+preceding instructions resolving address-shaped scalars yields a `function → file:line → format` map for a whole
+region without decompiling anything. Applied to `0x8003a000`–`0x8003d800` it finds exactly **six** log call
+sites, all of them `DmxController.cpp`, and the table is in doc `05` §5.8.
+
+Two details make the difference between a usable map and a wrong one:
+
+- **The line number is the value loaded into `R1` immediately before the call**, not the nearest small scalar.
+  A "nearest small scalar" heuristic reported `3`, `12` and `24` for call sites whose real lines are `620`, `316`,
+  `353`, `358` and `480` — it was picking up loop bounds. Anchoring on `LdImmToReg R1 = …` reproduces the one
+  line that had already been decoded by hand (`620`), which is what makes the rest trustworthy.
+- **The raw hi/lo byte-pair fallback produces false positives.** Resolving a path from the two 16-bit halves in
+  the preceding bytes is needed for instructions the analyser did not pattern-match, but it also matches
+  unrelated encodings and yields empty or single-character strings; only the fused-immediate lines should be
+  quoted.
+
+**It does *not* work to assume a translation unit's globals sit next to its own `__FILE__` string.** That was
+worth testing, because it would have bound both open questions in this document outright — the palette's owner
+and the ticker's file. It half-holds and then fails:
+
+- *consistent with it:* the DMX controller's state words (`0x810159d4`–`0x810159e5`), its `__FILE__` string
+  (`0x81015be0`), its log format strings (`0x81015ccc`–`0x81015e78`) and the light palette (`0x81015fec`) all
+  fall inside one contiguous `0x810159d4`–`0x8101603b` region.
+- *contradicts it:* the light ticker's state (`0x815c94b0`–`0x815c94b5`) and the PSoC power-mode byte
+  `DAT_815c94ac` sit **between** `command_handler_ble.cpp`'s path string (`0x815c90d8`) and
+  `command_handler_kb.cpp`'s (`0x815c9514`) — so by the hypothesis those bytes belong to the BLE handler, yet
+  `DAT_815c94ac` is written by the **PSoC** (`kb`) power handlers of doc `07` §7.4c.
+
+So proximity to a `__FILE__` string is a **hint about which file to check first**, not a binding, and the open
+item in §8.6 stays open — which is the more important half of the result, because the hint is exactly the kind
+of thing a later session would over-trust.
+
+**One consequence that *is* firm, and it cuts against §8.5's transport finding being a coincidence.** The
+colour cluster `0x8003d1xx`–`0x8003d6xx` contains **no log call at all**, so the log map cannot bind it — but the
+*absent* binding is not evidence of a different file either. Its transport (§8.5) rests on the argument
+**shape**, which does not depend on the source file: the call carries `ctx + 4` as its first argument and the
+literal tail `0xffffffff, 0, 0xff, 0xff`, which is the signature the documented `Set button debounce` PSoC
+message uses (doc `04` §4.6).
