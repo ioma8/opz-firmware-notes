@@ -193,7 +193,14 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
     128→`0x81`, 145→`0x92`), the same rule as the Blackfin console, with shared telemetry replies `0x26`
     (12 B), `0x28` (8 B) and `0x31` (6 B) reused by requests `37`/`60`/`67`. Type `128`'s status byte **echoes
     the incoming routing nibble**, confirming the nibble-packed header from a fourth image, and type `145` is a
-    liveness/heartbeat message. See doc `07` §7.4c.
+    liveness/heartbeat message. The whole protocol hangs off a single pointer — the context at `0x20000770`, the
+    image's only reference to it — so every field is register-relative and none has a findable address; and the
+    pipeline's owner is `..\PSOCCommon\command_queue.c`. Type `144` is the exception that proves the rule about
+    how to read this chip: it is **write-only telemetry**, sixteen bits the PSoC records at `ctx+0x62` and never
+    reads (their only live effect is on the Blackfin, where bits `1`/`2`/`4` blank light slots 8/9/10). Finding
+    that out required discovering that the image is **Thumb-1**, where `0x62` *cannot* be an immediate
+    displacement, so the compiler emits `movs rY,#0x62` plus a register-form access — an immediate-displacement
+    scan returns a confident zero and looks like proof of absence. See doc `07` §7.4c, §7.4d and §7.4e.
 
 17. **The PSoC string pool is still not addressed by stored pointers** — tested, not assumed. In the
     PSoC image a naive raw-word search reports 412 hits (267 distinct), but only **9 of 924** strings actually

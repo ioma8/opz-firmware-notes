@@ -1570,7 +1570,7 @@ The rest of the per-type actions, read from the bodies:
 | `135` | passes the request's routing nibble to `FUN_0000f274`, then the default handler |
 | `136` | clears the low **12 bits** (`DAT_00004f34` = `0x0fff`) of a 16-bit register at `ctx+0x16` with a read-back spin |
 | `137` | the MAX77818 charger path (`FUN_00018f0c(0x69, 0xb7, buf, 100)`) |
-| `144` | **set debug flags**: stores the payload's 16-bit value and logs through `FUN_0001006c(…, 0x280, "Set debug flags %d")` |
+| `144` | **set debug flags**: stores the payload's 16-bit value at **`ctx+0x62`** and logs through `FUN_0001006c(…, 0x280, "Set debug flags %d")` from **`..\PSOCCommon\command_queue.c` line 640** — and **nothing in the PSoC ever reads that field**; see §7.4e |
 | `145` | liveness/heartbeat reply `0x92 0x62 0x00` plus a watchdog-window refresh |
 
 Type `32`'s table is a good example of how sparse these dispatch tables are: of 19 slots, six are populated and
@@ -1872,6 +1872,86 @@ The reset-reason lookup at `0x18862` (found in the code region, not the pool) is
 pointers into the `Last PMIC reset reason: …` strings. It confirms that the §7.4 vocabulary is not merely a
 set of printf formats: each reason is a **distinct runtime branch**, which is exactly what makes those strings
 diagnostically useful in the field.
+
+## 7.4e The context base, the module that owns the pipeline, and an addressing trap
+
+**The whole PSoC protocol hangs off one pointer.** The dispatcher's consumer loop loads its context with
+`ldr r7,[0x00004b04]`, and the literal at `0x4b04` is `0x20000770`. That is the **only** reference to the
+context base in the image — a dword scan of the whole 124 KB finds exactly one hit — so every `ctx+N` field
+discussed in §7.4c can only ever be reached **register-relative through `r7`**. That is why no field of this
+context has a findable address, and why the field offsets are the only handle on it.
+
+The consumer loop itself, at `0x477c`–`0x47f0`, is the other half of the pipeline §7.4d describes from the
+allocation side:
+
+```asm
+477c  push {r4,r5,r6,r7,lr}
+4796  ldr  r7,[0x00004b04]       ; r7 = 0x20000770, the context
+47a6  ldr  r3,[0x00004b0c]
+47aa  ldr  r0,[r3,#0x0]
+4794  ldr  r3,[0x00004b00]       ; a second facility, kept in r10
+47a0  movs r3,#0x0
+47a2  ldr  r2,[0x00004b08]
+47a4  strh r3,[r2,#0x0]         ; clear the 16-bit word at 0x20000af4 before dispatch
+47b8  ldr  r1,[0x00004b10]       ; 0x417
+47ba  ldr  r3,[0x00004b14]       ; 0x2000300c, the ring
+47bc  ldr  r2,[0x00004b18]       ; 0x416
+47c0  ldrb r3,[r3,r1]            ; producer index
+47c2  ldrb r2,[r0,r2]            ; consumer index
+47c4  cmp  r2,r3
+47c6  beq  0x47a0                ; empty
+47ca  lsls r2,r3,#0x2            ; index * 4
+47cc  add  r2,r12
+47ce  ldr  r6,[r2,#0x4]          ; r6 = the record pointer
+47d0  movs r2,#0x7f
+47d2  adds r3,#0x1
+47d4  ands r3,r2                 ; (index + 1) & 0x7f  -> a 128-entry wrap
+47d6  strb r3,[r0,r1]
+47dc  movs r3,#0x0
+47de  ldr  r2,[0x00004b08]
+47e0  strh r3,[r2,#0x0]
+47e2  ldrb r3,[r6,#0x0]          ; the type byte -> the §7.4c table
+```
+
+**The module that owns all of this is `..\PSOCCommon\command_queue.c`**: the type-`144` handler's `__FILE__`
+pointer resolves to a string at `0x1b0f8` reading `..\PSOCCommon\command_queue.c`, with `..\PSOCCommon\pmic.c`,
+`..\PSOCCommon\power_management.c` and `..\PSOCCommon\logfile.c` in the same string block. So the pipeline,
+the dispatch table and the debug-flag sink are one translation unit, and the neighbouring strings
+(`PowerState in DSP unknown`, `Unknown power state requested`, `connected to te unit, ignore vbus update`)
+show what that unit is *about*.
+
+### Type `144` is write-only telemetry, not a switch
+
+The handler stores the Blackfin's 16-bit payload with `movs r4,#0x62` / `strh r3,[r7,r4]` — i.e. at
+**`ctx+0x62` = SRAM `0x200007d2`** — and logs it at `command_queue.c:640`. Nothing reads it back: a scan of
+the whole image for **any** access to `ctx+0x62` returns exactly one site, that store. The complete inventory
+of the fifteen places `0x62` is materialised into a register is four function arguments, five accesses to a
+*different* structure (`0x20003a40`, whose base is loaded at `0xca08` — a neighbouring object, not the
+context), one value written into a reply by the type-`145` handler, three data/string regions, and this one
+store.
+
+So the Blackfin's `send debug flags to psoc` (doc `04` §4.6b) **publishes sixteen bits the PSoC records and
+never acts on**. The flags' only behavioural effect is on the Blackfin itself, where bits `1`, `2` and `4`
+blank light slots `8`, `9` and `10` (doc `08` §8.1b). The companion message is a diagnostic register —
+readable by whatever can look into PSoC SRAM — rather than a control input.
+
+### The addressing trap that nearly faked a negative
+
+The first attempt to find a reader scanned for the Thumb-2 *immediate-displacement* forms (`ldrh rX,[rY,#0x62]`)
+and found **zero**, which reads as proof of absence. It is not: this image is compiled as **Thumb-1**, where
+`LDRH`'s immediate field is `imm5` with a scale of two (offsets up to `0x3e`) and `LDRB`'s is `imm5` with a
+scale of one (up to `0x1f`). **`0x62` cannot be expressed as an immediate displacement at all**, so the
+compiler emits `movs rY,#0x62` followed by the register form. The control that caught this was the store I
+*knew* existed: it too was invisible to the immediate scan. That is the same class of trap as the Blackfin
+split immediate (doc `09` §9.4) — a scan whose encoding assumption is wrong returns a confident zero.
+
+### An open discrepancy, recorded rather than resolved
+
+§7.4d's allocator masks its index with `& 0x3f` (64 slots), strides records by 8 bytes and wraps a cursor at
+`0x200`; this consumer masks with `& 0x7f` (128), reads its record pointer at `idx * 4 + 4` and keeps its
+indices as **bytes** in a structure based at `0x2000300c`. Either the PSoC has two rings with different
+geometries, or one of the two readings is off by a factor. The reading above is the one taken directly from
+the consumer's own instructions, but it has not been reconciled with §7.4d, so both are left standing.
 
 ## 7.5 The engine modules (`.engine`): container and module ABI
 
