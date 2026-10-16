@@ -287,24 +287,32 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
     is `1` whenever a **60-tick blink phase** (counter modulo `0x3c` at `0x815c94b0`, phase = first half) flips.
     The ticker `FUN_801313f4` then sends the packet with the **shared L1-overlay companion sender
     `FUN_11a01d24(ctx+4, 0x10, …)`** — the same `0xffffffff, 0, 0xff, 0xff` tail the documented
-    `Set button debounce` message uses, but message **type `0x10`** instead of `0x14`; the sender is used by
-    **both** companion handlers (doc `04` §4.6b), so the receiver is *inferred* from the payload's shape
-    (`..\PSOCCommon\leddriver.c`, doc `07` §7.4) rather than read from the call. When nothing changed it instead
-    flips two **GPIO direction lines** (`FUN_8002b388`/`FUN_8002b3b6` write `REG_PORTA_DIR_SET`/`CLR` and
-    `INEN_SET`/`CLR` with the `0x20`/`0x80` port stride). The DMX controller's own address is now read rather
-    than inferred: `FUN_8003c5a4` ends with `DAT_81015e9c = param_1` and its single caller passes the literal
-    `0x802d2f0`. See doc `08` §8.1, §8.3, §8.5 and §8.6.
+    `Set button debounce` message uses, but message **type `0x10`** instead of `0x14`. The sender is used by
+    **both** companion handlers (doc `04` §4.6b), so the call site alone would not say which chip receives it;
+    the **context object** does: the ticker is handed `&DAT_0801fb90` and sends from `0x0801fb94`, and the one
+    companion message in the image whose own log string names its destination — `send debug flags to psoc: %d`,
+    type `0x90` — sends from `&DAT_0801fb94` as well, so the light flush goes to the **PSoC** (whose image carries
+    `..\PSOCCommon\leddriver.c`, doc `07` §7.4). When nothing changed it instead flips two **GPIO direction
+    lines** (`FUN_8002b388`/`FUN_8002b3b6` write `REG_PORTA_DIR_SET`/`CLR` and `INEN_SET`/`CLR` with the
+    `0x20`/`0x80` port stride). The DMX controller's own address is now read rather than inferred: `FUN_8003c5a4`
+    ends with `DAT_81015e9c = param_1` and its single caller passes the literal `0x802d2f0`. See doc `08` §8.1,
+    §8.3, §8.5 and §8.6.
 
 24. **The Score context hides a signal generator and an audio routing switch behind a vtable slot.**
-    `ScoreContext.cpp` installs a context vtable at `0x81113a98`, and one slot wraps a **numbered command
-dispatcher** (`FUN_80123274`) gated on the Score context being active. Its codes include a **signal generator
-with a 6 dB step attenuator** — the gain byte steps down from 0 dB in 6 dB increments, `… gain: %ddB` is logged
-each time and below −59 dB the generator switches itself off — and a **two-position audio routing switch** that
-rewrites four audio-graph connections (`0xc`→`6`/`7` with `6`/`7`→`10`/`11`, or `6`→`6`, `7`→`7` with `0xc`→
-`10`/`11`) and flips a pair of **GPIO direction** lines with the same two helpers the light flush uses. Three
-further codes toggle light slots 8–10 through the slot API of doc `08`, and the same file sends a 4-byte
-**type `0x21`** companion message (`set mode %d %d %d %d`) and carries the string `send debug flags to psoc: %d`.
-None of it appears in the official documentation. See doc `04` §4.6b.
+    `ScoreContext.cpp` installs a context vtable at `0x81113a98` (its constructor `FUN_8012378e` is the only code
+    reference to it in the image), and slot 3 wraps a **numbered command dispatcher** (`FUN_80123274`) gated on
+the Score context being active. Its codes include a **signal generator with a 6 dB step attenuator** — the gain
+byte steps down from 0 dB in 6 dB increments, `… gain: %ddB` is logged each time and below −59 dB the generator
+switches itself off — and a **two-position audio routing switch** that rewrites four audio-graph connections
+(`0xc`→`6`/`7` with `6`/`7`→`10`/`11`, or `6`→`6`, `7`→`7` with `0xc`→ `10`/`11`) and flips a pair of **GPIO
+direction** lines with the same two helpers the light flush uses. Three further codes toggle light slots 8–10
+through the slot API of doc `08`. **Slot 9 is the anchor for the whole Blackfin→companion message bus**: it sends
+`send debug flags to psoc: %d` (line 640) as a two-byte **type `0x90`** message from `&DAT_0801fb94` whenever the
+flag byte changes, which both names a PSoC type and fixes the light flush's receiver by sharing its context, and
+the same file sends a 4-byte **type `0x21`** `set mode %d %d %d %d` message. The message types read so far are
+`0x10` (light flush → PSoC), `0x13` (BLE abort family), `0x14` (button debounce → PSoC), `0x20`, `0x21` and
+`0x90` (→ PSoC), and the **context object is the destination handle**. None of it appears in the official
+documentation. See doc `04` §4.6b.
 
 ## Confidence levels
 

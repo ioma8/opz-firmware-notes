@@ -200,22 +200,23 @@ void FUN_801313f4(int ctx, int table)
 multiplied back by `0x3c`, and the product subtracted — the compiler's divide-by-constant, so the counter really
 is a 0–59 tick and the phase really is "first half".
 
-**The transport is the shared companion sender, and its receiver is inferred.** `FUN_11a01d24` is the
-**L1-overlay sender** already documented as the Blackfin→companion channel (doc `04` §4.6, where the
+**The transport is the shared companion sender, and its receiver is read from a sibling message.** `FUN_11a01d24`
+is the **L1-overlay sender** already documented as the Blackfin→companion channel (doc `04` §4.6, where the
 `Set button debounce` setter calls `FUN_11a01d24(ctx+4, 0x14, buf, 2, 0xffffffff, 0, 0xff, 0xff)` for a
 two-byte message). The call here matches that signature argument for argument — the context as the first
 argument, the same `0xffffffff, 0, 0xff, 0xff` tail, the second argument as the message type — so the light
 flush is a companion message of type **`0x10`** carrying up to 154 bytes, against `0x14` for the debounce
 setter.
 
-**The sender is shared, so the receiver does not follow from the call.** Doc `04` §4.6b found the same sender in
-`command_handler_ble.cpp` sending a one-byte type `0x13` message — the **Nordic BLE** handler, not the PSoC. So
-which chip receives a given type is a property of the type and not of the call site, and type `0x10`'s receiver
-is **inferred, not read**. What supports the PSoC reading is the payload's shape rather than the transport: the
-PSoC image contains `..\PSOCCommon\leddriver.c` and a 256-entry brightness curve fed by a 144-field register set
-(doc `07` §7.4), which is the kind of receiver an RGBA-and-blinking slot table is for. An independent check is
-available for a future session: `ScoreContext.cpp` carries the string `send debug flags to psoc: %d`, so a
-type-to-chip mapping can be built from that handler's call site, and `0x10` can then be placed on it.
+**The sender is shared, so the call site alone would not say which chip receives it** — doc `04` §4.6b found
+the same sender in `command_handler_ble.cpp` sending a one-byte type `0x13` message, i.e. the **Nordic BLE**
+handler, not the PSoC. What *does* settle it is the **context object**: `FUN_801313f4` is called as
+`FUN_801313f4(&DAT_0801fb90, &DAT_0802d3a4)` from `FUN_8003d620`, and inside it the sender is handed
+`0x0801fb90 + 4` — while the one companion message in the image whose own log string names its destination,
+`send debug flags to psoc: %d`, sends from `&DAT_0801fb94` (`FUN_80123828`, doc `04` §4.6b). **The same context.**
+So the light flush and the PSoC debug-flag message travel on one channel, and the flush's receiver is the
+**PSoC** — which is also the chip whose image carries `..\PSOCCommon\leddriver.c` and a 256-entry brightness
+curve fed by a 144-field register set (doc `07` §7.4), the receiver an RGBA-and-blinking slot table implies.
 
 The two fallback lines are unambiguous *because their callees are*: `FUN_8002b388` and `FUN_8002b3b6` write
 **GPIO direction registers** —
@@ -346,9 +347,9 @@ So proximity to a `__FILE__` string is a **hint about which file to check first*
 item in §8.6 stays open — which is the more important half of the result, because the hint is exactly the kind
 of thing a later session would over-trust.
 
-**One consequence that *is* firm, and it cuts against §8.5's transport finding being a coincidence.** The
-colour cluster `0x8003d1xx`–`0x8003d6xx` contains **no log call at all**, so the log map cannot bind it — but the
-*absent* binding is not evidence of a different file either. Its transport (§8.5) rests on the argument
-**shape**, which does not depend on the source file: the call carries `ctx + 4` as its first argument and the
-literal tail `0xffffffff, 0, 0xff, 0xff`, which is the signature the documented `Set button debounce` PSoC
-message uses (doc `04` §4.6).
+**One consequence that *is* firm.** The colour cluster `0x8003d1xx`–`0x8003d6xx` contains **no log call at all**,
+so the log map cannot bind it — but the *absent* binding is not evidence of a different file either. Its transport
+(§8.5) rests on two things that do not depend on the source file: the argument **shape** (the context as the first
+argument plus the literal tail `0xffffffff, 0, 0xff, 0xff`, which is the signature the documented
+`Set button debounce` PSoC message uses, doc `04` §4.6) and the **context identity** (`0x0801fb94`, shared with
+the one message in the image that names its destination as the PSoC).

@@ -224,7 +224,12 @@ Two of the rows above are worth calling out as more than trivia:
   not a signature or a challenge: whoever can send that frame can flip the BLE chip into factory mode and then
   write its configuration with type `0x80`. That is a materially different risk posture from the main `.zfw`
   container (AES) or the BLE component's own `.dat` descriptor (which carries a 64-byte signature, doc `07`
-  §7.3).
+  §7.3). **Where the constant actually lives, exactly:** a 32-bit scan finds `0xBEBAFECA` **once per image** — at
+  file offset `0x6998` in `nrf52832_opz.bin` (the BLE side that checks it) *and* once in `opz.ldr`, at
+  `0x81113ac0`, immediately after the `ScoreContext.cpp` method table (`0x81113a98` + 10 slots), with **no code
+  reference to it anywhere in the Blackfin image**. So the Blackfin copy is a data word with no located reader;
+  whether it is the BLE magic relayed from the same constant pool or a table-guard value is **not established**,
+  and this document does not claim the Blackfin ever sends it. See §4.6b.
 - **Direct Test Mode is reachable over the same framing as ordinary messages**, so the radio's test interface
   is not gated behind a separate factory port. Treat both as documented factory surfaces, not as user
   features.
@@ -306,12 +311,18 @@ so "drive a pin" versus "release a pin" is a shared idiom in this image, not a l
 
 | code | action |
 |---|---|
-| `0`, `1` | `FUN_801231a0()` / `FUN_801231d4()`, both of which re-enter `FUN_80123064` |
+| `0` | `FUN_801231a0()` — zeroes `DAT_81113a68` and `DAT_81113a6c`, then re-sends the mode message |
+| `1` | `FUN_801231d4()` — advances `DAT_81113a6c` **modulo 3** and re-sends the mode message |
 | `2`, `3`, `4` | `FUN_8012fed6` / `FUN_8012ff1c` / `FUN_8012ff98`, each with `&DAT_81ae5868` — see below |
 | `8`, `9`, `10` | toggle bits `1`, `2`, `4` of the byte `DAT_81113a62` |
 | `0xb` | toggle `DAT_81059d41` |
 | `0xc` | the signal generator above |
 | `0xe` | the routing switch above |
+
+The `modulo 3` in code `1` is the compiler's divide-by-constant again (`× 0x55555556`, take the high word,
+then subtract three times the quotient — the same idiom as the light engine's modulo-60 tick, doc `08` §8.5), and
+`FUN_80123064` *uses* that byte: its argument block takes `uVar1 = 0`, or `0x14` (20) when `DAT_81113a6c == 1`, or
+`0x27` (39) when it is `2` — unless `DAT_81113a70 != -1`, which overrides it.
 
 **Codes 2, 3 and 4 are a companion abort/release family, and they identify the sender.** All three are in
 **`command_handler_ble.cpp`** (the file that owns the `0x8012fe60` log site, immediately before them) and all
@@ -337,9 +348,93 @@ message buffer at `ctx[0x393c]` to `FUN_80040220` — the MIDI/SysEx transmitter
 
 That also corrects a reading in doc `08` §8.5: `FUN_11a01d24` is **not** the PSoC's private sender but the
 **shared L1-overlay companion sender**, used by both companion handlers — `command_handler_kb.cpp` for the PSoC
-(`0x14`, the button debounce) and `command_handler_ble.cpp` here (`0x13`). So the light flush's `0x10` message
-and this context's `0x21` `set mode` message travel on a channel that both chips share, and which chip receives
-a given type is a property of the type, not of the call.
+(`0x14`, the button debounce) and `command_handler_ble.cpp` here (`0x13`). So a call site alone does not say
+which chip receives a message; the **context object** does — see the debug-flag sender below for the case that
+settles it, and doc `08` §8.5 for the light flush.
+
+### The command bus, read from the slot map
+
+`FUN_8012378e` is the context's **constructor** (it writes the vtable pointer and zeroes the byte at `+4`), and
+`FindXImm` confirms it is the **only** code reference to `0x81113a98` in the image — so the object's method table
+can be read straight out of rodata. It is ten slots, and the last three are the hidden surface above:
+
+| slot | address | method |
+|---|---|---|
+| 0 | `0x81113a98` | `0x801237aa` — the `if (B[0x81113a60] != 0) FUN_80117b82(0x802ee3c, 2, 0xff)` gate |
+| 1 | `0x81113a9c` | `0x80122b30` |
+| 2 | `0x81113aa0` | `0x801237e8` → `FUN_8012320c(a, b, c)`, the parameter adjuster (`b == 0x26`/`0x27` steps `DAT_81113a70` down/up, clamped to `[-1, 0x27]`) |
+| 3 | `0x81113aa4` | `0x80123802` → **`FUN_80123274`, the command dispatcher** |
+| 4 | `0x81113aa8` | `0x80122b24` |
+| 5 | `0x81113aac` | `0x8011cc04` |
+| 6 | `0x81113ab0` | `0x8011cbf8` |
+| 7 | `0x81113ab4` | `0x80123818` → **`FUN_80123568`, the light-slot writer** |
+| 8 | `0x81113ab8` | `0x80122b10` |
+| 9 | `0x81113abc` | `0x80123828` → **the PSoC debug-flag sender** (below) |
+
+**How much of this table is shared, measured.** Counting each slot's pointer across the whole image with a
+dword scan: slots **5 (`0x8011cc04`) and 6 (`0x8011cbf8`) appear in 15 tables each** — they are base-class methods
+every context's table carries — while slots **0, 1, 3, 4 and 8 occur exactly once each**, i.e. they belong to
+this context alone. So the ten-slot table is mostly context-specific, and only the `0x8011cbxx` pair is the shared
+layer. Two of the single-occurrence slots (1 and 4) point into the `0x8011cxxx`/`0x80122xxx` cluster that also
+holds the shared pair — being *near* a shared method does not make a method shared, and an earlier draft of this
+section claimed exactly that before the scan was run.
+
+That count is also what makes the panel *hidden* rather than merely undocumented: **slot 3's wrapper
+(`0x80123802`) is the only reference to `FUN_80123274` in the image**, and it sits in exactly one vtable, so the
+dispatcher has no other entry point. Reaching it requires the Score context to be the active one and its method
+table to be used.
+
+**Slot 9 is the message that names its destination, and it is the anchor for the whole companion bus.**
+
+```c
+void FUN_80123828(void)                            /* ScoreContext.cpp, line 640 */
+{
+  if (DAT_81113a62 == DAT_81113a84) return;        /* unchanged -> send nothing     */
+  LOG("…ScoreContext.cpp", 0x280, "send debug flags to psoc: %d", DAT_81113a62);
+  uStack_c = (byte)DAT_81113a62;
+  uStack_b = (byte)(DAT_81113a62 >> 8);
+  FUN_11a01d24(&DAT_0801fb94, 0x90, &uStack_c, 2, 0xffffffff, 0, 0xff, 0xff);
+  DAT_81113a84 = DAT_81113a62;
+}
+```
+
+Three things come out of that. The byte the panel toggles with codes 8/9/10 (`DAT_81113a62`) is mirrored to the
+PSoC as a **two-byte word** — `0x90` is the debug-flags message type — but only when it **changes**, tracked
+against `DAT_81113a84`. The destination is stated by the file's own log string, so `0x90` is a **PSoC** type
+rather than an inference. And the sending context is `&DAT_0801fb94`, which is `0x0801fb90 + 4` — the **same
+context the light engine's ticker sends its type-`0x10` flush on** (`FUN_801313f4(&DAT_0801fb90, …)`, doc `08`
+§8.5), which is what makes the light flush a PSoC message too.
+
+**The Blackfin→companion message types read so far**, all sent through `FUN_11a01d24(ctx, type, buf, len, -1, 0,
+0xff, 0xff)`:
+
+| type | payload | sender | destination |
+|---|---|---|---|
+| `0x10` | a light-flush packet, up to `0x9a` bytes | `FUN_801313f4` via `FUN_8003d620` | **PSoC** (same context as `0x90`) |
+| `0x13` | one byte | `command_handler_ble.cpp` (codes 2/3/4 above) | BLE |
+| `0x14` | two bytes `{1, value}` — the button debounce | `command_handler_kb.cpp` | PSoC |
+| `0x20` | two bytes `{3, value}` | `FUN_801314d8`, right after the light ticker | not established |
+| `0x21` | four bytes — `set mode`, above | `FUN_80123064` (`&DAT_81ae586c`) | not established |
+| `0x90` | two bytes — the debug flags | `FUN_80123828` (slot 9) | **PSoC** (named by its own log string) |
+
+The two rows with a stated destination use *different* contexts, so the pair also shows the rule: **the context
+object is the destination handle**, and the type is interpreted within it.
+
+**One data constant worth recording, because it corrects a scope.** Immediately after slot 9 sits
+`0x81113ac0 = 0xBEBAFECA`, and a `FindDword` over the whole `opz.ldr` finds that value **exactly once** — at that
+address, with no split-immediate reference to it anywhere in the Blackfin image. The same 32-bit value occurs
+exactly once in the Nordic image as well (file offset `0x6998`), which is consistent with §4.6's factory-mode
+magic, but on the Blackfin it is a **data word with no located reader**, and it is adjacent to a vtable. So §4.6
+should be read as "the magic the *BLE* side checks": this document does not claim the Blackfin ever sends it, and
+whether the Blackfin copy is the BLE magic relayed from here or a vtable-guard constant is **not established**.
+
+The dwords after it are the tail of an array based at `0x81113ac8` and read by the light writer with indices
+derived from `DAT_81113a70`: ten consecutive values `0x27` then `0x1e`–`0x26`, i.e. the contiguous run **30–39
+with 39 written first**. `DAT_81113a70`'s own clamp maximum is `0x27`, which matches that run's last value, and
+`FUN_80123568` uses the **quotient and remainder of `DAT_81113a70 / 10`** as two separate indices into the array
+before passing the results to the slot setters as their slot argument. The arithmetic is read; what the run is *for*
+(a two-digit display index, a step-key map, something else) is **not established**, and the quotient/remainder
+indices would run past the run's start for some inputs, which is one more reason not to name it.
 
 `DAT_81113a62` is the same per-bit flag set the light writer reads — `FUN_80123568` lights slots 8, 9 and 10 when
 bits `1`, `2` and `4` are set (doc `08` §8.1's slot API) — so commands 8/9/10 drive three light slots directly.
