@@ -39,6 +39,7 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
 | `05-midi-sysex-and-config.md` | the MIDI SysEx surface: message classes, the opcode map, the ring-buffer geometry and accessors, and `config/midi.json` |
 | `06-rtos-and-system-services.md` | the two-RTOS architecture (uC/OS-III + SMX), named tasks, the labelled mutex inventory, power management and the CRC paths |
 | `07-companion-processors.md` | the other two CPUs: the nRF52832 BLE image (load base corrected, dispatcher and transport decompiled), its protobuf descriptor with hash + 64-byte signature, the PSoC 5LP power/USB-PD controller (CYACD format, 387 functions, two-level dispatch), and the **`.engine` container + module ABI** |
+| `08-colour-slots-and-light-flush.md` | the light-slot engine: 5-byte RGBA+mode slot records, the two-variant 20-entry palette and its interpolating lookup, the three parallel buffers, the change-only packet builder with its 60-tick blink phase, and the **Blackfin→PSoC type `0x10`** transport it leaves on |
 
 ## Headline findings
 
@@ -272,6 +273,26 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
     No key combo, marker or version query gates the trigger, and the file is reachable from the update volume via
     a single zip entry named `../firmware_auto.zip` — so an update can be staged to install itself on the next
     boot. Payload validation and per-entry zip CRCs still apply. See doc `03` §3.3 and doc `04` §4.5c.
+
+23. **The light engine is a slot table, a two-variant palette and a change-only flush to the PSoC.** Lighting
+    state is a **5-byte record per slot** (four colour components plus a mode tag) in one global array at
+    `0x802d3a4`, written by a small API (`FUN_8003d3be` raw, `FUN_8003d56e` / `FUN_8003d352` / `FUN_8003d3f0`
+    palette-driven) where the second argument is a **colour-wheel index** (`value >> 4`) rather than a channel
+    byte. The colour comes from **one 20-entry 4-channel palette at `0x81015fec`** read at `i` and `i + 10`: the
+    two halves are identical **except at the two interpolated hues**, which have a brighter variant, and
+    `FUN_8003d48a(index, component, level)` cross-fades between the halves on a **piecewise level ramp**
+    (`< 0x40` bright, ramp to `0xc0`, then dim) before scaling by the level. The flush `FUN_8003d1e0` diffs the
+    current table against a previous copy and emits only **changed** 6-byte records `00 <index> <c> 00 00 <c2>`
+    into a packet buffer capped near `0xa0` bytes (max `0x9a` = 25 records), re-sending entries whose mode tag
+    is `1` whenever a **60-tick blink phase** (counter modulo `0x3c` at `0x815c94b0`, phase = first half) flips.
+    The ticker `FUN_801313f4` then sends the packet with the **L1-overlay sender `FUN_11a01d24(ctx+4, 0x10, …)`**
+    — the same Blackfin→PSoC channel and the same `0xffffffff, 0, 0xff, 0xff` tail the documented
+    `Set button debounce` message uses, but message **type `0x10`** instead of `0x14` — which lands it on the
+    PSoC's own `..\PSOCCommon\leddriver.c` (doc `07` §7.4); when nothing changed it instead flips two **GPIO
+    direction lines** (`FUN_8002b388`/`FUN_8002b3b6` write `REG_PORTA_DIR_SET`/`CLR` and `INEN_SET`/`CLR` with the
+    `0x20`/`0x80` port stride). The DMX controller's own address is now read rather than inferred: `FUN_8003c5a4`
+    ends with `DAT_81015e9c = param_1` and its single caller passes the literal `0x802d2f0`. See doc `08` §8.1,
+    §8.3, §8.5 and §8.6.
 
 ## Confidence levels
 

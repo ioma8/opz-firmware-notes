@@ -1107,6 +1107,14 @@ from are unrelated to lighting:
 
 So the DMX pump is gated on a byte that a **USB connection event** also clears, and on the value `0x10` of a set
 `{0, 8, 0x10, 0x4f}` that is neither boolean nor a plain level. The honest reading is that `0x801fa74` is a
-**shared device-state block** whose individual fields have not been named yet; reading it (and `FUN_8003d56e`,
-which looks like a 16-slot output writer) is the next step, and it is deliberately **not** guessed at here.
+**shared device-state block** whose individual fields have not been named yet; it is deliberately **not** guessed
+at here.
+
+**`FUN_8003d56e` itself is no longer a guess.** It is a **light-slot setter**, not an output writer: it writes a
+5-byte record into one global slot table at `0x802d3a4`, and its second argument is a **colour-wheel index**
+(`value >> 4`) into a palette — which is why the values above select palette entry 4 (black, i.e. *off*) and
+entry 1 (green). The whole engine behind it — the slot records, the two-variant palette, the change-only flush
+and the Blackfin→PSoC transport the packet leaves on — is doc `08`. The `+0xc8`/`+0xcc` offsets this section
+uses are tied up with that table's ownership, which doc `08` §8.6 states as a bounded open item rather than
+resolving.
 
