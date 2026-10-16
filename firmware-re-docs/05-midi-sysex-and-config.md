@@ -987,10 +987,10 @@ void FUN_8003af18(int ctx)
 }
 ```
 
-`DAT_0801fa75` is not a DMX field — it is the **level/mode byte of the device's own state block** (see §5.8c),
-and `FUN_8003ab0e` (the fade routine of §5.8) gates on the identical comparison, so **DMX output only runs at
-level `0x10` (16)** and is completely silent at the other three values the same byte takes elsewhere in the image
-**`0`, `8` and `0x4f` (79)**.
+`DAT_0801fa75` is not a DMX field — it is **byte 1 of a small state block at `0x801fa74`** whose exact meaning is
+an open item (§5.8c), and `FUN_8003ab0e` (the fade routine of §5.8) gates on the identical comparison, so **DMX
+output only runs at level `0x10` (16)** and is completely silent at the other three values the same byte takes
+elsewhere in the image — **`0`, `8` and `0x4f` (79)**.
 
 ### 5.8c The preview flags, the fixture table and the idle animation
 
@@ -1093,4 +1093,20 @@ called that way — `FindXImm` returns nothing for `0x8003ab0e`, `0x8003a418`, `
 (`0x8003af70` → `FUN_8003ae20`). So a missing `FindXImm` hit on a *function address* means nothing at all, and
 the pump `FUN_8003af18` keeps **no decoded caller** — its invoker sits in the still-undecoded tick region, which
 is a coverage gap and not a statement that the routine is dead.
+
+**One open item, stated rather than resolved: what `0x801fa74` is.** The DMX gate byte is *not* owned by the DMX
+subsystem. `0x801fa74` is a **small byte block** (`param_1[0]`, `[1]`, `[2]`), and the two places it is touched
+from are unrelated to lighting:
+
+- `FUN_800279d8(0x801fa74, record)` is called from the file-manager task loop's `0x60` arm, and it is a **USB
+  connection-event handler** — `UsbControl.cpp` line `0xa2` (162), logging
+  `connection event: %s 0x%02x 0x%02x …` with the `attached`/`detached` strings of `0x81002d28`/`0x81002d34`,
+  and clearing the `param_1` block when the event is a detach.
+- `FUN_80123568` reads `0x801fa75`, `0x801fa76` and `0x801fa78` as levels/indexes while writing slot values
+  `0x4f`/`0x1f`/`0xf`/`0x7f` through `FUN_8003d56e(slot, value, 0xff)` for slots `0`–`0xf`.
+
+So the DMX pump is gated on a byte that a **USB connection event** also clears, and on the value `0x10` of a set
+`{0, 8, 0x10, 0x4f}` that is neither boolean nor a plain level. The honest reading is that `0x801fa74` is a
+**shared device-state block** whose individual fields have not been named yet; reading it (and `FUN_8003d56e`,
+which looks like a 16-slot output writer) is the next step, and it is deliberately **not** guessed at here.
 
