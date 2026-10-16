@@ -321,8 +321,14 @@ chips separate by whether the type index appears in the PSoC's 39-entry implemen
 signals agreeing on all six rows, so **the type byte is a shared enum looked up in each chip's own dispatch and
 the context object selects the chip**. The message types read so far are `0x10` (light flush → PSoC index `16`),
 `0x13` (BLE abort family), `0x14` (button debounce → PSoC index `20`), `0x20` (→ PSoC index `32`), `0x21` (DTM →
-BLE) and `0x90` (debug flags → PSoC index `144`). None of it appears in the official documentation. See doc `04`
-§4.6b.
+BLE) and `0x90` (debug flags → PSoC index `144`). None of it appears in the official documentation. **The panel
+also has its own state block** at `0x81113a60`–`0x81113a97`, read out byte by byte (the active gate, the light
+flags, the generator's enable flag and dB gain, three selectors, the frequency override, the routing state, two
+packed four-entry colour tables and the vtable name string), and it **displays the DTM frequency as two decimal
+digits on ten dedicated light slots**: the frequency is divided by ten and both halves index the ten-entry table
+`39, 30, 31, … 38` at `0x81113ac8` (digits 1–9 → slots 30–38, digit 0 → slot 39), each result written as the
+slot number of a light with the palette's **black** entry, so the two digits read as darkened slots in a lit row.
+See doc `04` §4.6b and doc `08` §8.1b.
 
 25. **The method is written down as a deliverable, not folklore.** Doc `09` records the harness that produced this
 document set: the **four-image Ghidra 12.1.4 setup** (the `Ghidra-BlackFinPlus` extension is required for the

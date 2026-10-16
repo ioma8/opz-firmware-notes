@@ -250,9 +250,33 @@ thin thunks onto functions that are pure hidden-feature surface:
 ```
 
 The vtable sits at `0x81113a98`, its `__FILE__` string (`…\src\sequencer\contexts\ScoreContext.cpp`) at
-`0x81113b70`, and the context's own state block in between (`0x81113a60`–`0x81113ac8`). Everything below is gated
+`0x81113b70`, and the context's own state block in between (`0x81113a60`–`0x81113a97`). Everything below is gated
 on `DAT_81113a60 != 0`, i.e. on the **Score context being the active one**, which is why none of it is reachable
 from the documented UI.
+
+**The state block, read out byte by byte.** Every field below was identified from a read or a write in the code,
+and the two packed dwords at the end are what doc `08` §8.1b turns into slot colours:
+
+| address | size | role | evidence |
+|---|---|---|---|
+| `0x81113a60` | byte | **the active gate** — every command returns immediately without it | 12 references, including `FUN_80040922` (the SysEx dispatcher) and `FUN_8010a29a` |
+| `0x81113a62` | byte | the light-slot flag bits `1`/`2`/`4` → slots 8/9/10, **and** the value mirrored to the PSoC as debug flags | the panel's codes 8/9/10, and `FUN_80123828` |
+| `0x81113a64` | byte | the signal generator's **enable** flag | set/cleared by code `0xc` |
+| `0x81113a65` | byte | a second gate, on the slot writer and on the parameter adjuster | `FUN_80123568`, `FUN_8012320c` |
+| `0x81113a68` | byte | the mode/index `1`–`3` that also picks the four-byte argument layout and colour selector | `FUN_80123064`, `FUN_80123568` |
+| `0x81113a6c` | byte | a second index `0`–`2`, advanced **modulo 3** by code `1` | `FUN_801231d4` |
+| `0x81113a70` | dword | the **DTM frequency** override, clamped to `[-1, 0x27]` | `FUN_8012320c` |
+| `0x81113a78` | byte | the audio-routing A/B state | code `0xe` |
+| `0x81113a79` | byte | the signal generator's on/off latch | code `0xc` |
+| `0x81113a7c` | signed byte | the signal generator's **gain in dB**, stepped by `-6` | code `0xc` |
+| `0x81113a80` | dword | a **packed four-entry colour table** (`1f 0f 5f 2f`), indexed as bytes for slots `0xe`/`0xf` | doc `08` §8.1b |
+| `0x81113a84` | dword | the last debug-flags value sent — the change detector | `FUN_80123828` |
+| `0x81113a88` | 6 bytes | the name string **`Score`** | rodata |
+| `0x81113a98` | 40 bytes | the **vtable**, ten slots | see the slot map below |
+| `0x81113ac0` | dword | `0xBEBAFECA`, with no code reference anywhere in `opz.ldr` | §4.6 |
+| `0x81113ac4` | dword | the same **packed four-entry colour table**, indexed for slots `0`/`1` | doc `08` §8.1b |
+| `0x81113ac8` | 40 bytes | the ten-entry **digit → slot** table `39, 30, 31, … 38` | doc `08` §8.1b |
+| `0x81113af0` | table | a jump table whose **every second entry is one shared target**, `0x80122b66` | below |
 
 **A signal generator with a 6 dB step attenuator** (command code `0xc`):
 

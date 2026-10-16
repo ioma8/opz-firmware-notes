@@ -61,6 +61,76 @@ possible at all:
 0x802d5bc   the outgoing packet (0x802d4b0 + 0x10c)
 ```
 
+## 8.1b The slot writer's arithmetic: two packed colour tables and a two-digit readout
+
+§8.1 documented the slot API; this is the one caller that drives **more than the sixteen UI slots**, read from the
+disassembly rather than the decompiled C, because two details only appear there. `FUN_80123568` — the
+`ScoreContext.cpp` method in vtable slot 7 (doc `04` §4.6b) — writes slots `0`, `1`, `2`–`4`, `8`–`10`, `0xd`,
+`0xe` and `0xf`, and two of its arguments come from tables.
+
+**Two packed 4-byte colour tables, indexed as bytes by two independent selectors.**
+
+```asm
+80123724  R1 = [0x81113ac4]          ; load the packed dword
+8012372c  [SP + 0x1c] = R1           ; into a 4-byte stack slot
+8012371e  P1 = [P4 + 0x8]            ; P4 = 0x81113a60, so P1 = DAT_81113a68
+8012372e  P1 += -0x1                 ; selector - 1
+80123730  P1 = P5 + P1               ; &slot + (sel - 1)
+80123732  R1 = B[P1] (Z)             ; BYTE load
+80123734  Call 0x8003d56e            ; -> slot 0
+80123738  P1 = [P4 + 0xc]            ; DAT_81113a6c
+80123740  P1 = P5 + P1               ; &slot + sel
+80123742  R1 = B[P1] (Z)             ; BYTE load
+80123744  Call 0x8003d56e            ; -> slot 1
+```
+
+So **one dword is a four-entry byte table**: `0x81113ac4` holds `1f 0f 5f 2f`, slots 0 and 1 take their colour
+from it through two separate selectors (`DAT_81113a68 - 1` and `DAT_81113a6c`, the latter cycled modulo 3 by the
+panel's code `1`), and the load is a **byte** load, not a dword one. The second table is the same value at a
+different address (**`0x81113a80`**, also `1f 0f 5f 2f`), used later in the same function for slots `0xe`/`0xf`
+through the selectors `DAT_0801fa78` and `DAT_81004960`.
+
+**The four bytes are palette indices, so the table is a four-colour palette.** The setter's second argument is a
+colour-wheel index (`value >> 4`, §8.1), so `1f` → entry **1 = green**, `0f` → entry **0 = red**, `5f` → entry
+**5 = lime**, `2f` → entry **2 = blue**. Both packed tables hold the same green/red/lime/blue today, which is
+what makes them look like a *current* and a *previous* (or initialiser) copy.
+
+**The two-digit readout, and it is a dword table.** `DAT_81113a70` — the panel's Direct Test Mode frequency,
+clamped to `[-1, 0x27]` (doc `04` §4.6b) — is divided by ten, and **both halves of the division are used as
+indices**:
+
+```asm
+80123748  R0 = [P4 + 0x10]           ; DAT_81113a70, the frequency
+8012374a  if (R0 == -1) goto done    ; -1 = no override, skip the readout
+8012374e  R1 = 10
+80123750  Call 0x04020a70            ; divide: R0 = quotient, R1 = remainder
+80123758  CC = (R0 <= 0)             ; the quotient is the one that can be zero
+8012375a  R7 = R1                    ; keep the remainder
+8012375c  P5 = 0x81113ac8            ; the ten-entry table
+80123770  P1 = P5 + (P1 << 2)        ; << 2 => DWORD elements
+80123772  R0 = [P1]                 ; the entry is the SLOT number
+80123774  Call 0x8003d56e            ; slot <- 0x4f
+80123778                           ; ... then the same for the other half
+```
+
+The table at **`0x81113ac8` is ten 4-byte slots: `39, 30, 31, 32, 33, 34, 35, 36, 37, 38`** — so the digits map to
+slots as **1–9 → 30–38 and 0 → 39**, a ring across ten consecutive slots. Since the frequency range is `0…39`,
+the quotient is `0…3` and the remainder `0…9`, and both land inside the table: **the tens digit and the units
+digit of the DTM frequency are each set as the slot number of one light**.
+
+The value written is the literal **`0x4f`**, whose palette index is `4` — the palette's `00 00 00 ff` entry, i.e.
+**black** (§8.2). So the readout **darkens** the two slots that encode the two digits rather than lighting them:
+an inverted digit display. That is the reading the data supports (a ten-entry digit→slot table indexed by a
+division of the frequency, written with the palette's off-entry), and it is given as such — what the ten slots
+`30–39` physically are is not established here, only that they are light slots addressed by the same 5-byte
+record API as the sixteen UI slots, which is why the allocation is 53 records wide (§8.1).
+
+**One consequence for an open item elsewhere.** The selector for slot `0xe` is **`DAT_0801fa78`**, a byte in the
+device-state block at `0x801fa74` that doc `05` §5.8c left unnamed. It is therefore an **index into the packed
+four-entry colour table**, alongside `0x801fa75` which the same block exposes as a level — so that block is
+confirmed to be read by the light path for at least three of its bytes (`+1`, `+4` and `+2`, the last one via
+`FUN_80123568`'s other branches).
+
 ## 8.2 The palette: ten colours in two variants
 
 `FUN_8003d56e`/`FUN_8003d352`/`FUN_8003d3f0` all index **one** 4-byte-per-entry table at **`0x81015fec`**, and

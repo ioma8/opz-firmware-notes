@@ -1138,6 +1138,13 @@ So the DMX pump is gated on a byte that a **USB connection event** also clears, 
 **shared device-state block** whose individual fields have not been named yet; it is deliberately **not** guessed
 at here.
 
+**Three of its bytes are now identified by their readers**, which is progress without guessing at the block's
+owner. `FUN_80123568` (the `ScoreContext.cpp` light-slot writer, doc `08` §8.1b) reads `0x801fa75`, `0x801fa76`
+and `0x801fa78` as light levels and selectors, and the third of those is an **index into a packed four-entry
+colour table** that colours slots `0xe`/`0xf` — while the DMX pump reads `0x801fa75` as the `== 0x10` gate. So the
+block holds at least one byte the DMX path treats as a mode and three the light path treats as a level and two
+colour indices; what writes them is still open, and that is the item to resolve.
+
 **`FUN_8003d56e` itself is no longer a guess.** It is a **light-slot setter**, not an output writer: it writes a
 5-byte record into one global slot table at `0x802d3a4`, and its second argument is a **colour-wheel index**
 (`value >> 4`) into a palette — which is why the values above select palette entry 4 (black, i.e. *off*) and
