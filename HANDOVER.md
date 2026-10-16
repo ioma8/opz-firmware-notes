@@ -4,6 +4,42 @@
 > souborů zůstávají v původním tvaru. Aktuální stav je v bloku níže; podrobnosti jsou v `FIRMWARE_ANALYSIS.md`
 > (zejména §§66.90–66.93) a výsledky hypotéz v `HYPOTHESES.csv`.
 
+## AKTUÁLNÍ PŘEDÁNÍ (2026-10-16) — jednotka je opravená a hraje
+
+**Stav:** OP-Z je obnovená a přehrává. Obsah zapsaný přes updater (§24) a ověřený čtením z zařízení:
+
+| co | kde | ověřeno |
+|---|---|---|
+| 21 oficiálních engine | `/yaffs2/user/engines/` | payload 90305/90305; 4 soubory přečteny zpět a jsou **byte-identical** s `engines-official/` |
+| 24 továrních sample packů | `/yaffs2/user/samplepacks/` | payload 18430845/18430845; `CuckooKicks.aif` přečten zpět = **310 864 B** (pravý pack, ne vyrobený 890 370 B) |
+| 8 engine dárcovských | `/yaffs2/system/content/engines/` | `chord.engine` 2 664 B, sha256 shoduje s `opz-dump/manifest.json` |
+| sloučená tabulka plugů | `settings/plugs.json` | 6 172 B, **byte-identical** s naším sloučeným souborem; 50 plugů, 21 engine, **0** slot-referencí na nedefinované id |
+
+**Konzole v update módu funguje i na zdravé jednotce.** Dřívější závěr „konzole je obsluhovaná jen dokud se
+nenabootuje OS“ byl **chybný** — `FW_SUCCESS.md` §25.3 a §27 jsou tam označené jako neplatné. Příčinou ticha byl
+náš vlastní encoder: escapoval **úvodní `C0`** rámce, takže zařízení nikdy nevidělo začátek rámce a neodpovídalo
+vůbec na nic (žádný PONG, žádný reply, žádný log) v každém stavu, na každém baudu a při obou DTR.
+
+**Pravidla, která z toho plynou:**
+
+- Rámce stavěj hotovými encodery — `toolkit/opzcopyprobe.py::encode` nebo `sergey-extraction/opzget.py::encode`:
+  hlavička `C0 <routing> <type> <len_be32>` se posílá **raw**, escapuje se jen payload. Nikdy neescapuj vlastní
+  rukou; tichá konzole je **hypotéza o toolingu**, ne o zařízení. Detail: `FIRMWARE_ANALYSIS.md` §71.1.
+- Odpovědi klasifikuj podle **typu**, ne routingu: logy jsou typ `0x04` (routing `0x1e` z bootloaderu, `0x2e`
+  z OS), reply je každý jiný typ — a PONG je routing `0x1e` **typ `0x01`**, tedy stejný routing jako bootloaderové
+  logy. `opzframe.frames()` zahazuje rámce s nulovou délkou, takže PONG se v něm neobjeví.
+- **Čtení souborů `0x19` funguje v update módu** (cesty relativně k `/yaffs2`), takže zápisy lze ověřovat zpětně.
+  Libovolnou cestu přečteš přeposměrováním šablon v `opzget.py` bez nového protokolového kódu (§71.3).
+- SysEx file service přes USB MIDI **není cesta podle cest**: páruje **registrovaná file id**. `../user/settings/plugs.json`
+  (tatáž cesta přes `..`) se nevyřídí, `samplepacks/redmountKicks.aif` také ne — „missing“ tam tedy **není důkaz
+  neexistence** a stavové soubory bootloaderu (`os.version`, `system/firmware.version`) tím číst nelze (§71.4).
+
+**Otevřené položky:**
+
+- `pulled/settings/plugs.json` a `pulled/settings/slotConfiguration.json` jsou **trackované ve veřejném repu** a
+  obsahují aktuální konfiguraci jednotky; rozhodnutí (untrack / scrub / ponechat) stále není zaznamenáno.
+- `0x06` a `0x34` (handlery file-transferu) zůstávají netestované; `0x2b` je one-shot.
+
 ## AKTUÁLNÍ PŘEDÁNÍ (2026-10-13) — oracle pro bootloader
 
 **Aktivní cíl:** dokončit obnovu komprimovaného členu `firmware/blackfin/bin/bootloader.ldr` z `.zfw` oracle a

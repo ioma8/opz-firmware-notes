@@ -2,6 +2,20 @@
 
 Objective: retrieve the required device data read-only; distinguish downloaded from outstanding files.
 
+## Current state (2026-10-16): the unit is recovered and plays
+
+21 official engines in `/yaffs2/user/engines/`, 24 factory packs in `/yaffs2/user/samplepacks/`, the 8 donor
+engines in `/yaffs2/system/content/engines/` and the merged plug table in `settings/plugs.json` (50 plugs, 0
+slot-referenced ids undefined) are all verified by **reading them off the device** over the console `0x19` route —
+see `FIRMWARE_ANALYSIS.md` §71.2 and `FW_SUCCESS.md` §31.
+
+Before writing any console tool, read the framing trap in `SERIAL-COMMANDS-SET.md`: escaping the frame's leading
+`C0` silences the device completely and mimics a dead console (`FIRMWARE_ANALYSIS.md` §71.1). Use
+`toolkit/opzcopyprobe.py::encode` or `sergey-extraction/opzget.py::encode`.
+
+The SysEx pull described below is a **separate channel** and matches registered file IDs, **not** paths: a
+"missing" from it is not evidence of absence, and it cannot see the bootloader's own state files (§71.4).
+
 ## USB file pull works (2026-10-11)
 
 The missing step was the protocol-version-6 StateSync hello before file advertisement.

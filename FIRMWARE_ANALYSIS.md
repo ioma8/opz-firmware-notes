@@ -2893,7 +2893,7 @@ family, including three constants that were previously unknown:
 
 | constant | meaning |
 |---|---|
-| `SER_START_OF_FRAME`, `SER_ESCAPE`, `SER_XOR` | the frame layer: inside a serial message, `C0` and `7D` are escaped as `7D` followed by `byte XOR 0x20`; the routing byte itself is not escaped |
+| `SER_START_OF_FRAME`, `SER_ESCAPE`, `SER_XOR` | the frame layer: inside a serial message, `C0` and `7D` are escaped as `7D` followed by `byte XOR 0x20`; the routing byte itself is not escaped. **Measured 2026-10-16: only the *payload* is escaped — the header, including the leading `C0`, goes out raw. Escaping the start byte silences the device completely; see §71.1** |
 | `SER_FACTORY_MODE_MAGIC_BYTE` | the magic byte factory mode wants in its payload |
 | `SER_MSG_POWER_MODE_REQUEST_{ACTIVE,STANDBY,POWER_OFF,CHARGING,LOW_BATT}` | the power-mode family and its payload values (16/18/20/22/24) |
 
@@ -7761,3 +7761,86 @@ diagnostic for the broken state, not a general-purpose channel.
 **Not separated:** the payload delivered the engines and the packs together, so the log does not establish which
 was decisive. Both were plausibly necessary; separating them would need a one-variable ablation, which is not
 justified on a working unit.
+
+## 71. Console read-back and the frame-encoder trap (2026-10-16)
+
+### 71.1 The encoder was the whole story
+
+The console answers in update mode on a healthy unit. What made it look dead for most of 2026-10-16 was our own
+probe: it escaped the frame's **leading** `C0`, putting `7D E0` on the wire where the device's scanner expects a
+literal `C0`. The device then answered nothing — no PONG, no reply, no log frame — in every mode, at every baud,
+both DTR states, surviving cable replug and power cycle. That uniform silence was recorded as a device condition
+("the bootloader console is served only while the OS is not booting"). It is not one. `/FW_SUCCESS.md` §25.3 and
+§27 carried the same wrong model and are marked there.
+
+Measured on this unit in update mode, 2026-10-16, sending only read-only commands with empty payloads:
+
+| sent | reply | payload, decoded |
+|---|---|---|
+| `0x00` ping | routing `0x1e` type `0x01` | PONG (empty payload) |
+| `0x02` version | routing `0x1e` type `0x03` | `dsp hw revision: dvt2…` |
+| `0x07` metadata | routing `0x1e` type `0x08` | `serial:<unit serial redacted>;hardware…` |
+| `0x35` versions | routing `0x1e` type `0x36` | `bf_os_ver:1.2.43;bf_bl_v…` |
+| `0x19` read-file | — | needs a path payload; a wrong or absent path produces no reply |
+| `0x2b` yaffs-stats | — | one-shot, as recorded |
+
+Frame on the wire: `C0 <routing> <type> <len_be32> <payload>` with the header emitted **raw** and only the
+*payload* escaped (`C0`/`7D` → `7D`, `byte ^ 0x20`). Reference encoders:
+`toolkit/opzcopyprobe.py::encode` and `sergey-extraction/opzget.py::encode` — both already did this. Do not
+hand-roll the escaping; a silently unresponsive console is a **tooling** hypothesis before it is a device one, and
+the extraction runbook already said to send a `0x00` PING first and that a wrong path draws no reply.
+
+**Classifying replies:** log frames are type `0x04` (routing `0x1e` from the bootloader, `0x2e` from the OS); a
+reply is any non-`0x04` type. A PONG is routing `0x1e` **type `0x01`** — the same routing as bootloader logs — so
+classify by *type*, not routing, or a log frame reads as an answer. `toolkit/opzframe.py::frames()` drops
+length-0 frames, so a PONG cannot be decoded: check the raw bytes.
+
+### 71.2 The read-back that had never been done
+
+`0x19` reads whole files by path, relative to `/yaffs2`. Read off the device on 2026-10-16, reads only:
+
+| target | result |
+|---|---|
+| `settings/plugs.json` | 6,172 B, sha256 `7e6283bf…ac17716` — byte-identical to the merged file; 50 plugs, 21 engines, **0** slot-referenced ids undefined |
+| `system/content/engines/chord.engine` | 2,664 B, sha256 `686133cd…` — matches `opz-dump/manifest.json`; differs in size from `engines-official/chord.engine` (2,672 B), as recorded |
+| `user/engines/{sampleplayergain,synthsampler,chord,volt}.engine` | present, **byte-identical** to `engines-official/` — the `../user/engines/` write is real |
+| `user/samplepacks/CuckooKicks.aif` | **310,864 B — the genuine pack**, not the 890,370 B fabricated one |
+
+This retires the standing caveat that those payloads "were written but could not be read back". They can be, in
+update mode, over `0x19`, and the engines, the packs and the merged plug table are all on the unit as built. Note
+that in update mode the console logs arrive on **both** `0x1e` and `0x2e`, i.e. the OS is running far enough to log
+there too — which is consistent with `0x19` file reads working there at all.
+
+### 71.3 Reading arbitrary paths with the existing tool
+
+`sergey-extraction/opzget.py` keeps its name lists and path templates as module constants, so any path can be read
+without new protocol code:
+
+    import importlib.util, sys
+    spec = importlib.util.spec_from_file_location('opzget', 'sergey-extraction/opzget.py')
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    m.ENGINES, m.PACKS = ['CuckooKicks'], []
+    m.ENGINE_TEMPLATES = ['user/samplepacks/{n}.aif']
+    sys.argv = ['opzget', '--out', '/tmp/out']
+    m.main()
+
+Two cautions. The reader labels *and saves* items with the engines naming convention, so a repurposed run can write
+`CuckooKicks.aif` to a `.engine` name — trust its "path it came from" column, not the item label. And paths are
+relative to `/yaffs2`: the system tree is `system/content/...`, the user tree `user/...`.
+
+### 71.4 The other channel is not a path service
+
+The USB MIDI/SysEx file service is a different channel from the console and matches **registered file IDs, not
+paths**. Proved by sending the *same file* two ways: `settings/plugs.json` is served, while
+`../user/settings/plugs.json` — which resolves to the same file through `..` — is not, and neither is
+`samplepacks/redmountKicks.aif`, which is known to be on the device. A "missing" there is not evidence of absence,
+and it cannot be used to inspect the bootloader's own state files (`os.version`, `system/firmware.version`).
+
+### 71.5 Real code, but it explained nothing observed
+
+Recorded so it is not rebuilt into a theory: the frame dispatcher at `0x11a02932` dereferences the RAM state byte
+at `0x82852E94` and compares it to `0x11`, with further branches for `0x10`, `0x12` and `0x17`; the reception path
+feeding it checks the `C0` start byte and a message class of `0x16`; and the handler code exists in two mirrored
+copies in L1 (`0x1180xxxx` and `0x11a0xxxx`). While that bug was live this looked like the explanation for the
+silence. It was not: the unit was in console mode the whole time and answered as soon as a well-formed frame
+arrived.
