@@ -1118,9 +1118,33 @@ explains the `mode 1 → ctrl[0x11] = 5` special case §5.8 recorded in the mode
 Blackfin `CALL` encodes a PC-relative displacement and not an absolute immediate. All five routines above are
 called that way — `FindXImm` returns nothing for `0x8003ab0e`, `0x8003a418`, `0x8003ac64`, `0x8003ae20` and
 `0x8003af18`, while `Ghidra`'s reference database does resolve the one call site that lies in decoded code
-(`0x8003af70` → `FUN_8003ae20`). So a missing `FindXImm` hit on a *function address* means nothing at all, and
-the pump `FUN_8003af18` keeps **no decoded caller** — its invoker sits in the still-undecoded tick region, which
-is a coverage gap and not a statement that the routine is dead.
+(`0x8003af70` → `FUN_8003ae20`). So a missing `FindXImm` hit on a *function address* means nothing at all.
+
+**The pump's invoker is no longer a coverage gap.** `CallersOf` on `0x8003af18` finds exactly **one** call site in
+the image, and reading it resolves the whole question — the pump is armed by the **system service initialiser in
+`SnakeSystem.cpp`**:
+
+```asm
+80112a70  R0 = 0x801fa74                 ; the USB/power state block (see 5.8c)
+80112a78  Call 0x8002771c                ; its service routine
+80112a7c  R0 = [0x810159e0]              ; the fixture-mode registry
+80112a84  CC = (R0 == 0)
+80112a86  if (CC) JUMP 0x80112a8c        ; no fixture mode configured -> no DMX
+80112a88  Call 0x8003af18                ; THE PUMP
+80112a8c  R0 = 0x801fb90                 ; the companion message context
+80112a94  Call 0x801318b0
+```
+
+Two things follow. The gate is **"a fixture mode is configured"** — `0x810159e0` is the 14-entry registry the
+config loader fills, and an empty registry means the pump is never even called, so an OP-Z with no
+`config/dmx.json` has no DMX output path at all. And the call sits in a **linear init list** of
+`(context pointer, init function)` pairs — `FUN_800404c0()`, `FUN_80113fac(ctx + 0x3463c0)`,
+`FUN_8002771c(&0x801fa74)`, the pump, `FUN_801318b0(&0x801fb90)`, `FUN_800299fc(0x80234e4)` — which is where every
+subsystem is handed its context. The block at `0x8110e000`–`0x8110f400` names the owner: `Serialize.cpp`
+(`0x8110e3a4`), **`SnakeSystem.cpp` (`0x8110e5fc`)**, `shared/Queue.h` (six templates), `StateSync.cpp`
+(`0x8110eb40`) — and the log at this call site uses a format string at `0x8110e62c`, inside `SnakeSystem.cpp`'s
+block. So `SnakeSystem.cpp` arms the DMX pump, and the `0x8110e52a` byte the pump's neighbourhood gates on is a
+`SnakeSystem.cpp` global as well.
 
 **One open item, stated rather than resolved: what `0x801fa74` is.** The DMX gate byte is *not* owned by the DMX
 subsystem. `0x801fa74` is a **small byte block** (`param_1[0]`, `[1]`, `[2]`), and the two places it is touched
@@ -1138,12 +1162,41 @@ So the DMX pump is gated on a byte that a **USB connection event** also clears, 
 **shared device-state block** whose individual fields have not been named yet; it is deliberately **not** guessed
 at here.
 
-**Three of its bytes are now identified by their readers**, which is progress without guessing at the block's
-owner. `FUN_80123568` (the `ScoreContext.cpp` light-slot writer, doc `08` §8.1b) reads `0x801fa75`, `0x801fa76`
-and `0x801fa78` as light levels and selectors, and the third of those is an **index into a packed four-entry
-colour table** that colours slots `0xe`/`0xf` — while the DMX pump reads `0x801fa75` as the `== 0x10` gate. So the
-block holds at least one byte the DMX path treats as a mode and three the light path treats as a level and two
-colour indices; what writes them is still open, and that is the item to resolve.
+**Three of its bytes are now identified by their readers**, and the block's *owner* is now identified too, which
+is the progress this item was waiting for. `FUN_80123568` (the `ScoreContext.cpp` light-slot writer, doc `08`
+§8.1b) reads `0x801fa75`, `0x801fa76` and `0x801fa78` as light levels and selectors, and the third of those is an
+**index into a packed four-entry colour table** that colours slots `0xe`/`0xf` — while the DMX pump reads
+`0x801fa75` as the `== 0x10` gate.
+
+**What the block is: the USB/power status block, serviced from two directions.** Its service routine is
+**`FUN_8002771c(&DAT_0801fa74)`**, called from the `SnakeSystem.cpp` init list (§5.8b), and that routine is what
+makes the byte values legible — it works on a **scaled measurement and a debounce timer**, talks to the PSoC's
+**charger/power-management** message types, and reads the Score context's own gate:
+
+```c
+cVar6 = *(char *)(param_1 + 1);                 /* 0x801fa75, the byte the DMX pump gates on */
+if (cVar6 == 8) { ... }                                     /* one state                     */
+if (DAT_81113a60 != 0 && *(int *)(param_1 + 4) == 1) func_0x800276dc(param_1, 2);   /* two distinct  */
+if (DAT_81113a60 != 0 && *(int *)(param_1 + 4) == 2) func_0x800276dc(param_1, 1);   /* state paths   */
+...
+if (FUN_8011b3ec(0x0802f634…) > 8000) DAT_81113a74 = 1;     /* an 8000-unit timeout         */
+uVar2 = (short)(ushort)0x801df95 * 10;                      /* the measurement, x10         */
+if (DAT_81002d0c < uVar2) DAT_81002d0c = uVar2;             /* store the high-water value   */
+bRam0801df95 = (byte)(uVar8 >> 3);                          /* write the new value back     */
+FUN_11a01d24(&DAT_0801fb94, 0x3c, 0x801df94, 2, 0xffffffff, 0, 0xff, 0xff);   /* PSoC type 60 */
+if (DAT_81113a74 == 0) func_0x8012f67c(&DAT_0801fb94, 0x3d, 0, 0, 0x801df88); /* PSoC type 61 */
+```
+
+So the block is read by the light path for two status LEDs, **written by a `SnakeSystem.cpp` service** that sends
+PSoC message type **`0x3c` (60)** carrying the 2-byte value at `0x801df94` and queries with type **`0x3d` (61)**,
+and both of those types are in the PSoC's implemented list and both sit in doc `07` §7.4c's *charger / PMIC /
+power-management* group. The other writer is `FUN_800279d8(0x801fa74, record)`, called from the file-manager task
+loop's `0x60` arm **and** from `0x80131c6a` in the message-router region, logging
+`connection event: %s 0x%02x 0x%02x …` from `UsbControl.cpp:162` with the `attached`/`detached` strings. So the
+block is **the USB/power state the unit publishes**: one byte is a state/level the DMX preview gates on, two more
+colour two status LEDs, `UsbControl.cpp` updates it on cable attach and detach, and `SnakeSystem.cpp` services it
+against the PSoC's charger state. What sets the specific values `{0, 8, 0x10, 0x4f}` is still open — and that is
+the item that remains.
 
 **`FUN_8003d56e` itself is no longer a guess.** It is a **light-slot setter**, not an output writer: it writes a
 5-byte record into one global slot table at `0x802d3a4`, and its second argument is a **colour-wheel index**

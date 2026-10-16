@@ -266,6 +266,7 @@ and the two packed dwords at the end are what doc `08` §8.1b turns into slot co
 | `0x81113a68` | byte | the mode/index `1`–`3` that also picks the four-byte argument layout and colour selector | `FUN_80123064`, `FUN_80123568` |
 | `0x81113a6c` | byte | a second index `0`–`2`, advanced **modulo 3** by code `1` | `FUN_801231d4` |
 | `0x81113a70` | dword | the **DTM frequency** override, clamped to `[-1, 0x27]` | `FUN_8012320c` |
+| `0x81113a74` | byte | set to `1` when an **8000-unit timer** expires; read by the `FUN_8002771c` service to decide a companion query | `FUN_8002771c` (SnakeSystem.cpp) |
 | `0x81113a78` | byte | the audio-routing A/B state | code `0xe` |
 | `0x81113a79` | byte | the signal generator's on/off latch | code `0xc` |
 | `0x81113a7c` | signed byte | the signal generator's **gain in dB**, stepped by `-6` | code `0xc` |

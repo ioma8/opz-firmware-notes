@@ -237,9 +237,11 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
     **`DmxController.cpp:620`** when the interface status `& 0x9e` is non-zero (the reference the earlier round
     could not find), and sends `count + 5` bytes in **56-byte blocks** through the generic 64-byte USB-block
     submitter `FUN_8000b55c`; the tick pump `FUN_8003af18` only runs while the device state byte `DAT_0801fa75`
-    is `0x10`, arming a 100-tick and then a 10-tick period. The twelve notes §5.8 called *ignored* are the
-    **preview-LED slots 1–12** (the nine fixture notes light no preview), and the fade routine's 5000-unit idle
-    path is animation `1`, duration 200.
+    is `0x10`, arming a 100-tick and then a 10-tick period, and its **single caller is now located**: the
+    `SnakeSystem.cpp` service initialiser calls it only when the fixture-mode registry at `0x810159e0` is
+    non-empty, so a unit with no `config/dmx.json` has no DMX path at all. The twelve notes §5.8 called *ignored*
+    are the **preview-LED slots 1–12** (the nine fixture notes light no preview), and the fade routine's 5000-unit
+    idle path is animation `1`, duration 200.
     states **up to 16 fixtures each with a preview LED**, and says the data leaves **through a USB DMX
     interface** — which is what doc `06`'s `USBH_FTDI232Mutex` is for. Note `fog` is *"triggered by animation
     14"*. See doc `05` §5.8, §5.8b and §5.8c.
