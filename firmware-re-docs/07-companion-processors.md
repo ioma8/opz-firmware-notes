@@ -1485,8 +1485,7 @@ flag — i.e. the **power/USB-PD controller can command the OP-Z's CPU to shut d
 is a real architectural statement: the companion that watches VBUS decides when the unit powers down, and the
 Blackfin obeys through the same flag its own restart commands use.
 
-**What the recorded mode is used for beyond that flag is not established.** Ghidra's reference manager finds
-five *writes* to `DAT_815c94ac` and five to `DAT_81004750` and **no reads**; a scalar search for the addresses
+**What the recorded mode is used for beyond that flag is not established.** Ghidra's reference manager findsfive *writes* to `DAT_815c94ac` and five to `DAT_81004750` and **no reads**; a scalar search for the addresses
 finds nothing either. A raw byte scan for the little-endian dwords is **not a valid cross-check here** — the
 Blackfin+ analyser materialises these constants in split form (high half before low half, per the note in doc
 `01`), so a dword scan returns 0 hits for an address that demonstrably appears in `StDregToM32bit` operands.
@@ -1564,6 +1563,8 @@ The rest of the per-type actions, read from the bodies:
 | `20` | power-state enum (above) |
 | `21` | per-channel driver values, `1000` clamp (above) |
 | `32` | `payload[0]` indexes a **19-entry table at `0x1ad74`** (values above `0x12` call the default handler first); populated slots are `1, 3, 5, 17, 18, 19`, everything else is the default |
+| `60` | `FUN_000050f8` — **power-management write**: `payload[0]` is a sub-command (`0`, `1`, `2`), `payload[1]` is a value that is multiplied by ten and handed to `FUN_00016230`; copies a `0xc`-byte block into `ctx+0x30` and a 6-byte block into `ctx+0x44`; writes `0xab` to a charger register at `+0x30`; and one branch **resets the PSoC** via `*AIRCR = (*AIRCR & 0xffff) \| 0x05FA0004`. Sent by the Blackfin's `SnakeSystem.cpp` service, which arrives with the same ×10 scale already applied (doc `05` §5.8c) |
+| `61` | `FUN_0000523c` — **charger query**: stores `payload[0]` at `ctx+0x4a`, reads the charger at I2C **`0x69`** (`MAX77818`) through `FUN_00018d9c(…, 100)` with a non-returning failure path, and replies with two bytes — a zero and the 16-bit register at `ctx+0x4c` **divided by ten** |
 | `112` | `0xDEADBEEF` → `AIRCR` reset (above) |
 | `128` | 1-byte status reply that echoes the routing nibble (below) |
 | `135` | passes the request's routing nibble to `FUN_0000f274`, then the default handler |

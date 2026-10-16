@@ -1015,10 +1015,11 @@ void FUN_8003af18(int ctx)
 }
 ```
 
-`DAT_0801fa75` is not a DMX field — it is **byte 1 of a small state block at `0x801fa74`** whose exact meaning is
-an open item (§5.8c), and `FUN_8003ab0e` (the fade routine of §5.8) gates on the identical comparison, so **DMX
-output only runs at level `0x10` (16)** and is completely silent at the other three values the same byte takes
-elsewhere in the image — **`0`, `8` and `0x4f` (79)**.
+`DAT_0801fa75` is not a DMX field — it is **byte 1 of a small state block at `0x801fa74`** whose identity is
+resolved in §5.8c (it is the USB/power state block), and `FUN_8003ab0e` (the fade routine of §5.8) gates on the
+identical comparison, so **DMX output only runs in the state `0x10` (16)** and is silent in the block's other
+state, **`8`** — the two are the only values the writer compares the byte against, and `0x4f` is the *off colour
+value* it falls through to, not a third state (§5.8c corrects this phrasing).
 
 ### 5.8c The preview flags, the fixture table and the idle animation
 
@@ -1195,8 +1196,28 @@ loop's `0x60` arm **and** from `0x80131c6a` in the message-router region, loggin
 `connection event: %s 0x%02x 0x%02x …` from `UsbControl.cpp:162` with the `attached`/`detached` strings. So the
 block is **the USB/power state the unit publishes**: one byte is a state/level the DMX preview gates on, two more
 colour two status LEDs, `UsbControl.cpp` updates it on cable attach and detach, and `SnakeSystem.cpp` services it
-against the PSoC's charger state. What sets the specific values `{0, 8, 0x10, 0x4f}` is still open — and that is
-the item that remains.
+against the PSoC's charger state.
+
+**The measurement is a USB-PD voltage, and the two images agree on its scale.** The service polls the PSoC with type
+`0x3d` into the receive buffer `0x801df88`, and the PSoC's handler for index **`61`** (`FUN_0000523c`, doc `07`
+§7.4c) is a read of the **charger at I2C address `0x69`** (`MAX77818`, with a 100-unit timeout and a
+non-returning failure path) whose reply is two bytes: a zero, then **the 16-bit register at `ctx+0x4c` divided by
+ten**. The Blackfin then reads the byte at `0x801df95` — exactly **13 bytes into that same buffer** — multiplies
+it by ten, and keeps it as a 16-bit high-water value with floors of **`500` and `900`**, i.e. **5.00 V and
+9.00 V in centivolts**: the USB default and the USB-PD 9 V contract. It then sends the two bytes at `0x801df94`
+back as type **`0x3c`**, and the PSoC's index **`60`** handler (`FUN_000050f8`) takes `payload[0]` as a sub-command,
+`payload[1]` as the value, and hands **`payload[1] * 10`** to `FUN_00016230` — the *same* ×10 scaling the Blackfin
+applied, computed independently on the two CPUs, which is what makes the reading safe. That handler also writes
+`0xab` into a charger register at `+0x30` and has a branch that **resets the PSoC** through the Cortex-M `AIRCR`
+register (`*AIRCR = (*AIRCR & 0xffff) | 0x05FA0004`, the same magic doc `07` §7.4c finds behind type `112`).
+
+**One correction to how this item was phrased.** `0x801fa75` is compared against exactly **two** values, `8` and
+`0x10` (the light writer's guard is `7 < x`, then `== 8`, then `== 0x10`); `0x4f` is the **off colour value** the
+writer falls through to, not a fourth state, and `0` belongs to the neighbouring byte `0x801fa76` (which also
+compares `8` and `0x10`). So the block publishes **two USB power states**, one of which (`0x10`) is the DMX
+preview's enable gate and colours slot `0xe`/`0xf` red while `8` colours them green. What the two states name —
+5 V versus the 9 V contract, or attached versus host mode — is the last open question here, and the evidence
+points at the VBUS level without settling it.
 
 **`FUN_8003d56e` itself is no longer a guess.** It is a **light-slot setter**, not an output writer: it writes a
 5-byte record into one global slot table at `0x802d3a4`, and its second argument is a **colour-wheel index**
