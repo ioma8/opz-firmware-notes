@@ -40,6 +40,7 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
 | `06-rtos-and-system-services.md` | the two-RTOS architecture (uC/OS-III + SMX), named tasks, the labelled mutex inventory, power management and the CRC paths |
 | `07-companion-processors.md` | the other two CPUs: the nRF52832 BLE image (load base corrected, dispatcher and transport decompiled), its protobuf descriptor with hash + 64-byte signature, the PSoC 5LP power/USB-PD controller (CYACD format, 387 functions, two-level dispatch), and the **`.engine` container + module ABI** |
 | `08-colour-slots-and-light-flush.md` | the light-slot engine: 5-byte RGBA+mode slot records, the two-variant 20-entry palette and its interpolating lookup, the three parallel buffers, the change-only packet builder with its 60-tick blink phase, and the **Blackfin→PSoC type `0x10`** transport it leaves on |
+| `09-ghidra-harness-and-process.md` | **the working method**: the four-image harness and its invocation form, the ten analysis scripts with what each answers *and cannot* answer, the analysis loop, the rules for making a claim, and the traps with their cost |
 
 ## Headline findings
 
@@ -323,6 +324,20 @@ the context object selects the chip**. The message types read so far are `0x10` 
 BLE) and `0x90` (debug flags → PSoC index `144`). None of it appears in the official documentation. See doc `04`
 §4.6b.
 
+25. **The method is written down as a deliverable, not folklore.** Doc `09` records the harness that produced this
+document set: the **four-image Ghidra 12.1.4 setup** (the `Ghidra-BlackFinPlus` extension is required for the
+`.ldr` files, and the two companion bases are `0x23000` and `0x1900` — wrong bases yield code that decompiles
+confidently and means nothing), the read-only query form (`-process … -noanalysis -scriptPath`, several
+`-postScript` flags per JVM start, and the symlink-free script path that otherwise fails as
+`Failed to find script in any script directory`), **ten analysis scripts with what each answers and what it
+cannot**, the analysis loop (strings → log-map source attribution → read the data table → decompile the callee →
+decompile the caller → cross-check the other CPUs → write it down with an address), and the rules that kept
+confident nonsense out: a failed reference search is not proof of absence, every negative needs a positive
+control, a raw dword scan is invalid for Blackfin split immediates, a missing `FindXImm` hit on a *function*
+address means nothing, `(none)` from `FnAt2` is coverage and not reachability, a decompiler "unreachable block"
+can contain the payload, and a retraction is recorded at the claim it overturns. See doc `09` §9.1, §9.2 and
+§9.4.
+
 ## Confidence levels
 
 Every fact in these documents is marked, implicitly or explicitly, as one of:
@@ -374,38 +389,11 @@ in the standard Ghidra distribution — without it the `.ldr` files do not impor
 `Blackfin:LE:32:default` language id, which is a different, ARM-like id that does not exist here). The two
 companion images need no extension at all.
 
-**The analysis scripts.** The six scripts the method notes in this document set rely on are in
-`ghidra-scripts/` at the repository root, and they are all standalone `GhidraScript`s — no build step. Run any of
-them with `-postScript <Name>.java <outfile> <args…>` and `-scriptPath` pointing at that directory; **use the
-resolved (symlink-free) path**, because `analyzeHeadless` canonicalises the argument and then fails to match it
-against the script path it printed:
-
-```bash
-GH=/path/to/Ghidra_12.1.4/support/analyzeHeadless
-S=ghidra-scripts
-
-# decompile functions by address (creates them if the region is unanalysed)
-$GH /tmp/opz-proj OPZ -process opz.ldr -noanalysis -scriptPath $S \
-    -postScript Decomp2.java /tmp/out.c 0x8003ae20 0x8003d1e0
-
-# raw disassembly of a range, N instructions, following instruction lengths
-$GH /tmp/opz-proj OPZ -process opz.ldr -noanalysis -scriptPath $S \
-    -postScript DumpRange.java 0x8003ae20 60
-
-# who calls this, and where is this function
-$GH /tmp/opz-proj OPZ -process opz.ldr -noanalysis -scriptPath $S \
-    -postScript CallersOf.java /tmp/callers.txt 0x8003c5a4 \
-    -postScript FnAt2.java /tmp/fn.txt 0x8003ae60
-
-# find a materialised address (the split-immediate scan) and map a region's log call sites
-$GH /tmp/opz-proj OPZ -process opz.ldr -noanalysis -scriptPath $S \
-    -postScript FindXImm.java /tmp/xref.txt 0x81015ccc \
-    -postScript LogMap.java /tmp/logmap.txt 0x8012f1e4 0x8003a000 0x8003d800
-```
-
-The limits of each are stated where they are used — in particular `FindXImm` finds materialised addresses and
-**never function calls** (doc `05` §5.8c, doc `08` §8.7), and `LogMap`'s line number is only correct when it is
-read from the `LdImmToReg R1` that immediately precedes the call (doc `08` §8.8).
+**The analysis scripts.** The ten scripts the method notes in this document set rely on are in `ghidra-scripts/`
+at the repository root, and they are all standalone `GhidraScript`s — no build step. **The harness, the query form,
+the script inventory with each tool's blind spot, the analysis loop and the traps are doc `09`** — read that
+first, and note in particular that `-scriptPath` must be the **resolved (symlink-free)** path, because
+`analyzeHeadless` canonicalises the argument and then fails to match it against the script path it printed.
 
 ## Load bases
 
