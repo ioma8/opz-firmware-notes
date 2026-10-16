@@ -6733,3 +6733,1031 @@ Arduino relay control after capture/state persistence, followed by verification 
 and fresh update volume. Keep the collector's bounds and resume behavior. Existing evidence still rules out
 software reset, SCSI media-load, and combining a leaking probe with a successful upgrade (§§65.5–65.9); do not
 send console command `0x15`.
+
+### 66.94 Review of four community approaches (2026-10-13)
+
+Four sources were reviewed for relevance to (a) recovering the bricked unit, (b) obtaining the decrypted
+firmware, or (c) obtaining the AES key.
+
+| source | what it is | verdict for this project |
+|---|---|---|
+| `garrettjwilke/ep_133_sysex_thingy` | EP-133 K.O. II SysEx sample send/delete/trigger, WAV transfer notes | **not applicable** — different product (`0x33`), sample transfer only, no crypto, no firmware, no bootloader |
+| `kmorrill/ep-series-sysex` | EP-133/EP-40 SysEx + `.pak` project format, FILE protocol, HIL tests | **not applicable to the key** — no firmware/DFU/crypto content; its `devicelock.py` is a *file-I/O serialization* lock (firmware `err lfs` debug loop from concurrent writes), not a security lock. Structurally it is a cousin of the OP-Z FileSync boundary already audited in §66.76 |
+| `kmorrill/op-z-sysex` | OP-Z SysEx/StateSync/file-transfer documentation and tools | **already integrated** as `refs/op-z-sysex/`; its own conclusion ("No safe software reboot command has been established") independently matches §65.9 |
+| `kennedn.com/blog/posts/glitching/` | Narrative on voltage fault injection (Xbox 360 RGH, AirTag, PicoFly, ESP32), Pi Pico timing | **methodology only** — no TE/OP-Z content; relevant solely as a fallback for the hardware wall, see §66.95 |
+
+None of the four contains an OP-Z key, a decrypted OP-Z image, or a route around the one-probe-per-boot limit.
+Two materially useful artifacts were found *adjacent* to them and are recorded in §66.95.
+
+**Corroboration of the current plan.** A post by researcher `_bt` (OP-Forums, 2026-04-09, page 44 of the OP-1
+custom-firmware thread) states the OP-Z key-recovery method directly: *"The decryption technique I discussed on
+the OP-Z utilized an encryption oracle on the OP-Z itself. This gave me a copy of the decrypted firmware and I
+didn't know the encryption key at that point. The brute force bit was testing every possible 32-byte segment in
+the decrypted bootloader file using a sliding window as the AES key. This step took just a few seconds to find
+the encryption key."*
+
+That is exactly the method this project is executing (§§66.90–66.92): device oracle → decrypted bootloader →
+sliding 32-byte window search. It also confirms two things: the key **is** present in the decrypted
+`bootloader.ldr` plaintext, and no hardware access is required for the key itself. Our 1,180-window negative
+result therefore only means the key lies beyond the recovered 1,211-byte prefix.
+
+**Same-format, same-silicon context.** `_bt` reports that OP-Z and OP-1 field firmware share a format family
+(`babecafe` header, firmware version at bytes 8–13, IV at `0xf0`–`0xff`, encrypted blob from `0x380`), which is
+a *variant* of, not identical to, the OP-Z `.zfw` layout documented in §2 (key index `0x04`, IV `0x70`, length
+`0x80`, encrypted filename `0x300`, archive `0x400`). A forum photo of an opened OP-1 field shows an
+**ADSP-BF703** — the same part as the OP-Z. OP-1 field research is therefore transferable at the chip and format
+level, but the two products' updaters and file systems differ.
+
+### 66.95 Transferable hardware precedent: TE OP-1 OTP dumps and a patched bootloader
+
+`Tolsi/op1dumps` publishes artifacts from real OP-1 repair work that map closely onto the OP-Z problem:
+
+* `TE-OP-1-BF524-OTP-dump.txt` — a full BF524 OTP dump that "should be written to the empty Blackfin BF524
+  processor to restore device boot", plus a NAND flash dump with working boot. **A donor OTP + flash dump is a
+  proven way to restore a bricked TE device** on that generation.
+* `te-boot-otp-ops-2.28-10.ldr` — the OP-1's own bootloader (`te-boot`), *patched* to add OTP operations: button
+  `7` reads an OTP page, button `2` writes one. OTP pages `0x10`–`0x12`, `0xd0`–`0xd3`, `0xdf`, `0xd8` are the
+  functionally significant ones (`0xd0`–`0xd3` relates to device boot — the same page range this project's notes
+  already associate with the OP-1 firmware key).
+* Constraints documented by the author: OTP **reads** need ~6.9–7 V on the `VPPOTP` pin (chip rated for <15
+  minutes total at that voltage), OTP writes are irreversible, and the patched bootloader was itself installed
+  because the OP-1 accepts **repacked, unsigned** firmware.
+
+Three consequences for the OP-Z:
+
+1. **The OP-1 precedent is bootloader-code-execution first, OTP read second.** It does not transfer directly,
+   because the OP-Z rejects unsigned `.zfw` (the whole reason this project needs the key). It becomes reachable
+   only through a *different* execution primitive — most plausibly the plain-zip updater write channel of §24,
+   if that channel can install a `bootloader` component rather than only write `/yaffs2/upgrade/` paths.
+2. **A donor dump restore is not available to this project.** It needs a donor OP-Z (excluded) plus a BGA
+   programmer for the OP-Z's NAND package.
+3. **It independently confirms the OTP-key pattern.** The OP-1 stores boot-relevant key material in OTP and
+   needs an explicit patched-bootloader action to read it, consistent with §2's `key index 0xFF` reading an
+   on-die key slot on the OP-Z.
+
+**BF70x security model (ADI EE-366 and the BF70x datasheet/PCN).** Blackfin+ adds a system protection unit, a
+system memory protection unit, hardware crypto accelerators, a 1 kB memory-mapped OTP, *secure debug*, and
+*secure boot*. Secure boot is optional and disabled by default, uses signed images with optional AES-128, and a
+**secure debug key** (128-bit, stored in OTP) is what lets an emulator attach to a *locked* part; ADI's own FAQ
+says a locked BF70x needs that key supplied to the debugger. A BF70x PCN erratum notes that "locked processors
+cannot be unlocked by emulator if other devices are present in the JTAG scan chain", implying locked parts *can*
+be unlocked when the key is supplied. Crucially, **this documentation does not establish that the OP-Z's BF703
+is locked at all.**
+
+### 66.96 Ranked assessment of the hardware routes
+
+Ordered by expected value per unit of risk, given the constraints already recorded (no donor unit, no TE
+service, and no PCB debug wiring authorised so far):
+
+| # | route | requirement | value | status |
+|---|---|---|---|---|
+| 1 | Finish the `bootloader.ldr` oracle recovery, then re-run the sliding 32-byte window search | only time | **the key**, then the whole decrypted `.zfw` offline | in progress; this is `_bt`'s own published method |
+| 2 | Plain-zip updater channel installs a **modified bootloader** (OP-1 `te-boot-otp-ops` analogue) | discovering the component name the updater accepts, and an accepted bootloader write | code execution in the bootloader → OTP/memory access | not attempted; highest-risk step on the device (A/B slots are the only mitigation) |
+| 3 | Attach an emulator to the BF703 (JTAG/SWD) | locating debug test points and wiring them | if the part is **unlocked**: direct memory and NAND access, i.e. recovery *and* the decrypted image without any key | not attempted; excluded by earlier instruction |
+| 4 | Voltage-glitch the BF703 (the `kennedn` methodology, Pi Pico-class timing) | route 3 plus a glitcher; only meaningful if the part is locked | bypass the lock/secure-debug check or a verification branch to gain debug access | speculative; no OP-Z-specific glitch target or timing identified |
+
+Route 4 is the weakest of the four here: it is a generic technique, it presupposes route 3's wiring anyway, and
+nothing in the reviewed material identifies either the BF703's lock state or a glitch location on the OP-Z.
+Route 3 is the cheapest possible *shortcut* if the part is unlocked, but it needs PCB wiring that a previous
+instruction excluded; that boundary would have to be explicitly re-authorised by the user before any test.
+Route 1 remains the only fully authorised path and needs no hardware beyond the relay already planned.
+
+### 66.97 Fault injection on the OP-Z: what the precedents actually require
+
+The `kennedn` post is a well-written argument that fault injection is now cheap (Pi Pico, ~7.5 ns PIO resolution,
+£5) — not a procedure. Asked directly whether the OP-Z should be glitched, the honest answer is that fault
+injection is a real technique that is *third-tier* for this device, because it is dominated twice over: by the
+software oracle still in progress, and by a single plain emulator attach attempt.
+
+**Every cited success had four prerequisites. Let us check each against the OP-Z.**
+
+| prerequisite | Xbox 360 RGH | AirTag / ESP32 / PicoFly | OP-Z |
+|---|---|---|---|
+| a physical glitch site | `CPU_RESET`, on a header | the die's VCC rail | BF703 core rail inside a 10 mm device; **unknown whether any debug/test pad is exposed** |
+| a timing trigger | self-synchronising: relative to reset release | reset/power ramp | nothing host-visible precedes early boot; a flash chip-select or rail-ramp probe would be needed |
+| a cheap success oracle | unsigned code runs / LED changes | firmware dumps / secure boot bypassed | **none** — the target states ("locked", "OTP readable") have no observable symptom. Console liveness only proves the device still runs |
+| a repeatable, low-risk target | correctable with a NAND/JTAG programmer | dev boards | **no** — the device is already partially bricked, and a failed write path here has already been shown to be unrecoverable (§1, the `0x15` format) |
+
+**Corrections to the intuitition the post invites.**
+
+1. **The OP-Z is probably not signed-but-encrypted the way RGH targets were.** RGH skipped a *signature
+   verification* to run unsigned code. Our `.zfw` key is used by *hardware* to *decrypt* (confidentiality). A
+   glitch that skips a check gives unsigned code execution, not a key. To get the key you must defeat **OTP read
+   protection** specifically, i.e. glitch while the device is *reading* OTP — a far narrower target than RGH.
+2. **BF70x secure boot is documented as optional and disabled by default** (§§66.88–66.89; ADI EE-366 and the
+   BF70x hardware reference). If the OP-Z's part is not locked, there is no verification check to glitch in the
+   first place — an ordinary emulator attach simply works. The decision-relevant question is the *lock state*,
+   and fault injection only becomes rational after "locked" is established **and** an attach attempt has failed.
+3. **The published OTP-glitch work is a step above crowbar voltage glitching.** The closest analogue is
+   Raelize's *"Breaking SoC Security by Glitching OTP Data Transfers"* (Hardwear.io 2022, ESP32, EMFI), which
+   targets OTP *transfers* while the victim reads them. That is an electromagnetic attack requiring a
+   controllable probe position, not a single reset-pin crowbar. The STM32/LPC1114 readout-protection bypasses
+   are the other relevant class — again targeting a *readout* path, not a boot signature.
+4. **An ADI emulator is not a generic JTAG dongle.** ADI's own guidance (EE-68, EE-356) defines the Blackfin
+   emulation port as a *superset* of IEEE 1149.1 and adds a vendor-specific `EMU~` signal. Attaching means an
+   ADI-compatible emulator (ICE-1000/2000 class) or verified OpenOCD support — a cost and an uncertainty that
+   applies to route 3 *before* any glitching is even considered.
+5. **The device is not easy to open.** Public teardowns show the keyboard is held by melted plastic shafts
+   through the shell and cannot be detached without destroying it; the processor board sits behind that. So the
+   entry cost for *any* invasive hardware route is a damaged shell/keyboard, on top of the glitch harness.
+
+**What a glitch campaign could realistically buy, if it worked.** Ranked by payoff: (a) defeat the secure-debug
+lock so an emulator attaches — memory *and* NAND access, i.e. full recovery plus the decrypted image with no key
+at all; (b) glitch a boot-time branch so a modified bootloader component installs (the §66.95 OP-1 analogue);
+(c) glitch the OTP read path to read key material directly.
+
+**One genuine advantage this device has.** Unlike the consoles in the post, the OP-Z offers a live CDC console
+in update mode plus a mass-storage LUN, so a glitch campaign would have a usable *health* oracle: the console
+still pings, the volume still mounts, and a genuine upgrade still succeeds. That makes blind glitching less
+dangerous than it would be on a device with no instrumentation — but it does not supply a *success* oracle for
+the target state.
+
+**Recommended sequence if hardware work is authorised at all** (each step is far cheaper than the next, and
+each can end the search):
+
+1. Finish the `bootloader.ldr` oracle recovery and re-run the window search (§§66.90–66.92, §66.94). Zero
+   hardware, and `_bt`'s published method says this alone yields the key.
+2. Open the unit and *identify the BF703 and any exposed debug/test pads* (TCK, TMS, TDI, TDO, `nTRST`, `EMU~`,
+   and the `VPPOTP` pin). Read-only inspection; decisive for everything downstream.
+3. Attempt a plain emulator attach. If the part is unlocked, this wins outright — recovery, decrypted image,
+   no glitching.
+4. Only then consider fault injection: trigger off flash chip-select or the rail ramp, crowbar the core rail,
+   sweep; or EMFI if the target is the OTP read path.
+
+Nothing in this section was executed: no board was opened, no emulator or glitcher was built, and no device or
+hardware test was performed.
+
+### 66.98 Observed 2x3 pad array on the processor board (user photo, 2026-10-13)
+
+A user photograph of the processor board (`PXL_20261010_113529733.RAW-01.jpg`, Pixel 9, 3072x4080) shows an
+exposed pad group that was not previously documented. Measurements below are from that single image; they are
+observations, not a confirmed identification.
+
+**What is visible.**
+
+* Six round, flat, gold-plated pads with **no drill holes**, arranged **2 columns x 3 rows**.
+* Measured centroids: columns at x ~ 902-911 and x ~ 1060-1068; rows at y ~ 3002, 3157, 3311 (original image
+  pixels). Column pitch **158 px**, row pitch **154 px** — a **square grid** within measurement noise.
+* Pad diameter ~ 63 px; pitch/diameter ratio ~ 2.5.
+* A **bundle of about five parallel traces** leaves the group and runs toward the upper right of the board, and
+  each pad appears to feed its own trace rather than sharing a net.
+* Scale reference: the nearby plated mounting hole measures ~117 px across its outer ring. Assuming an M1.6 or
+  M2 clearance hole (1.8-2.2 mm) gives roughly **53-65 px/mm**, hence **pitch ~ 2.4-2.9 mm** and **pad
+  diameter ~ 1.0-1.2 mm**. That is consistent with a standard 0.1" (2.54 mm) or 2.0 mm header footprint — but
+  realised as **flat pads rather than plated through-holes**, which points to a probe/pogo/solder-target array
+  (factory test access or a press-contact interface) rather than a part you plug a pin header into.
+
+**Interpretation, and its limits.** An 0.1"-class 2x3 array carrying six distinct signals is the shape of a
+minimal debug/programming pad group; **six is exactly the classic minimum JTAG set** (TCK, TMS, TDI, TDO,
+nTRST/SRST, GND) and also the classic 2x3 SWD header layout. It is equally consistent with a factory
+bed-of-nails test group, a companion-MCU programming header, or a contact array for a mating connector. The
+photo alone does **not** establish which, and the chip itself is not visible in it, so the claim that the traces
+run directly to the DSP still needs continuity confirmation.
+
+**Why it matters.** If these pads are the BF703's debug port and the part is not locked (§66.95), a plain
+emulator attach yields memory and flash access: **device recovery and the decrypted firmware with no key at
+all**, which is strictly better than the oracle route (§66.96 routes 3 vs 1). No glitching would be required.
+
+**Cheap ordered identification plan** (no device writes, no emulator needed for steps 1-4):
+
+1. **Unit unpowered, all 15 pad-pair continuity checks.** Six mutually isolated pads indicate a signal bus. Any
+   pads tied together indicate a power/ground/strap array, which is not a JTAG port.
+2. **Beep each pad to a solid ground** (battery negative terminal, ground pour, shield can). A debug port
+   normally exposes exactly one GND. Finding none makes the debug-port reading unlikely.
+3. **Resistance from each pad to ground and to the battery+ / 3.3 V rails.** A ~4.7k-10k pull-up is the classic
+   bias signature of TCK/TMS/TDI/nTRST.
+4. Optional, powered on battery with fine probes: look for one pad sitting at a stable rail — the VTref pin most
+   debug adapters need to sense.
+5. **Trace-follow each pad through its via to the chip side** and match against the BF703 ball functions. This is
+   the step that converts a hypothesis into a fact.
+6. **Decisive: attach an ADI emulator** (ICE-1000/2000 class) with CCES, or at minimum run ADI's BY-PASS scan
+   test (EE-356) to see whether a JTAG chain answers at all. Caveat: ADI's emulation port is a superset of
+   IEEE 1149.1 and adds the vendor-specific `EMU~` signal (EE-68); a six-pad group may omit `EMU~` and a VTref
+   sense, which some emulators tolerate for basic attach and others do not.
+
+**Useful discriminator.** If the group is GND + VTref + **four** signals it resembles **SWD** (SWDIO, SWCLK),
+which would point at an ARM companion part (keyboard/power controller or BLE module) rather than the Blackfin.
+**Five** signals (four plus reset) is the JTAG case that matters here.
+
+No hardware was probed, powered, soldered or attached; no device or board modification was performed. The
+photograph is not a committed repository artifact.
+
+### 66.99 Blackfin+ debug tooling: an existing OpenOCD path for the BF70x
+
+Reviewing whether ordinary (non-ADI) debug hardware could drive the pads described in §66.98 turned up a
+working software path. Recorded here because it changes the cost of §66.96 route 3 substantially.
+
+**A BF70x-capable OpenOCD exists.** `deanm1278/openocd` is a fork adding the "Analog Devices Blackfin+ line
+(ADSPBF70x devices)" to OpenOCD mainline, with `src/target/bfinplus*.c` (`bfinplus.c`, `bfinplus_dap.c`,
+`bfinplus_mem.c`), plus `tcl/target/bf706.cfg`, `tcl/target/bf70x.tcl` and `bf70x_memory_map.xml`. Mainline
+OpenOCD does not carry this target.
+
+**What the target config tells us about the port.**
+
+* The config states it supports **both JTAG and SWD transports** (`#transport select jtag` / `#transport select
+  swd`) and sources `target/swj-dp.tcl`.
+* The BF70x TAP is handled as an **ADI JTAG Controller (ADJC)**, and the debug access port must be *enabled*
+  with a documented sequence:
+  `irscan $adjc 0xa` followed by `drscan ... 32 USERKEY0 32 USERKEY1 32 USERKEY2 32 USERKEY3`, then
+  `irscan $adjc 0x5` / `drscan 8 0x4` to enable the DAP.
+* That is the **secure-debug unlock**: four 32-bit values are a **128-bit UserKey**, matching the "secure debug
+  key ... 128-bit ... stored in OTP" of EE-366 (§66.95). The template ships with
+  `set USERKEY0..3 0x00000000`, so **an unlocked part attaches with the defaults**.
+* Consequence: **a first attach attempt directly measures the lock state** — the single decision-relevant
+  unknown identified in §§66.95 and 66.97. If the defaults fail and no key is available, the part is locked.
+* Memory map in that config: `boot_rom` 0xef000000, `l1` 0xff800000, `sysmmr` 0xffc00000, `coremmr`
+  0xffe00000. Caveat: the XML is labelled `name="bf537"`, so it looks inherited; it does not cover the
+  0x80xxxxxx DDR range where our crash addresses live, and would likely need adapting.
+
+**The recovery precedent exists too.** The same author's `bf70x-bootloader` loads a small loader into
+**instruction RAM** over OpenOCD, which then initialises the flash and exposes the **external SPI flash**
+through virtual NVM registers in data RAM B, driven from an OpenOCD command line (demonstrated on a BF706
+EZ-mini board). That is attach → load loader → read/write flash, i.e. the same shape as the restore we want.
+
+**Adapters.** The fork's supported-adapter list includes **Buspirate**, **CMSIS-DAP**, **FTDI**, **sysfsgpio**
+and **BCM2835** — so the cheap-hardware category is covered, not only ADI's ICE pod. ADI's own CCES code drop
+(`openocd-0.9.0-cces-2.4.0-src.tar.gz`, containing a Blackfin target and an **ICE-1000 adapter** driver) is the
+fallback if the fork misbehaves.
+
+**Architecture context.** ADI states that EE-68 (the classic 14-pin ADI JTAG reference) applies only up to the
+ADSP-BF60x family; the BF70x debug unit was redesigned to also support ARM technology, and per ADI the TAP
+defaults to JTAG mode with boundary scan and device chaining supported, with a special SWDIOTMS sequence to
+switch between JTAG-DP and SW-DP. A BF70x BSDL model is published, which makes an IDCODE/boundary-scan check a
+low-effort confirmation step.
+
+**Verdict on the three candidate gadgets.**
+
+| gadget | verdict |
+|---|---|
+| USB logic analyzer | **monitor only.** Input-only; it cannot drive TCK/TMS. Useful to verify levels and to decode traffic while something else drives the port, not to attach |
+| Bus Pirate | **yes, and it is on the fork's adapter list.** Adequate to prove the port and read IDCODE; full attach is plausible but slow (bit-banged) |
+| Raspberry Pi / Pico family | **best of the three.** A Pi board via `bcm2835gpio`/`sysfsgpio`, or a Pico as a CMSIS-DAP probe — both appear on the adapter list |
+
+**Caveats that must be settled before connecting anything.**
+
+1. **Voltage first.** BF70x I/O can be 1.8 V, 2.5 V or 3.3 V. A Pi, a Bus Pirate v3 and most logic analyzers
+   are 3.3 V. Driving 3.3 V into a 1.8 V rail risks the part, so measure the pad rail (and any VTref pad)
+   before attaching, as already required by §66.98.
+2. The fork must be built from source; mainline OpenOCD will not work.
+3. The `bf70x.tcl` unlock path uses `irscan`/`drscan`, i.e. **JTAG**, even though the config mentions SWD — so
+   JTAG (four signals plus GND, optionally nTRST) is the target shape to look for on the six pads.
+4. Whether the six pads are the DSP's debug port at all is still unproven (§66.98), as is whether the part is
+   locked.
+
+No hardware was connected, powered or driven; no adapter, firmware or device was modified.
+
+### 66.100 Identifying which pad carries which JTAG signal
+
+§66.98/§66.99 leave one practical question: given six unlabelled pads, how do you know which is TCK, TMS, TDI, TDO, GND or VTref? The answer is that this is a solved problem — either scan for it automatically, or narrow it electrically and brute-force the last few permutations. Guessing from the layout is not required.
+
+**Safety rules that make brute-forcing safe.**
+
+* **Never drive TDO.** TDO is an output from the target; your adapter's TDO line must be an input. Driving it is a bus conflict.
+* **Measure the I/O rail first.** BF70x I/O is 1.8 V, 2.5 V or 3.3 V. Forcing 3.3 V into a 1.8 V input is the one way to damage the part.
+* **Mis-assigning TCK/TMS/TDI cannot damage the target** — they are inputs, so the worst case is garbage data. Brute-forcing is therefore electrically safe once the voltage is right and TDO is never driven.
+* Connect **GND first** and keep that lead short. Leave nTRST alone if the board pulls it up; an adapter that drives it is fine but not required.
+
+**Method A — automatic pinout discovery (least effort).**
+
+* **Bus Pirate: the blueTag JTAG/SWD pin finder.** Current Bus Pirate firmware includes a pin finder derived from blueTag that identifies JTAG/SWD pins on an unknown target by driving candidate lines and analysing responses. The documented workflow is to connect the IO pins to the suspected pads (IO0 upward) plus a shared ground and let it report the assignment. Caveat: this is modern Bus Pirate firmware — the author originally shipped blueTag as an external firmware because of its GPL licence — so check whether the board in hand carries it.
+* **JTAGulator.** Purpose-built for exactly this case ("test points, vias, component pads, or connectors"). It offers an **IDCODE scan**, which locates TDO/TMS/TCK, and a **BYPASS scan**, which also locates TDI (useful because IDCODE is optional per the standard and the IDCODE scan deliberately does not look for TDI).
+* **JTAGenum.** Free: an Arduino sketch and, relevant here, a **Raspberry Pi shell script** that brute-forces a pin list over sysfs GPIO and can then enumerate the instruction register. Requires editing the `pins[]`/`pinnames[]` lists to the candidate pads.
+
+**Method B — narrow the search with a multimeter first (free).** This usually reduces the problem to a handful of permutations:
+
+1. **GND** — already found by continuity in §66.98 step 2.
+2. **VTref / rail** — the pad sitting at a steady rail voltage while powered.
+3. **Pull-up pattern.** TMS, TCK, TDI and often nTRST carry internal or external weak pull-ups (the common values are 4.7k-10k), so they read a few kΩ to the rail, whereas **TDO is a tri-stated output with no pull-up and reads much higher or open** (hundreds of kΩ, or no reading). That single measurement commonly isolates TDO.
+4. What remains is three or four candidates for TDI/TCK/TMS, i.e. at most ~24 permutations — small enough to brute-force even by hand.
+
+**Method C — deterministic, if the board cooperates.** Follow each pad's trace through its via to the BF703 ball and name it from the **published BF70x BSDL model**, whose pin names include `JTG_TCK`, `JTG_TMS`, `JTG_TDI`, `JTG_TRSTb` and the TDO output. Pair the BSDL names with the datasheet BGA ball map and no guessing or scanning is needed at all. This is the cheapest method when the trace routing is visible.
+
+**Adapter side is not the unknown.** In the OpenOCD fork of §66.99 the adapter's pin assignment is configurable (for example the `bcm2835gpio` and `sysfsgpio` drivers take explicit GPIO numbers, and the fork's adapter list includes CMSIS-DAP and Bus Pirate). You therefore choose which of your board's GPIOs act as TCK/TMS/TDI/TDO and wire those to the pads — the only thing that has to be discovered is the target side.
+
+No hardware was connected or driven; nothing was scanned or probed.
+
+### 66.101 The published successful run, re-read against our numbers
+
+A fuller statement by `_bt` (OP-Forums, Jan 2024) describes the completed key recovery. Read against this
+project's implementation it is a direct confirmation of §§66.90-66.92, and it sharpens two things.
+
+**What the account says.** The OP-Z firmware contains an encrypted-filename field; because "the OP-Z firmware is
+not digitally signed" that field can be manipulated. The device prints, on the serial console, the filename it
+decrypted from it (`firmware_bin_only_with_bootloader.zip`). `_bt` combined those two facts into a power-cycling
+rig plus a script that forged fresh firmware files so the device would decrypt the payload block by block while
+the console revealed the plaintext, at roughly 30 seconds per block for thousands of blocks. The device
+recognised the result as invalid and aborted, so nothing was bricked. With the decrypted zip in hand, a second
+script tested the **contents of the bootloader file as the AES key**: *"The key is in plaintext in the
+bootloader file."* The OP-1 field used the same key until 1.1.6, and the OP-Z firmwares all use one key.
+
+**Consequences for this project.**
+
+1. **The method is validated, not speculative.** The console oracle of §66.19, the one-read-per-boot
+   limit, the ~63-byte leak cap and the power-cycle-per-window cost are exactly the constraints `_bt` worked
+   under. Their ~30 s/cycle for thousands of cycles is the same regime as our measured 42.7-43.2 useful
+   bytes/probe. We are not doing anything wrong; we are **0.54% into the file** (842 of 156,306 compressed bytes
+   contiguous, inflating to 1,260 plaintext bytes).
+2. **The key is in `bootloader.ldr` plaintext, confirmed twice** (§66.92, §66.94). Since the member is stored
+   DEFLATE-compressed, its plaintext is only reachable by inflating the stream, which requires the compressed
+   bytes in order. There is no shortcut through a partial stream.
+3. **No signature check exists to defeat afterwards.** "Not digitally signed" means the AES key is the *only*
+   gate. Once the key is known, a modified firmware can be installed through the normal, supported upgrade path
+   — which is what `_bt` did to repack custom firmware — instead of the risky plain-zip channel of §24. That
+   materially lowers the risk of the §66.95 patched-bootloader idea.
+
+**Cost, measured and projected** (compressed member spans 467,573-623,878; 155,464 bytes still missing):
+
+| useful bytes/probe | remaining probes | at 18 s/cycle |
+|---|---|---|
+| 43 (measured) | 3,615 | 18.1 h |
+| 48 | 3,239 | 16.2 h |
+| 56 | 2,776 | 13.9 h |
+| 64 (ceiling) | 2,429 | 12.1 h |
+
+**Three levers, in order of value.**
+
+1. **Stop early by testing continuously.** The campaign currently only needs to *finish* if the key is at the very
+   end. Because plaintext is produced in order and DEFLATE output is prefix-stable, the inflated prefix can be
+   re-tested after **every** probe and the run can stop the moment a window validates against the
+   hardware-verified first ZIP block of §66.12. Testing all one-byte-offset 32-byte windows of 1,260 bytes took
+   seconds; re-running it per probe costs nothing. If the key's position in the file is uniform this alone
+   roughly halves the campaign, and if the key sits early it cuts it far more. **This is the single highest-value
+   change and it needs no device.**
+2. ~~**Reclaim the alignment headroom.**~~ **WITHDRAWN — see §66.106.** Measurement of the saved reads shows the
+   49-64 band describes *leak length*, not *new bytes per probe*, and that 43 new bytes/probe is already that band
+   minus the mandatory 16-byte overlap. There is no alignment headroom to reclaim; the table above overstates
+   nothing but the achievable rate is fixed.
+3. **Eliminate the cheap alternatives first.** Roughly **75 probes** complete the remaining small members
+   (`opz.crc32`: csize 3,251; `bootloader.version`; `os.version`), and the raw archive plaintext can be scanned
+   for key-shaped windows at no cost. If the key were in a small member rather than the bootloader, this wins for
+   ~75 probes instead of ~3,600. `_bt` says bootloader, so the expectation is low, but the cost is trivial.
+
+**Also worth checking offline first:** whether any archive member has `csize == usize` (stored, method 0) — a
+stored member needs no inflation and could be read directly. Our member map so far shows method 8 throughout, but
+the map is not complete.
+
+**After the key.** Decrypting the `.zfw` locally yields the plaintext `opz.ldr` OS image; the BF70x LDR block
+headers already validated in §66.90 then map a destination address to a file offset, so `RETX 0x80117baa` can be
+translated to a concrete instruction — the original purpose of the decode. Note again that knowing the key does
+not by itself repair the NAND or boot state; it supplies the means to build and install a firmware that can.
+
+No device action was taken; all figures are re-analysis of already-recovered bytes and published statements.
+
+### 66.102 Search for a published key or decrypted image: not public (2026-10-13)
+
+A targeted search was run for the OP-Z AES key, a decrypted OP-Z image, or a repacking tool, across the sources
+where such an artifact would realistically appear. **Neither the key nor a decrypted OP-Z firmware is published
+anywhere indexed.** The evidence is consistent across sources:
+
+| source | what it contains | key? |
+|---|---|---|
+| `billymeter/rez` wiki, *Firmware* page | the full `.zfw` layout (flags/key index `0x04`, IV `0x70`, length `0x80`, encrypted filename `0x300`, archive `0x400`), the AES-256-CBC identification, the padding-oracle method, and the statement that every published firmware used the same key | **no value published** |
+| `billymeter/rez` repo | README only; records that the firmware was decrypted with another individual | no |
+| `op1hacks/op1-field-fw-archive` | archive of OP-1 field `.tfw` files | **ciphertext only** |
+| `op1hacks/op1repacker` | OG OP-1 repacker | different device and format |
+| `sualk/op1-decryptor` | OG OP-1 `OP1_vdk.ldr`, **XTEA**, caller-supplied 16-byte key | different device, different algorithm, no key |
+| `pcppcp/op1r` | OG OP-1 R246 patcher (`OP1_vdk.ldr`) | different device and format |
+| `jstnfst/te-op1` | OP-1 field patch (`.aif`) tooling | unrelated |
+| `nbw/opz` | JS OP-Z library | no crypto |
+| OP-Forums *Custom Firmware on the OP-1* thread | method, results, and a current request for the 256-bit value **over other channels rather than on the forum** | deliberately withheld |
+
+A regex sweep for 64-hex-character strings across every repository cloned during the search returned nothing.
+
+**So the key is withheld, not lost.** The people who hold it are identifiable and the thread shows an active
+private exchange: `_bt` (recovered it), `tolsi` (credited as assisting), and a forum member who is currently
+asking for it off-forum for stated legal reasons. Discord/PM/off-forum channels are not searchable, so no public
+search will surface it. Asking is a legitimate option but cannot be depended on.
+
+**Two genuinely useful things the search did produce.**
+
+1. **`_bt` published the oracle mathematics** in the same thread. The encrypted filename region (`0x300`-`0x400`)
+   and the firmware-zip region (`0x400` to EOF) are **separate encrypted blocks**, and **the IV is used for
+   both**. Their stated relation for placing archive ciphertext into the filename field is that the first block
+   decrypts directly, and each subsequent plaintext block is the oracle output for that block XOR the previous
+   ciphertext block XOR the IV. This is a direct, independent statement of the chaining rule this project
+   derived empirically in §§65.7 and 66.13, and it is worth re-checking the collector against it as a free
+   validation step.
+2. **A relevant confirmation of the fidelity check.** The wiki records that the shared key was confirmed by
+   transplanting another firmware's IV and encrypted filename blob and observing successful decryption in the
+   console — a cross-file check that needs no key. Our project can use the same trick to sanity-check any
+   candidate key against more than one firmware release.
+
+**Prior art worth noting for the decode endgame.** The same thread lists a working toolchain for Blackfin LDR
+handling (`parse_bfin_ldr.py`, `extract_bfin_ldr_region.py`, locally built binutils) used for OG OP-1 firmware
+modification. That is directly applicable to parsing the inflated `bootloader.ldr` and mapping a destination
+address to a file offset (§66.90), and it confirms the approach is practical rather than novel.
+
+Nothing on the device was touched; no artifact was downloaded, and no decrypted content was obtained.
+
+### 66.103 The "OP-1 Field custom firmware holds the key" lead: closed
+
+The reasoning was sound — if OP-1 field firmware before 1.1.6 was encrypted with the same key as the OP-Z, then
+anyone shipping custom OP-1 field firmware for those versions would have to carry the key. The search closes the
+lead, because **no OP-1 field firmware repacker exists publicly**.
+
+**The custom-firmware scene is entirely on the *original* OP-1.** `op1hacks/op1repacker`, `pcppcp/op1r` (described
+by its own README as patches for the original OP-1 r246 firmware), the "opus_1" mod suite, the browser-based
+firmware builders, and `sualk/op1-decryptor` all target the original device. That matters because **the original
+OP-1 firmware is not AES-encrypted at all**: it is a CRC-32 plus LZMA container, with XTEA applied to
+`BFLAG_CALLBACK` blocks in `OP1_vdk.ldr`. None of those projects ever needed the OP-Z key, which is exactly why
+they can operate openly.
+
+**The "op1r on OP-1 field" report is a port of original-OP-1 firmware to field hardware**, described by its author
+as work in progress with no published method or package — not a repack of field firmware, so it does not require
+the key either.
+
+**Related but different:** `seajaysec/ep-unity` covers the EP-133/EP-40 (EP series), which uses an unrelated scheme
+— MCUboot `IMAGE_F_ENCRYPTED_AES128` with an `ENC_EC256` per-image random AES-128 key wrapped by an ECIES public
+key. Its own research note states plainly that the OP-Z and OP-1 field oracles do not transfer, and lists failed
+approaches including XTEA and trailer-as-key sliding windows. Independently of us, that project's conclusion is
+that a software decrypt oracle is unavailable there and that the practical route is an **SWD XIP dump** of mapped
+application flash after boot — the same conclusion §66.97 reached for the OP-Z from the other direction.
+
+**One genuinely useful artifact was found.** `op1hacks/op1-field-fw-archive` holds the official encrypted `.tfw`
+files including **1.1.2 and 1.1.4 — both pre-1.1.6, i.e. both encrypted with the OP-Z key**. They are ciphertext
+only and contain no key, but they are a **third-party verification corpus**: a candidate key recovered from
+`bootloader.ldr` can be checked offline against a completely different TE product's file before it is trusted
+against our own archive. That is the same transplant-style fidelity check the format wiki used to establish key
+reuse in the first place (§66.102).
+
+**Conclusion.** No public project has derived or published the key, and the OP-1 field route does not lead to it.
+The only holders remain the OP-Z oracle team and anyone they shared it with privately.
+
+### 66.104 Why recent custom-firmware successes do not imply anyone holds the OP-Z key
+
+Custom firmware for a TE OP-1 is genuinely thriving and current — releases continue right up to October 2026, with
+a large feature-rich build dated 2026-10-11. That is real and it is not in dispute. What matters is *which*
+device, because two separate facts make the inference "they shipped custom firmware, therefore they have the
+OP-Z key" fail.
+
+**1. The active custom-firmware scene is the original OP-1, whose firmware is not AES-encrypted.** Every project
+and release found targets the original OP-1: the repacker and its GUI, `op1r` (scoped by its own README to
+original r246 firmware), the OPUS mod suite (subtitled "for the original OP-1 (246)"), the current standalone
+custom OS releases, and the browser-based builders. The original OP-1 container is CRC-32 plus LZMA, with XTEA
+on `BFLAG_CALLBACK` blocks in `OP1_vdk.ldr` (see §66.103). None of that work requires the AES key, which is
+precisely why the scene is open, fast-moving and openly published while the OP-Z side has been quiet since 2021.
+
+**2. The OP-1 field key rotated, so current field work would use a *different* key anyway.** The OP-Z key was
+shared only by field firmware **up to and including 1.1.5**; firmware 1.1.6 (June 2022) introduced a new key.
+Field firmware is now at 1.7.3 (May 2026). So:
+
+| case | key involved | useful to us? |
+|---|---|---|
+| anyone repacking OP-1 field **1.1.2 / 1.1.4** | the **OP-Z key** | yes — but these are 2022-era images nobody mods |
+| anyone repacking **current** field firmware (>=1.1.6) | the **new field key** | **no** — a different key entirely |
+| anything on the **original** OP-1 | no AES key at all | no |
+
+So even a genuine, current OP-1 field custom firmware would imply possession of the *post-1.1.6 field* key, not the
+OP-Z key. The only artefact that would directly hand us the OP-Z key is a repack of a **pre-1.1.6 field** image,
+and no such release has surfaced in any searched source. A report of `op1r` running on field hardware is a port of
+original-OP-1 code to field hardware, described as work in progress with no published method, and is not evidence
+of a field-firmware repack.
+
+**Conclusion:** the inference holds only if the specific work in question is a repack of field firmware 1.1.2 or
+1.1.4. Nothing found matches that. A concrete link or release name would settle it immediately, and if such a
+release exists it is by far the highest-value artefact in this investigation.
+
+### 66.105 CORRECTION: an OP-1 field firmware mod *does* exist (supersedes 66.103/66.104)
+
+Sections 66.103 and 66.104 concluded that no OP-1 field firmware repack existed and that the "field work implies
+the key" inference therefore failed. **That conclusion is wrong and is retracted here.** A user (`bipeula`) posted
+to r/OP1users on 2026-10-14 that they have ported `op1r` to the OP-1 field and it is running, and their own
+clarification is unambiguous:
+
+* it is **native OP-1 field firmware, modified** — not original-OP-1 code running on field hardware;
+* it is **"based on an older official version"**, so later TE features such as the vocoder engine are missing,
+  while others (tape undo, multichannel USB, terminal FX, tape crossfades) were rebuilt by the author;
+* on the encryption question: **AES was not broken — "the firmware was decrypted, but not by attacking the
+  cipher itself."**
+* the work is **not released yet**; the author states the source will be published under the GPL when ready.
+
+A commenter in the same thread asserts that the key used is the same as the OP-Z key. That is a **commenter's
+claim, not the author's**, and it is the single fact that decides whether this lead yields the OP-Z key.
+
+**Why the base version decides everything.** The OP-Z key was shared only by field firmware up to 1.1.5; 1.1.6
+(June 2022) introduced a new key. The author's description places the base *older* than 1.4.2 (the vocoder is
+absent, and 1.4.2 dates from January 2023), which still leaves two possibilities:
+
+| base version | key involved | yields the OP-Z key? |
+|---|---|---|
+| field **<= 1.1.5** | the OP-Z key | **yes** — this ends the campaign |
+| field **1.1.6 - 1.4.1** | the new field key | no — but the *method* is still the interesting part |
+
+**What this establishes regardless of the answer.** A second, independent party has decrypted native
+TE-encrypted firmware of this family, in the last few days, using something other than a cipher attack — which is
+consistent with the oracle approach of `_bt` and with the method this project is already running. The practical
+consequence is that the previously "dead" lead is live and has a **named, reachable, cooperative author** who has
+promised a GPL source release.
+
+**Course of action.** (1) Ask `bipeula` which base firmware version they started from — that one answer tells us
+whether they hold the OP-Z key. (2) Ask whether the key is embedded in the decrypted image (as `_bt` found for the
+OP-Z, §66.94) or recovered as a separate secret. (3) Note that the same user has already asked this publicly in
+that thread and received no method answer, so a private message is the better channel. (4) Watch for the promised
+GPL release, which may carry both a decryption tool and the key handling.
+
+The oracle campaign (§66.101) remains valid and worth continuing, but it is now a **fallback rather than the only
+route**: this lead could end it today, whereas the campaign needs 12-18 hours of device cycling.
+
+### 66.106 Early-stop key test implemented; the alignment lever is a mirage; first disassembly of the bootloader prefix (2026-10-16)
+
+Three results, two of them corrections.
+
+**1. The §66.101 lever-1 early-stop key test is now implemented and verified.**
+
+`toolkit/opzbootprobe.py` re-inflates the recovered `bootloader.ldr` prefix after **every** probe and tests each
+not-yet-tested 32-byte window with `opzkeymine.check()` — the two-pair AES oracle whose strongest test is the
+hardware-verified first ZIP block of §66.12. It halts the run the moment a window validates, writes the key to
+`KEY-FOUND.txt` alongside the probe state, and a new `--key-scan-only` flag runs the same scan over saved state with
+no device attached. Only windows that a new byte creates are tested, so the per-probe cost is O(1) rather than a
+full rescan. `--self-test` passes; the inline script now declares `pycryptodome`.
+
+Run offline against the existing probe state: **1,260 inflated bytes, 1,229 windows tested, no match** — consistent
+with the §66.101 result on the then-current prefix. The campaign can now stop early instead of always finishing.
+
+**2. Correction: there is no alignment headroom. §66.101 lever 2 is withdrawn.**
+
+Lever 2 claimed the window base could be chosen to gain "49-64 *new* bytes per probe even after re-reading a few
+known bytes; 43 is below that band", worth about a third of the run. Measurement of the saved reads says otherwise.
+
+| quantity | measured |
+|---|---|
+| reads / leaks | 35 |
+| leaks that reached the 63/64-byte cap | 14 of 35 |
+| leak length min / max / mean | 6 / 64 / 40.9 |
+| mean excluding the 7 known masked-NUL stall reads at offset 467808 | **~49.6** |
+
+The 7 reads that returned exactly 6 bytes are the historical masked-NUL stall (§66.89, since fixed), not a real yield
+figure. Once they are excluded the mean leak is ~49.6 bytes — **already inside the documented 49-64 band**. The band
+describes *leak length*, not *new bytes per probe*, and the two differ by a mandatory cost lever 2 did not account
+for: to fill the byte at the first hole the window must start at or below that byte **on a 16-byte boundary**, so
+0-15 already-known bytes are always re-read (mean 7.5). 49.6 - ~7 = ~42.6, which is exactly the measured
+42.7-43.2. **43 new bytes per probe is the band value minus the mandatory overlap, so there is nothing to reclaim.**
+
+The overlap cannot be avoided: starting the window past the first hole would leave those tail bytes missing forever,
+because a later window begins later and can never cover them. The 63-byte real cap is likewise fixed — it is
+`128 - 4 - 58 - 1 = 65` leak bytes less the 2-byte `..` marker, set by the device's 128-byte log-message ceiling
+(§66.85), a firmware constant that probe placement cannot change. Expected remaining work therefore stays at
+**~3,615 probes / ~18 h at 18 s per cycle**, reduced only by lever 1's early stop.
+
+**3. First disassembly of the recovered bootloader prefix.**
+
+The 1,260 inflated bytes are two complete LDR blocks plus one partial one. Block 0's `arg` field is now explained:
+`0x109c` = 4252 = 124 (end of block 1) + 16 (header) + 4112 (block 2 payload) — i.e. **`arg` is the offset of the next
+block header after the code block**, confirming §66.101's "next-stream metadata" reading arithmetically.
+
+| offset | code | dest | count | arg | what it is |
+|---|---|---|---|---|---|
+| 0 | `0xadc45004` | `0x11a00000` | 0 | `0x109c` | directive block; `arg` -> next header at 4252 |
+| 16 | `0xad640004` | `0x11800000` | 92 | 0 | **data**, not code (see below) |
+| 124 | `0xad180004` | `0x11a00000` | 4112 | 0 | code; 1,120 / 4,112 bytes recovered |
+
+**Block 1 at `0x11800000` is a float table, not code.** Ghidra's decoder produces a nonsense alternating
+`NOP`/garbage pattern, which is the signature of 32-bit little-endian data read as 16-bit instructions. Parsed as
+IEEE-754 single precision it is **23 exact round values**: 0.0, 512.0, 12.5, 7.5, 12.5, 40.0, 57.5, 2.0, 7800.0,
+105.0, 10.0, 45.0, 7.5, 15.0, 2.0, 3.0, 5.0, 6.0, 0.0, 4.0, 2.0, 75.0, 5.0 — the signature of a human-authored
+coefficient/configuration table, loaded into **L1 Data Block A** (`0x11800000`), not an instruction region.
+
+**Block 2 at `0x11a00000` is genuine Blackfin+ code.** Disassembled with the Ghidra `blackfinplus:LE:32:default`
+language built in §66.70, it decoded **341 instructions with 0 undecodable bytes** — the first clean validation of
+that experimental language against real OP-Z bootloader code (previously only `crush.engine`). What the recovered
+1,120 bytes do:
+
+- `0x11a00000` — entry: `LINK`/`UNLINK` frame saving R7:4; writes `0x817`, `0x10`, `0x80` into system MMRs
+  `0x20040014/1c/114/11c/128/120`; `SSYNC`; clears the low three bits of core MMR `0x1fc01004`; then reads system
+  MMR `0x20000004`, masks with `0xf00` and compares against `0x300` — a **boot-mode / strap field test** selecting a
+  path into `0x11a0083e` and `0x11a0074c`. Later it toggles bit 11 of `0x200c1000` around a call into `0x11a00118`,
+  calls `0x11a00534`, retests `0x20000004 & 0xf00` with bit 8 toggled, and on the zero case writes 1 to
+  `0x20057010`.
+- `0x11a00118` — a **clock/CGU routine**: masks `0x20002000` with `0x7f01`, toggles bit `0xd`, polls `0x20002008`
+  for bit 3 in a loop, writes the magic constants `0x44042442` and `0x04042442` to `0x2000200c`, and loops on bits
+  0/1/2/3 — the classic change-then-wait-for-lock pattern.
+- `0x11a001f0` — writes seven argument words to `0x200c0040/44/48/4c/60/64/68` and R0 to `0x200c0004`, polls
+  `0x200c0008` bit 2, then writes `0x200c0080`: a data-movement / controller command setup.
+- `0x11a0026e`, `0x11a00318` — assemble 32-bit words from fields with shifts of 0, 4, 8, `0xc`, `0x10`, `0x14`,
+  `0x1c` and OR them together: a word-packing helper.
+
+**Answer to the unbrick question, and what it now is not.** Calls in the recovered code target
+`0x11a005a6`, `0x11a00b5c`, `0x11a00ca0`, `0x11a00d7c`, `0x11a00ea4` and `0x11a00f00` — all beyond the recovered
+`0x11a00460`, so **~72% of this block is still unread**. **No NAND, partition-map, bad-block-table or
+version/validity-record logic appears anywhere in the recovered 1,120 bytes.** The code that reads and validates the
+state `0x15` destroyed is in the unread remainder, or in a later block. The recovered portion is system, clock and
+controller initialisation — legwork. The question "does the loader rebuild a formatted NAND?" is therefore still
+**open, but now located**: it is answerable from further oracle recovery of this same member, with no key, no
+hardware and no device writes, and it is the strongest reason yet to finish `bootloader.ldr` beyond the key itself.
+
+### 66.107 The oracle collector, hardened: five review passes and what they changed (2026-10-16)
+
+`toolkit/opzbootprobe.py` was put through five successive reviews (correctness/wiring, strict defect
+hunting, "resolve everything", "can this tool produce a confidently wrong answer", and a final
+cleanup). 18 code findings were fixed. This section records what changed, so the tool and the notes
+agree.
+
+**The 63-byte leak ceiling is a device constant, not an artifact of our probe.** Measured over every
+capture available -- 79 files, **75,461 frames**, including the genuine TE firmware-upgrade runs where
+no probe exists at all: the maximum frame payload anywhere is **exactly 128**, and **no frame exceeds
+it**. The leak frame is byte-exact:
+
+    128 payload = 4 tick + 58 text prefix ("[timestamp] bootdisk: failed to find .zip file in ")
+                + 65 data + 1 NUL
+
+Of the 65 data bytes the last two are the device's own `..` truncation marker, so **63 real bytes**.
+That the NUL lands on the final payload byte shows the device *finished* the message: the name field
+is truncated, not the log buffer. The `capped` flag in the record is our decoder's own inference
+(`len(payload) >= 128`), not a device report -- and it is empirically correct: of the 44 leak frames,
+**17 sit at 128 and all end in `..`; 27 sit below it and never do. Zero false positives, zero false
+negatives.** The old open question ("is `..` a marker or two real bytes?") is closed: it is a marker,
+and no real data is lost. Multi-frame-per-boot was already closed by experiment in §65.3 (8 staged
+probes still produced one read), so 63 per cycle is fixed and the campaign estimate stands.
+
+**Silent-corruption detection (the important addition).** Nothing previously checked that a recovered
+byte was *correct*. The failure mode was not a crash: a single mis-decoded byte corrupts the DEFLATE
+stream, the scan then tests non-key bytes for hours, and the campaign ends by reporting **"no key in
+the bootloader"** -- a false negative that would permanently misdirect the recovery. Two checks now
+run on every scan:
+
+| check | scope | catches |
+|---|---|---|
+| `check_prefix_stable` | within one process | any change to the already-recovered prefix (DEFLATE output is prefix-stable, so a later probe may only append) |
+| `check_prefix_persisted` | across restarts | a divergence from the `plaintext-prefix.json` digest left by an earlier process |
+
+Both are content-independent, which matters because for most recovered bytes we hold no ground truth
+-- they are the *decrypted* archive, unpredictable without the key. Prefix-stability is the only
+invariant available, and **it is the check that would have caught the masked-NUL bug of §66.89
+immediately**, instead of by accident via a stalled probe. Demonstrated on the real 1,260-byte prefix
+with one flipped deflate byte: the canary reported divergence at inflated offset 141 with both values.
+A divergent prefix never overwrites a good digest, so the evidence survives. The persisted digest also
+restores the tested-window counter, since windows depend only on the plaintext.
+
+**Provenance.** Leak records now carry `terminator_inferred`: a terminator inside the masked first 16
+bytes is *derived* from the mask delta rather than observed, and is now labelled as such.
+
+**Exit-status contract.** `0` = key found (written to `KEY-FOUND.txt`), `3` = a collection run whose
+range finished and holds no key, `2` = incomplete or probe budget spent, `1` = error. A driver can
+re-invoke on 2 and stop on 0 or 3. Verified offline for 0/2/3. The `--max-probes` cap of 1..64 is
+deliberately retained: it is the guard that stops an unattended loop, and because the digest now also
+persists the window counter, restarts are cheap and correct.
+
+**Other defects fixed:** `inflate` no longer zeroes the whole prefix on one corrupt byte (it salvages
+up to the bad byte, and its warning is de-duplicated); probe state files are filtered by
+`source_sha256` so two firmwares' byte maps can never be spliced; `load_bytes` applies `repair_state`
+so the offline scan cannot read an unrepaired legacy map; all three artifacts (state, key file, raw
+capture) are written atomically; a `HEURISTIC:` match can no longer halt the campaign; the tested-
+window counter resets if the plaintext shrinks instead of silently disabling the scan; `--key-scan-only`
+runs even if the original `.zfw` is gone, refuses when the directory holds two sources, and reports a
+clear warning for a wrong `--key-member-start`.
+
+**Costs measured, not assumed:** the per-cycle scan overhead at campaign end (4.3 MB of state JSON)
+is **58 ms** against an ~18 s cycle = **0.35%**; a full-loader rescan is **277 s = 4.6 min**, now
+avoided entirely by the counter restore.
+
+**Regression test over real device bytes.** `replay_real_captures()` re-decodes every saved capture
+and requires the recorded state to match exactly -- the closest thing to a hardware test that runs
+without the device. It currently replays **35 cycles byte-identically**. What it does *not* cover:
+`one_cycle`'s live serial staging, eject and timing on the unit, which still rest only on the
+self-test and historical runs.
+
+## 67. The update-mode console has a file-READ command: request `0x19`, reply `0x20` (2026-10-16)
+
+**This corrects §22 and every later note that says "no console path can return file bytes to the host".** That
+claim rested on a type sweep which sent *empty* payloads, and on a guessed exclusion set that had put `0x19`
+into a "NAND family — destructive, do not send" category without ever testing it. `0x19` is in fact the
+console's file-read command, and it was available the whole time.
+
+### Framing, and the two traps that hide it
+
+```
+C0 <routing> <type> <len_be32 big-endian> <payload>      0x7D escapes the next byte as (byte ^ 0x20)
+host -> device routing 0x01        device -> host routing 0x1E  (replies, and type-0x04 log frames)
+```
+
+1. **The PONG is a zero-length frame** — `C0 1E 01 00 00 00 00`. A decoder that treats `len == 0` as "not a
+   frame" never sees it, so a healthy unit reads as dead. Match the raw pattern instead.
+2. **The port-open reset eats the first frame written.** Warm the port with a PING before the real command, or
+   a working command looks ignored.
+
+### The read command
+
+Handler `0x11a02c0a`, dispatched from the chain at `0x11a02c04` inside the function at `0x11a02932` (L1 code
+loaded at `0x11a00000`).
+
+| | |
+|---|---|
+| request type | `0x19` |
+| reply type | `0x20` |
+| payload | one NUL-terminated path, **relative to `/yaffs2/`** |
+
+Mechanics: build `/yaffs2/` + argument, open it, store the handle in the global `0x11804000`, set an in-use
+byte at `0x82835c93`, seek for the size, send a `0x20` header, then loop reading `0x800`-byte chunks and sending
+each via `0x11a046ae` (which splits into frames of at most `0x100` payload bytes). Concatenating the `0x20`
+payloads in arrival order reproduces the file byte-for-byte.
+
+The path prefix is confirmed by the device's own error log, which names it explicitly:
+`disk/disk_io: error opening file /yaffs2/zz-does-not-exist.txt, error type: rb ENOENT`.
+
+**A bad path produces no reply frame at all**, only log frames (routing `0x1E`, type `0x04`, e.g.
+`yaffsfs: yaffs: error: ENOENT`). So absence of `0x20` frames plus presence of `0x04` frames is the failure
+signature.
+
+**It is read-only** — open, read, stream, close. No write, no move, no delete. Safe to batch over many paths.
+
+**No offset and no length argument**: it always reads the whole file from the beginning.
+
+### Verification (all byte-exact)
+
+| requested path | bytes | independent check |
+|---|---|---|
+| `user/config/midi.json` | 1,428 | equals a previously captured copy |
+| `user/config/userPresets.dat` | 351,202 | equals a previously captured copy — validates multi-frame reassembly |
+| `system/content/engines/crush.engine` | 1,212 | equals the copy inside the decrypted 1.2.45 update, sha256 `197fc3bc5d8abc52…` |
+| `system/content/samplepacks/UserSampler.aif` | 706,990 | equals the copy inside the update |
+
+### Measured result that this enabled
+
+The eight factory-only engines are **absent** from `/yaffs2/system/content/engines/` on the affected unit: all
+of `chord`, `digital`, `electric`, `fm003b`, `ministringshort`, `saw013a`, `tapetwo`, `volt` return nothing,
+while the control `crush.engine` returns 1,212 bytes. This promotes the earlier "absent from every package
+held" inference to a measurement taken on the device itself.
+
+### The other console command: `0x37` is a MOVE, not a copy
+
+The handler at `0x11a02fb4` builds `source = "/yaffs2/" + argument 1` and `target = "/yaffs2/" + argument 2`,
+then calls a two-instruction wrapper `0x8280db80` which sets `R0 = 0` and calls `0x8280d954(mode, p1, p2)`.
+
+The mode is a real branch, but it is an options/flags word, **not** an operation selector: the worker contains
+no data-copying machinery at all — only path validation (`0x8280cd84`, `0x8280d4a0`, `0x8280d2c4`), node lookup
+(`0x8280d6b4`, `0x8280d6ce`) and a metadata-mutation primitive. Its non-zero branch compares against a
+2-character string held in the image as `.` / `..`, i.e. a parent-directory path guard. **There is no copy
+mode.** Confirmed by measurement: moving `config/general.json` to a new name leaves the source gone and the
+target byte-identical.
+
+Status byte: `0xE1` is written unconditionally at handler entry and overwritten with `0xD3` only when the
+operation returns 0. So `0xD3` = the move happened, `0xE1` = it did not.
+
+Guard: `0x80 <= strlen("yaffs2/") + strlen(arg) + 1` logs `Too long source filename` / `Too long target
+filename`. Those strings are not observable over the serial log channel in this build and appear in no log file
+the unit exposes, so they are useless as a success test. Arguments land in slots `0x40` apart while the guard
+permits 120 bytes, so keep each argument under ~60 bytes.
+
+### The content-mode mass-storage view is FILTERED — "not visible" is not "absent"
+
+Two staged files that never appeared in the content-mode listing (`zz-osver.txt`, `zz-plugs.json`) were in
+fact still present and both restored on the first attempt. Conversely `how_to_import.txt` and `import.log`
+appear at the volume root but return `ENOENT` when read as `/yaffs2/user/how_to_import.txt` or
+`/yaffs2/user/import.log`. The root is a synthesised view mixing `/yaffs2/user/**` with system content. Only
+`0x19` can be trusted to test whether a file exists.
+
+### Open
+
+- Where the eight missing engines live, if anywhere on this unit. Needs a directory-listing primitive.
+- Unread handlers that may provide one: `0x10` → `0x11a03a3a`, `0x14` → `0x11a03900`, `0x17` → `0x11a03bca`
+  (reply `0x18`), `0x31` → `0x11a03986` (reply `0x12`), plus `0x23`, `0x27`, `0x32`, `0x34`.
+- No offset/length read primitive found, so a truncated read must be restarted from the beginning.
+
+## 68. The complete serial console command inventory: 20 types (2026-10-16)
+
+§67 documented the file-read command (`0x19` → `0x20`). This section enumerates the **entire** dispatch rather
+than the parts reached by probing, and names each command from the strings its handler loads.
+
+### Why every live sweep under-reported the set
+
+The first sweeps found eight answering types; the dispatcher handles **twenty**. The rule that explains it, and
+which should govern any future probing: **a command that needs arguments is silent when sent an empty payload**,
+because its first act is a length or pointer check on data that is not present. `0x37` and `0x19` were both
+invisible to every sweep for this reason, and they are not exceptions.
+
+The dispatcher is a comparison chain on the type byte in `R2`, inside the function at `0x11a02932` (L1 code
+loaded at `0x11a00000`). It is **not** a pointer table. The long pointer runs in the image are C++ vtables and —
+decisively — the upgrade module's error-code-to-string table in `upgrade.cpp` ("The flash array is not valid",
+"The checksum does not match the expected value", "The bootloader version detected is not supported", "The
+expected device does not match the detected device", "The command is not recognized", "The data is not of the
+proper form"). That table is why "The command is not recognized" masqueraded as a dispatcher fall-through: it is
+loaded at `0x828233e6` in the `0x0828xxxx` image as one of six sibling status strings. **There is no second
+serial dispatcher.**
+
+### Inventory
+
+| type | reply | handler (L1) | command |
+|---|---|---|---|
+| `0x00` | `0x01` | `0x11a02dc8` | PING (accumulates the payload, replies; zero-length reply when the payload is empty) |
+| `0x02` | `0x03` | `0x11a032b0` | version block (dsp / kb / fw / os / bootloader / keyboard / ble / module) |
+| `0x06` | — | `0x11a02e72` | install / sequence step; six calls into the upgrade path |
+| `0x07` | `0x08` | `0x11a02eb4` | identity / metadata (`serial:%s;hardware_revision:%d;dsp_serial:%s`) |
+| `0x10` | `0x12`,`0x13` | `0x11a03a3a` | **write SPI flash** (`writing %d bytes to SPI @ 0x%08x`) |
+| `0x14` | `0x16` | `0x11a03900` | **format SPI flash** (`Got format SPI`) |
+| `0x15` | — | `0x11a02d50` → `0x11a03894` | **format NAND** (`Got format NAND`, `Format complete`) |
+| `0x17` | `0x18` | `0x11a03bca` | not identified (calls `0x8281e98e`) |
+| `0x19` | `0x20` | `0x11a02c0a` | **read file and stream it** (§67) |
+| `0x21` | `0x22` | `0x11a0362c` | not identified (calls `0x828225e8`) |
+| `0x23` | `0x24` | `0x11a03686` | **firmware upgrade by filename** (`Too long filename`, `Got upgrade request: %s`, `Starting upgrade`, `Upgrade complete %d`) |
+| `0x27` | `0x28` | `0x11a03256` | not identified (calls `0x8280f410`) |
+| `0x29` | `0x16`,`0x30` | `0x11a037d2` | not identified; filename-bearing (loads `Too long filename`) |
+| `0x31` | `0x12`,`0x13` | `0x11a03986` | **load code into RAM and execute it** (`RAM load complete. total size: %d`) |
+| `0x32` | `0x33` | `0x11a03444` | companion-module comms (BLE / Nordic / keyboard / factory data) |
+| `0x34` | — | `0x11a03200` | not identified; shares `0x828229da` with the SPI commands |
+| `0x35` | `0x36` | `0x11a0311c` | chip / firmware version info (`bf_os_ver:`) |
+| `0x37` | `0x38` | `0x11a02fb4` | **move / rename inside `/yaffs2`** (§67) |
+| `0x39` | `0x3a` | `0x11a02f44` | monotonic clock, 4 bytes from the global `0x8283dfd0` |
+| `0x3b` | `0x3c` | `0x11a02f82` | not identified; passes `struct+0x90` to `0x8281e816` |
+
+### Safety consequence: seven destructive commands, not one
+
+| type | effect |
+|---|---|
+| `0x10` | writes SPI flash |
+| `0x14` | formats SPI flash |
+| `0x15` | formats NAND (destroyed the affected unit) |
+| `0x23` | firmware upgrade by filename |
+| `0x29` | filename-bearing, uncharacterised — treat as write |
+| `0x31` | **loads code into RAM and executes it** |
+| `0x06` | install / upgrade sequence step |
+
+`0x31` is the most dangerous entry in the table and is strictly worse than format NAND: a RAM-load-and-execute
+primitive is a general code-execution channel that needs neither a file nor a power cycle. `0x10` and `0x14` are
+SPI writes sitting in the middle of a range a plausible sweep would walk straight through. **Any type-byte sweep
+of this console is unsafe, and the previously-published exclusion list — which named only the NAND family plus
+`0x15` — was incomplete and should not be relied on.**
+
+Read-only commands identified so far: `0x00`, `0x02`, `0x07`, `0x19`, `0x35`, `0x39`. The genuinely
+uncharacterised set is `0x17`, `0x21`, `0x27`, `0x29`, `0x34`, `0x3b`, and each must be treated as potentially
+destructive until read in full. `0x23` and `0x29` share the `Too long filename` string, suggesting they are two
+halves of the upgrade flow rather than unrelated commands. `0x828229da` is shared by `0x10` (SPI write), `0x14`
+(format SPI) and `0x34`, making `0x34` a strong candidate for a third flash operation.
+
+### Two dead ends, recorded so they are not repeated
+
+- **"The command is not recognized" is not a dispatcher fall-through.** It is one of six sibling strings in the
+  upgrade module's error-code table; string-hunting for it leads to `upgrade.cpp`.
+- **`0x1a` and `0x2b` are dispatched nowhere in the L1 code.** An earlier live sweep recorded them as answering,
+  but searching the dispatcher's code for comparisons against those values finds only a `memset` length (`0x1a` =
+  26 bytes) and an ordinary function argument. Given the decoder defects known at the time of that sweep, those
+  two results are best explained as misattribution and should not be treated as commands.
+
+## 69. Final command identification: four read primitives, and the complete destructive set (2026-10-16)
+
+§68 left six handlers uncharacterised. All six are now identified, and the practical picture changes: the
+console has **four data-dump primitives**, one of which reads SPI flash directly.
+
+### The resolved handlers
+
+- **`0x17` → `0x18`: READ SPI FLASH and stream it.** Sends a `0x18` header carrying the requested length
+  (`struct+0x8`), then loops reading through `0x8281e98e` — in `bf/spi_flash.cpp`, logging `spi read failed %d` —
+  copying into the reply buffer and sending it with `0x11a046ae` (the same sender `0x19` uses), advancing at most
+  `0xFF` bytes per chunk. Source offset from `struct+0x90`. **Read-only.** Arguments are an offset and a length.
+- **`0x21` → `0x22`: READ THE LOG and stream it.** Worker `0x828225e8` loads the timestamped log-line format
+  `[%02d-%02d-%02d %02d:%02d:%02d] %s%s` and iterates the yaffs layer until exhausted. Gated on bits 0–1 of the
+  state byte `struct+0x9c`. **Read-only.**
+- **`0x27` → `0x28`: READ through the yaffs2/NAND layer and stream it.** Reads up to `0x8000` (32 KB) via
+  `0x8280f410`, replies `0x28` with the length, streams the buffer. `0x8280f410` is yaffs2 allocator code
+  (`ext/yaffs2/yaffs_allocator.c`). Whether its argument is a raw NAND region or a filesystem object is not yet
+  pinned. **Read-only.**
+- **`0x29` → `0x30` / `0x16`: path-based filesystem operation.** Copies the 8 bytes at `struct+0x54`/`+0x58`,
+  applies the same `0x80 <= 7 + len + 1` guard as the move command (`Too long filename`), builds `/<name>` plus a
+  second component, calls `0x8280d942` — which uses the *same primitive set as the move worker* `0x8280d954`.
+  A sibling path operation; shares `Too long filename` with `0x23`. **Treat as a write.**
+- **`0x34` → no reply: SPI flash operation.** Logs `serial_command_handler.cpp` line `0x2f5`, calls `0x828229da`
+  (the same SPI transfer used by `0x10` and `0x14`), and is gated on `struct+0x9c` being 120 or 150, each
+  leading to `0x8281c5bc(value, 0)` with 20 or 10. `0x8281c5bc` programs peripheral MMRs `0x20000000`–`0x20000068`,
+  `0x20004000`, `0x20004818`, `0x20004010`, `0x20046000`, `0x20046004`. Confirmed flash operation.
+- **`0x3b` → `0x3c`: SET THE CLOCK.** Passes `struct+0x90` to `0x8281e816`, which writes the global `0x8283dfd0`
+  — the value `0x39` reads — and persists it by opening `/yaffs2/time.txt`. So `0x39` reads the clock, `0x3b`
+  sets it.
+- **`0x06` → no reply: hardware self-test.** Six callees: the CRC engine (`bf_crc.cpp`, MMRs at `0x200e0000`),
+  MMR setup at `0x2004010c`–`0x2004012c`, a SPI-info read, a read of the stored time from `/yaffs2/time.txt`,
+  and Queue helpers. A diagnostic pass — §68's guess that it was an install step was wrong.
+
+### The complete command set
+
+| type | reply | command | class |
+|---|---|---|---|
+| `0x00` | `0x01` | PING | read |
+| `0x02` | `0x03` | version block (dsp/kb/fw/os/bootloader/keyboard/ble/module) | read |
+| `0x06` | — | hardware self-test (CRC, SPI info, stored time) | benign |
+| `0x07` | `0x08` | identity / metadata | read |
+| `0x10` | `0x12`,`0x13` | write SPI flash | **write** |
+| `0x14` | `0x16` | format SPI flash | **write** |
+| `0x15` | — | format NAND | **write** |
+| `0x17` | `0x18` | **read SPI flash (offset, length) and stream** | **read** |
+| `0x19` | `0x20` | **read file under `/yaffs2/` and stream** | **read** |
+| `0x21` | `0x22` | **read the log and stream** | **read** |
+| `0x23` | `0x24` | firmware upgrade by filename | **write** |
+| `0x27` | `0x28` | **read via the yaffs2/NAND layer (≤32 KB) and stream** | **read** |
+| `0x29` | `0x30`,`0x16` | path-based filesystem operation | **write** |
+| `0x31` | `0x12`,`0x13` | load code into RAM and execute it | **execute** |
+| `0x32` | `0x33` | companion-module comms (BLE / Nordic / keyboard / factory data) | config |
+| `0x34` | — | SPI flash operation | **write** |
+| `0x35` | `0x36` | chip / firmware version info | read |
+| `0x37` | `0x38` | move / rename inside `/yaffs2` | **write** |
+| `0x39` | `0x3a` | monotonic clock read | read |
+| `0x3b` | `0x3c` | set the clock (writes `0x8283dfd0` and `/yaffs2/time.txt`) | minor write |
+
+**Safe to send: `0x00`, `0x02`, `0x07`, `0x17`, `0x19`, `0x21`, `0x27`, `0x35`, `0x39`.** Destructive or
+executing: `0x10`, `0x14`, `0x15`, `0x23`, `0x29`, `0x31`, `0x34`, `0x37`, plus the minor write `0x3b`.
+
+### Why `0x17` matters most
+
+Until now the only read channel was `0x19`, which needs an exact path inside `/yaffs2` — so nothing the
+filesystem does not expose was reachable, and the eight factory-only engines were confirmed *absent from
+`/yaffs2/system/content/engines/`* on the affected unit. A **raw SPI flash read ignores the filesystem**, so
+content stored in flash rather than as files becomes reachable. Suggested next step: scan modest regions of
+flash with `0x17` for container markers (`FORM`/`AIFF` for audio packs, and the engine magic) rather than
+dumping wholesale — the scan is cheap and read-only.
+
+## 70. THE RECOVERY — the bricked unit plays again (2026-10-16)
+
+**Outcome: the unit was restored and plays.** This section is the condensed, public record of how; the detailed
+working log is in the local `FW_SUCCESS.md` §26.
+
+### 70.1 The failure state
+
+- The unit booted only to update mode, and `<PLAY>` faulted with `iid 0x00130026`, `ADI_EXC_DATA_CPLB_MISS`,
+  `DCPLB_FAULT_ADDR 0x00000000`, `RETX 0x80117baa` and no log line naming the trigger.
+- The eight factory engines were **measured absent** from `/yaffs2/system/content/engines/` by a read over the
+  update-mode console (request `0x19`); a control read of `crush.engine` returned 1212 bytes.
+- The 24 factory sample packs were absent: the boot log reported `Calculating used sample memory: 869 kB`, i.e.
+  one ~890 KB pack, and the only pack on the content disk was a fabricated substitute.
+
+### 70.2 What was done, in order
+
+1. **Stock 1.2.45 was reinstalled** from the update-mode volume. `upgrade.log` recorded
+   `content -> OK / os -> OK / bootloader -> Already installed / ble -> Already installed / keyboard -> Already
+   installed / successfully upgraded to 1.2.45`. This repaired the **boot**: init then ran through
+   `sequencer`, `codec start`, `finalize` and `task: create task filemanager_task` with no exception.
+2. **`<PLAY>` still faulted.** The console went silent at this point — and stayed silent through every later
+   attempt, baud rate, DTR state, cable replug and power cycle.
+3. **The content disk was the wrong address for this content.** Sample packs placed in the content disk's slot
+   tree *were* imported (`importing CuckooKicks.aif...SUCCESS. New used space 869 kB`), but the factory packs and
+   engines on a healthy unit live under `system/content/{engines,samplepacks}/`, and no content-disk route writes
+   that tree. The device's own 0-byte `~`-prefixed placeholders named what it wanted
+   (`~redmountKicks.aif`, `~10.engine`, ...), and placing the four `redmount*` packs in their stubbed slots did
+   not change `used sample memory`.
+4. **The §24 updater primitive was the route that worked.** A plain (unencrypted) zip named
+   `firmware_bin_only_with_bootloader.zip` in the volume root, whose entry names are resolved against
+   `/yaffs2/upgrade/` with `..` unsanitised, so exactly one `..` reaches `/yaffs2/`. One payload was built with
+   **33 entries / 18,468,406 B**: 8 engines -> `../system/content/engines/`, 20 packs ->
+   `../system/content/samplepacks/`, 4 packs -> `../user/samplepacks/` — every destination taken from the source
+   device's own extraction manifest, and every file re-verified against that manifest's SHA-256 before packing.
+5. **The extract completed and PLAY works.** Captured on the bootloader console:
+
+```
+mass_storage: comparing firmware_bin_only_with_bootloader.zip with (null)
+upgrade: [extract] progress 18463232/18463232
+upgrade: upgrade started
+upgrade: failed to find ble firmware file
+upgrade: upgrade not compatible with this device
+bootdisk: upgrade was unsuccessful, system won't reset
+```
+
+   Zero extraction failures. Because §24 establishes that a single unwritable entry aborts the rest of the
+   archive, a completed progress counter is proof that all 33 entries were written. The `ble` gate failure is the
+   documented, harmless tail of this primitive.
+
+### 70.3 Verification
+
+- `system.log` after the working boot contains **0** matches for `exception`, `CPLB`, `FAULT_ADDR` or
+  `callstack` — the `RETX 0x80117baa` fault is absent from the record.
+- `upgrade.log` independently recorded both payload runs (`[2026-10-16 13:48]` and `13:51`/`13:52`), ending in
+  `upgrade not compatible with this device`.
+- `main: initialize [synth engine]: took 129 ms` — healthy engine load.
+
+### 70.4 Corrections this recovery forces
+
+| prior belief | corrected |
+|---|---|
+| `contentmanager: Calculating used sample memory` should rise when system content is restored | **wrong.** That figure counts the **user** sample space (the same budget the import reports as `0.8/24.0 MB`). Files written to `/yaffs2/system/content/` are not part of it, so an unchanged 869 kB is the *expected* reading. It must not be used to judge such a payload. |
+| The five engines failing with `dlm: Unsupported fill value` (analoga, chorus2, ep, fdnreverb, organ) cause the PLAY crash | **wrong.** All five still fail, and the unit plays. They remain a non-blocking residual. |
+| Restoring the system content requires a repacked, encrypted `.zfw` | **wrong.** A plain zip through the §24 path writes `/yaffs2/system/content/` directly, and the bootloader's discovery scan tests the *decrypted* name field for `.zip`, so a `.zfw` name buys nothing. |
+
+### 70.5 The console: availability rule, now established
+
+The bootloader console is served **only while the OS is not booting**. It answered while the unit was fully
+bricked and while the updater held the unit, and was silent in every state where the OS reached its init. It is a
+diagnostic for the broken state, not a general-purpose channel.
+
+### 70.6 Reusable rules for the next payload
+
+1. **Start the console capture before ejecting.** The `[extract] progress N/N` counter is the verification channel
+   for the §24 primitive; a drain that starts after the extract yields only "it presumably ran". The same action
+   produced exactly that wrong conclusion once here.
+2. **Take destinations from a source device's extraction manifest.** Its `path` field is ground truth for where
+   each file belongs: engines and most packs under `system/content/`, the four `redmount*` packs under `user/`.
+3. **Re-verify every file against the manifest's SHA-256 before packing**, then check the staged archive's hash on
+   the volume.
+4. **Remove stray `._*` AppleDouble files from the volume root.** macOS creates them despite `cp -X`, and their
+   names also match the `firmware`/`.zip` discovery checks, so the bootloader can select the 4 KB stub instead of
+   the payload. Audit the root for `*firmware*` and `*.zip` after copying.
+5. **Never boot a working unit into content mode casually.** The content-disk eject sync strips
+   `/yaffs2/user/engines/`, and a content-mode boot's `Syncronizing` stages overwrite internal files.
+6. **Never supply a `bootloader` (or `os`) component in a §24 payload.** Only a surviving bootloader can re-flash
+   anything; a wrong bootloader write is terminal.
+
+### 70.7 Residuals, all non-blocking on a unit that plays
+
+| item | status |
+|---|---|
+| `dlm: Unsupported fill value` x5 | the five DLC-only engines with no published memory slot. Their slots are known (analoga 27, chorus2 88, ep 4, fdnreverb 89, organ 18) but acting on them needs `settings/plugs.json`, which the app owns. |
+| `/yaffs2/user//arpeggiators/01-06.txt` | six files never present |
+| `libaiff: AIFF_ReadOpen failed` | one AIFF still unresolvable on some boots |
+
+**Not separated:** the payload delivered the engines and the packs together, so the log does not establish which
+was decisive. Both were plausibly necessary; separating them would need a one-variable ablation, which is not
+justified on a working unit.

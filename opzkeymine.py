@@ -19,7 +19,7 @@ from pathlib import Path
 from zipfile import ZipFile
 from Crypto.Cipher import AES
 
-REPO = Path('/Users/jakubkolcar/projects/customs/opz-firmware-notes')
+REPO = Path(__file__).resolve().parent
 APK = REPO / 'OP-Z_1.3.0_APKPure.apk'
 ZWFS = sorted(REPO.glob('z_firmware_*.zfw'))
 

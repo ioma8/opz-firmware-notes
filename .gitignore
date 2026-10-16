@@ -2,3 +2,38 @@
 .DS_Store
 __pycache__/
 *.py[cod]
+
+# --- never publish: received third-party material and derived firmware ---
+# from-sergey/ holds material received privately and explicitly asked not to be shared,
+# plus a locally decrypted firmware image. This repository is public. Keep it out.
+# The derived AES key must never be written into any tracked file either.
+from-sergey/
+
+# --- large binaries and raw device captures (excluded by design, see README) ---
+# Every pattern below was checked against `git ls-files` and matches no tracked file;
+# the text/metadata files that *are* tracked stay tracked.
+*.apk
+*.aif
+*.wav
+*.bin
+*.ldr
+*.cyacd
+engines/
+engines-official/
+old-firmware/
+
+# private write-up of the decrypted-firmware work: must never be published
+/FW_SUCCESS.md
+
+# device dumps: user projects + sample audio, never publish
+content-disk-dumps/
+# the same kind of dump, under the timestamped directory name the capture used
+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
+
+# captured device logs - crashlogs/serial.txt holds the unit's serial numbers
+crashlogs/
+
+# extracted factory content received from a third party: proprietary, never publish.
+# *.aif is already covered above, but .engine files and the manifest were NOT.
+opz-dump/
+*.engine

@@ -25,6 +25,52 @@ prohledat jeho plaintext na AES-256 klíč. Nejde o obnovu celého `opz.ldr` OS 
   do konce trval průměrně 20.510 s. Pro 20s celý cyklus je nutné zastavit capture po kompletním leak framu.
 - Plán integrace a pilotu: [`PLAN_OPZ_BOOTLOADER_ORACLE_AUTOCYCLE.md`](PLAN_OPZ_BOOTLOADER_ORACLE_AUTOCYCLE.md).
   Zatím nebylo upraveno Arduino, připojeno relé k PCB ani provedeno automatické vypnutí/zapnutí.
+- **Nezávislé potvrzení metody (§66.94):** výzkumník `_bt` veřejně uvádí, že klíč našel tak, že po získání
+  dešifrovaného firmwaru přes oracle na zařízení testoval **všech 32B posuvných oken dešifrovaného bootloaderu**
+  (trvalo to sekundy). To je přesně naše metoda a znamená, že klíč je uvnitř `bootloader.ldr` plaintextu.
+  Náš negativní výsledek tedy jen říká, že klíč leží za prvních 1 211 rozbalených bajtů – **hardware k němu
+  není potřeba**.
+- **Recenze čtyř komunitních zdrojů (§§66.94–66.96):** EP-133 SysEx, EP-133/EP-40 SysEx a glitching blog
+  nepřinášejí klíč, dešifrovaný image ani obejití limitu jednoho čtení na boot. Nejužitečnější nalezené
+  artefakty jsou *vedle* nich: OP-1 OTP dump + patchnutý `te-boot` s OTP operacemi (`Tolsi/op1dumps`)
+  a ADI EE-366 (BF70x secure boot je volitelný a defaultně vypnutý, secure debug key je 128b v OTP).
+  Pokud by BF703 **nebyl** zamčený, přímý emulátor/JTAG attach by dal paměť i NAND – tedy obnovu i
+  dešifrovaný image bez klíče; to ale vyžaduje zapojení do PCB, které dřívější instrukce vyloučila.
+- **Glitching (§66.97):** reálná technika, ale pro toto zařízení je až třetí v pořadí a je dvakrát
+  dominovaná – software oracle klíč už umí a jeden pokus o obyčejný emulátor/JTAG attach je levnější.
+  Každý publikovaný precedent (RGH, AirTag, ESP32, STM32) měl přístupný glitch bod, časovací trigger,
+  levný success oracle a opakovatelný nízkorizikový cíl; OP-Z nemá ani jedno (success oracle neexistuje –
+  „zamčeno“ ani „OTP čitelné“ nemá žádný pozorovatelný projev). Navíc RGH přeskakoval *podpis*, kdežto
+  `.zfw` klíč chrání *důvěrnost* – na klíč je potřeba přemoci čtení OTP, ne přeskočit verifikaci.
+  ADI dokumentuje BF70x secure boot jako volitelný a defaultně vypnutý, takže rozhodující otázka je
+  **lock state**. Postup, pokud se do hardwaru půjde: dokončit oracle → otevřít a najít debug pady →
+  zkusit obyčejný attach → teprve pak glitch.
+- **Nález na desce (§66.98):** na uživatelově fotu processor board je skupina **6 plochých zlatých padů
+  2×3 na čtvercové mřížce** (rozteč sloupců 158 px, řádků 154 px, průměr padu ~63 px, bez děr). Při
+  kalibraci podle poblíž plátovaného montážního otvoru (~117 px) to vychází na **rozteč ~2.4–2.9 mm a pady
+  ~1.0–1.2 mm** – tedy footprint třídy 0.1" / 2.0 mm, ale jako ploché pady (probe/pogo/pájivé terče),
+  ne průchozí díry. Z místa odchází **svazek ~5 rovnoběžných spojů** k hornímu pravému rohu.
+  Šest samostatných signálů = klasické minimum JTAG (TCK, TMS, TDI, TDO, nTRST, GND), ale stejná geometrie
+  sedí i na tovární testovací pole, programovací header companion MCU nebo kontaktní pole. **Není to
+  důkaz** – čip na fotu není vidět, takže "spoje vedou přímo do čipu" je třeba potvrdit kontinuitou.
+  Identifikace (bez zápisu do zařízení): 1) nepowerované kontinuity všech 15 dvojic, 2) pípnutí na zem,
+  3) odpor pad→zem a pad→napájení (~4.7k–10k pull-up = typický bias TCK/TMS/TDI/nTRST), 4) sledovat
+  spoje přes via na druhou stranu k čipu, 5) teprve pak emulátor / ADI BY-PASS scan test (EE-356).
+  Rozlišovač: **4 signály** = spíš SWD na ARM companion čipu; **5 signálů** = JTAG, což je případ, který
+  nás zajímá. Pokud by to byl debug port BF703 a čip nebyl zamčený, dal by obyčejný attach paměť i flash –
+  tedy obnovu i dešifrovaný firmware **bez klíče**, lépe než oracle.
+- **Nářadí pro JTAG (§66.99):** existuje **OpenOCD fork s podporou BF70x** (`deanm1278/openocd`, soubory
+  `bfinplus*.c`, `tcl/target/bf706.cfg`) — v mainline OpenOCD to není. Podporuje **JTAG i SWD** transport a
+  jeho seznam adaptérů obsahuje **Buspirate, CMSIS-DAP, FTDI, sysfsgpio, BCM2835** — tedy levný hardware.
+  Klíčové: BF70x TAP je „ADI JTAG Controller“ a DAP se musí odemknout zápisem **čtyř 32bit UserKey**
+  (128bit secure-debug klíč) přes `irscan 0xa` / `drscan`, pak `irscan 0x5` / `drscan 8 0x4`. Šablona má
+  všechny čtyři klíče defaultně `0x00000000`, takže **první pokus o attach přímo změří lock state**. Stejný
+  autor má i `bf70x-bootloader`: přes OpenOCD nahraje loader do instruction RAM a zpřístupní **externí SPI
+  flash** přes virtuální registry — to je přesně tvar obnovy, který potřebujeme.
+  Verdikt na uživatelovy přístroje: **USB logic analyzer = jen monitor** (je input-only, TCK/TMS nevybudí);
+  **Bus Pirate = ano** (je v seznamu adaptérů); **Raspberry Pi / Pico = nejlepší** (bcm2835gpio/sysfsgpio,
+  resp. CMSIS-DAP). **Před připojením změřit napětí padů** — BF70x I/O může být 1.8/2.5/3.3 V a Pi ani
+  Bus Pirate v3 nejsou 1.8V tolerantní.
 
 **Guardrails:** nikdy neposílat konzolový typ `0x15` (formátuje NAND); neinstalovat ani neupravovat engine/firmware.
   Relé použít pouze jako skutečný power cut; nejprve pilotně ověřit opětovný boot a remount. Nezaznamenávat 20s
@@ -410,3 +456,107 @@ Stav dekódování: 327 bajtů z 1 490 575, `cycles=3`, 4 pending intervaly, 142
 - Názvy a verze komponent pro plain-zip cestu (updater je hledá jako `ble firmware file`, §23).
 - Přesná faultující instrukce na `RETX 0x80117baa` (potřebuje OS image a mapu blokových destinací, §66.6).
 - Zda je v externím SPI flash klíč nebo boot state.
+
+## 10. Nové (2026-10-16) — §66.106
+
+- **Early-stop test klíče je hotový.** `toolkit/opzbootprobe.py` po každém probe re-influje prefix `bootloader.ldr`
+  a testuje každé nové 32bajtové okno přes `opzkeymine.check()`. Při nálezu zastaví běh a zapíše `KEY-FOUND.txt`.
+  Nový přepínač `--key-scan-only` spustí stejný sken nad uloženým stavem **bez zařízení**. Offline běh: 1 260
+  inflovaných bajtů, 1 229 oken, žádná shoda — souhlasí s §66.101.
+- **§66.101 páka 2 (alignment) je stažena.** Změřené úniky: 35 čtení, jen 14 dosáhlo stropu, průměr 40,9 B; po
+  vyloučení 7 známých zaseknutých čtení (masked-NUL, offset 467808) je průměr ~49,6 B, tedy **uvnitř** pásma 49–64.
+  Rozdíl proti 43 novým bajtům je povinný 16bajtový přesah. Žádná hlava k získání neexistuje; zůstává ~3 615 probů.
+- **První disassembly prefixu bootloaderu.** 1 260 bajtů = 2 celé LDR bloky + částečný třetí.
+  - blok 1 na `0x11800000` **není kód** — je to tabulka 23 IEEE-754 floatů (512,0; 12,5; 7 800,0; 105,0 …) do L1 Data SRAM;
+  - blok 2 na `0x11a00000` je kód: 341 instrukcí, **0 nedekódovatelných bajtů** (první čisté ověření Ghidra
+    blackfinplus jazyka na reálném bootloaderu OP-Z). Obsah: systémové MMR, test boot-mode pole
+    `0x20000004 & 0xf00 == 0x300`, CGU/PLL rutina v `0x11a00118`, nastavení řadiče v `0x11a001f0`;
+  - `arg` bloku 0 = `0x109c` = 4252 = 124 + 16 + 4112 → **offset další hlavičky**, potvrzeno aritmeticky.
+- **Odpověď na otázku odbrickování:** v obnovených 1 120 bajtech **není žádná NAND / partition-map / bad-block
+  logika**. Volání míří na `0x11a005a6` až `0x11a00f00`, tedy ~72 % bloku ještě chybí. Otázka „přestaví loader
+  zformátovanou NAND?“ zůstává otevřená, ale je nyní **lokalizovaná v tomto memberu** — odpověditelná dalším
+  sběrem bez klíče, bez hardwaru a bez zápisu do zařízení.
+
+## 11. Nové (2026-10-16) — §66.107: sběrač po pěti revizích
+
+- **63bajtový strop úniku je konstanta zařízení**, ne naše chyba: 79 zachycení, 75 461 rámců, maximum
+  všude přesně 128; rámec = 4 (tick) + 58 (prefix s časem) + 65 (data) + 1 (NUL), z toho poslední dva
+  bajty jsou marker `..` zařízení → **63 skutečných bajtů**. 17 rámců na 128 končí `..`, 27 pod 128
+  nikdy — nula falešných poplachů.
+- **Detekce tichého poškození:** `check_prefix_stable` (v rámci procesu) a `check_prefix_persisted`
+  (digest `plaintext-prefix.json` přes restarty). DEFLATE je prefix-stabilní, takže pozdější probe smí
+  jen přidávat; každá změna prefixu znamená chybně dekódovaný bajt. Toto je kontrola, která by odhalila
+  chybu masked-NUL (§66.89) okamžitě. Ověřeno na reálném prefixu převrácením jednoho bajtu → divergence
+  na inflovaném offsetu 141. Rozbíhající se prefix nikdy nepřepíše dobrý digest.
+- **Návratové kódy:** 0 = klíč nalezen, 3 = rozsah dokončen bez klíče, 2 = neúplný, 1 = chyba.
+- **Regresní test nad skutečnými daty:** `replay_real_captures()` přehrává uložené snímky konzole a
+  vyžaduje přesnou shodu se stavem — 35 cyklů shodně. Živé stagedování/eject v `one_cycle` na zařízení
+  tím pokryté není.
+
+## 12. Nové (2026-10-16) — §67: konzole umí ČÍST soubory (`0x19` → `0x20`)
+
+**Toto ruší §22 i všechny pozdější poznámky, že „konzole neumí vrátit bajty souboru".** Tvrzení stálo na
+sweepu, který posílal **prázdné** payloady, a na odhadnutém vylučovacím seznamu, který `0x19` zařadil do
+„NAND rodiny — neposílat", aniž to někdo otestoval. `0x19` je přitom příkaz pro čtení souboru.
+
+- **Request `0x19`, reply `0x20`.** Payload = jedna NUL-terminovaná cesta **relativně k `/yaffs2/`.**
+- Prefix potvrzuje vlastní log zařízení: `error opening file /yaffs2/<cesta>, error type: rb ENOENT`.
+- **Je pouze pro čtení** — otevře, přečte, pošle, zavře. Nic nezapisuje, nepřesouvá, nemaže. Lze bezpečně
+  dávkovat přes mnoho cest.
+- Soubor chodí jako posloupnost `0x20` rámců; slepení payloadů v pořadí doručení dá přesně původní soubor.
+  Ověřeno bajt po bajtu od 1 428 B do 706 990 B.
+- **Špatná cesta nevrátí žádný rámec**, jen log rámce (routing `0x1E`, type `0x04`, `yaffsfs: yaffs: error:
+  ENOENT`).
+- Nemá parametr offsetu ani délky — vždy čte celý soubor od začátku.
+
+**Dvě pasti v protokolu:** PONG je rámec s nulovou délkou (`C0 1E 01 00 00 00 00`), takže dekodér, který
+`len == 0` zahazuje, liveness nikdy nezaznamená; a otevření portu resetuje linku, takže **první zapsaný rámec
+se ztratí** — před příkazem je nutné port „zahřát" (PING).
+
+**Změřený výsledek:** osm továrních enginů (`chord`, `digital`, `electric`, `fm003b`, `ministringshort`,
+`saw013a`, `tapetwo`, `volt`) **na zařízení v `/yaffs2/system/content/engines/` není** — všech osm vrátí
+prázdno, kontrola `crush.engine` vrátí 1 212 B shodných s firmwarem. Dřívější „nejsou v žádném balíčku" je tím
+povýšeno na měření přímo na zařízení.
+
+**Pozor na `0x37`:** vypadá jako kopírování, ale je to **přesun (rename)** v rámci `/yaffs2`; zdroj i cíl bere
+z payloadu a režim je jen slovo příznaků — žádný copy režim neexistuje. Status `0xD3` = přesun proběhl,
+`0xE1` = neproběhl. Argumenty držet pod ~60 bajtů (sloty jsou `0x40` od sebe).
+
+**Content-mode mass storage je FILTROVANÝ pohled, ne surový strom.** Dva staging soubory, které se ve výpisu
+nikdy neobjevily, na zařízení stále byly a oba se na první pokus vrátily; naopak `how_to_import.txt` a
+`import.log` jsou vidět v kořeni svazku, ale jako `/yaffs2/user/how_to_import.txt` vrací `ENOENT`. Existenci
+souboru spolehlivě ověří jen `0x19`.
+
+**Otevřené:** kde osm chybějících enginů je (chybí primitivum pro výpis adresáře); nezpracované handlery
+`0x10`, `0x14`, `0x17`, `0x31`, `0x23`, `0x27`, `0x32`, `0x34`.
+
+## 13. VÍTĚZSTVÍ (2026-10-16) — bricknutá OP-Z znovu hraje
+
+**Stav: přístroj je opravený a přehrává.** Podrobný záznam je v `FW_SUCCESS.md` §26, veřejná verze v
+`FIRMWARE_ANALYSIS.md` §70.
+
+**Výchozí stav:** boot pouze do update módu; `<PLAY>` padalo na `RETX 0x80117baa` / `iid 0x00130026` /
+`DCPLB_FAULT_ADDR 0`; osm továrních engineů naměřeno jako chybějící v `/yaffs2/system/content/engines/`;
+24 továrních sample packů chybělo.
+
+**Co to spravilo:** přeinstalace stock 1.2.45 opravila **boot** (žádná výjimka, init doběhne do
+`task: create task filemanager_task`), ale `<PLAY>` stále padalo. Teprve payload přes **§24 updater primitive**
+(prostý nešifrovaný zip `firmware_bin_only_with_bootloader.zip` v rootu svazku, cesty s `..` bez sanitizace)
+dostal soubory do systémového stromu: 33 položek / 18 468 406 B — 8 engineů do `system/content/engines/`,
+20 packů do `system/content/samplepacks/`, 4 packy `redmount*` do `user/samplepacks/`. Extrakce doběhla
+(`[extract] progress 18463232/18463232`, nula chyb) a **`<PLAY>` funguje.**
+
+**Důležité opravy dřívějších závěrů:**
+
+- `Calculating used sample memory` počítá jen **uživatelský** sample prostor — 869 kB je po úspěchu správně.
+- Pět engineů s `dlm: Unsupported fill value` **není** příčina pádu PLAY — přístroj hraje i s nimi.
+- Šifrovaný `.zfw` **není** potřeba pro zápis do `system/content/`; stačí prostý zip přes §24.
+- Konzole bootloaderu odpovídá **jen dokud se OS nezačne bootovat** — v běžícím stavu je němá.
+
+**Pravidla pro příště:** spustit sběr konzole **před** ejectem (čítač `[extract] progress` je jediná verifikace);
+cílové cesty brát z manifestu zdrojového přístroje; hashovat na obou koncích; po kopírování smazat `._*` soubory
+z rootu svazku; **nikdy** nebootovat funkční přístroj do content módu (eject sync maže
+`/yaffs2/user/engines/`); **nikdy** nedávat `os`/`bootloader` do §24 payloadu.
+
+**Zbytky (neblokující):** pět DLC engineů bez publikovaného memory slotu, chybějící `arpeggiators/01-06.txt`,
+občas `libaiff: AIFF_ReadOpen failed`.
