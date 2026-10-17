@@ -135,16 +135,18 @@ def render(freq=220.0, decay=1.0, inharmonicity=0.75, brightness=0.5, seconds=2.
     return out
 
 
-def measure_freq(buf, skip=64, lo=20.0, hi=5000.0, steps=520):
+def measure_freq(buf, skip=64, lo=20.0, hi=5000.0, steps=520, window=4096):
     """Pitch as the strongest spectral peak - a direct DFT scan, not autocorrelation.
 
     Autocorrelation was tried first and gave octave errors: an unnormalised sum is dominated by
     short lags on a decaying multi-mode signal, and it reported 56 Hz for a 220 Hz note. Scanning
-    the spectrum for its maximum has no such failure mode and needs no window functions.
+    the spectrum for its maximum has no such failure mode and needs no window functions. `window`
+    matters for low notes: 4096 samples is only 2.6 cycles of 32.7 Hz, and the resulting frequency
+    resolution would be mistaken for engine error.
     """
     # block() writes interleaved stereo (two words per frame, as the ABI requires), so analysis has
     # to take one channel: reading it as mono doubles every sample and reports exactly half the pitch.
-    seg = [b / 0x80000000 for b in buf[skip * 2:skip * 2 + 4096 * 2:2]]
+    seg = [b / 0x80000000 for b in buf[skip * 2:skip * 2 + window * 2:2]]
     best_f, best_m = 0.0, -1.0
     f = lo
     ratio = (hi / lo) ** (1.0 / steps)
@@ -162,6 +164,25 @@ def measure_freq(buf, skip=64, lo=20.0, hi=5000.0, steps=520):
         if m > best_m:
             best_f, best_m = f, m
         f *= ratio
+    # refine around the coarse peak: the log scan's step is ~0.9% at the low end, which would
+    # otherwise be reported as engine error on the lowest notes
+    lo_f, hi_f = best_f * 0.98, best_f * 1.02
+    for _ in range(200):
+        pass
+    f = lo_f
+    step = (hi_f - lo_f) / 200
+    for _ in range(200):
+        w = 2.0 * math.pi * f / FS
+        cw, sw = math.cos(w), math.sin(w)
+        cr, sr, re, im = 1.0, 0.0, 0.0, 0.0
+        for x in seg:
+            re += x * cr
+            im += x * sr
+            cr, sr = cr * cw - sr * sw, sr * cw + cr * sw
+        m = re * re + im * im
+        if m > best_m:
+            best_f, best_m = f, m
+        f += step
     return best_f
 
 

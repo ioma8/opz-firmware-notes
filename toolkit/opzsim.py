@@ -102,7 +102,6 @@ class Machine:
     # ---- fetch/execute ------------------------------------------------------------------------
     def run(self, limit=20_000_000):
         while True:
-            self.steps += 1
             if self.steps > limit:
                 raise RuntimeError("step limit")
             o = self._off(self.pc, 2)
@@ -111,6 +110,7 @@ class Machine:
                 return self.r[0]
 
     def step(self, h, o):
+        self.steps += 1
         m = self.mem
         nxt = self.pc + 2
 

@@ -575,3 +575,69 @@ Two lessons worth the space. **Pointer-walking code has no visible offsets** —
 of how many reads happened, so a single `[P0++]` in the wrong place silently shifts a whole structure. And
 **the failure looked like excessive damping, not like misalignment**, which is exactly the shape of bug that a
 "does it make sound?" test passes: it did make sound, for one block.
+
+## 11.17 Installing a new engine on a real unit: what actually works
+
+Three routes were tried on hardware (firmware 1.2.45 / OS 1.2.43). Only the third worked,
+and the two failures each answered a question that reading code had left open.
+
+### Route 1 - copy the .engine onto the content disk: refused by name, not by content
+
+`struck.engine` placed at `samplepacks/6-lead/08/` produced:
+
+```
+[IMPORT STARTED]
+Reading content disk...SUCCESS
+  rejecting invalid engine : /samplepacks/6-lead/08/struck.engine
+```
+
+The obvious reading - "my module is malformed" - is wrong, and one control experiment disproves it: a
+**pristine factory `chorus.engine`, byte-identical to the shipped module, was rejected the same way once
+renamed** to `probe.engine`. Identical bytes, different name, same refusal. So the check is a **plug-registry
+lookup, not a file check**: the OS only accepts an engine whose plug it already knows. That also explains the
+message's other half from doc 02: `Ignoring file of wrong type: %s` exists for extensions outside
+`wav|aif|aiff|engine`, so `.engine` is recognised as a type and judged by identity afterwards.
+
+Consequence: a new engine can never be installed by dropping a file on the content disk. The registry entry
+has to exist first, and that file lives in system content, which content mode does not expose.
+
+### Route 2 - a three-entry update zip: refused before extraction
+
+Staging `firmware_bin_only_with_bootloader.zip` containing only the engine and a patched `plugs_patch.json`
+never reached extraction:
+
+```
+[2026-10-17 15:35] upgrade started
+failed to find ble firmware file
+[2026-10-17 15:35] upgrade not compatible with this device
+```
+
+The updater validates the archive as a *firmware* archive before it extracts anything, and the component it
+wanted first was the BLE image. The strings in `bootloader.ldr` name the whole set it expects under
+`/yaffs2/upgrade/`: `firmware/firmware.version`, `firmware/blackfin/bin/{opz.ldr,opz.crc32,bootloader.ldr,
+os.version,bootloader.version}`, `firmware/nordic/bin/{nrf52832_opz.bin,nrf52832_opz.dat,nordic.version}`,
+`firmware/psoc_keyboard/bin/{SnakeKeyboardModule_*.cyacd,keyboard.version}` and
+`firmware/blackfin/system/content/` - the last being exactly where an engine belongs.
+
+### Route 3 - the whole firmware tree plus the engine: works
+
+Repacking the unit's own 1.2.45 tree (32 entries, `ZIP_STORED`, per-entry CRCs correct) with the engine added
+at `firmware/blackfin/system/content/engines/struck.engine` and `plugs_patch.json` carrying six `auto_import`
+entries was accepted, and the device recorded the plug by writing its own markers:
+
+```
+samplepacks/5-bass/05/~160.engine   samplepacks/6-lead/08/~160.engine
+samplepacks/7-arpeggio/09/~160.engine   samplepacks/8-chord/07/~160.engine
+```
+
+Four 0-byte `~160.engine` files, one per synth track, matching the `tracks: [4,5,6,7]` of the registry entry -
+which is the device's own statement that plug id 160 "struck" is registered and assigned. Installing through
+`toolkit/install_struck.py --full`, which builds this payload, is therefore the reproducible route.
+
+Two traps found along the way, both about *where* rather than *what*:
+
+* a zip copied while the unit is in **content mode** is silently eaten by the content importer - no log line,
+  no error, and `upgrade.log` never gains an entry, so the zip simply disappears. It must be staged while the
+  volume shows `systeminfo/`, which is update mode;
+* macOS leaves an AppleDouble `._<name>` alongside every file it writes to a FAT volume. Those must be removed
+  from an update payload and from staged content, since they are unexpected entries in both paths.

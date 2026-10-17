@@ -69,6 +69,31 @@ def build_payload(engine_bytes, plugs_json):
     return buf.getvalue()
 
 
+def build_full_payload(tree, engine_bytes, plugs_json):
+    """A payload the bootloader accepts: the genuine firmware tree plus our files.
+
+    A three-entry zip is refused before extraction - the installer looks for the BLE component
+    (`failed to find ble firmware file`) and logs `upgrade not compatible with this device`. It
+    extracts a whole `firmware/` tree and installs `firmware/blackfin/system/content/` from it, so
+    the engine and the patched registry ride along inside that tree.
+    """
+    import io
+    buf = io.BytesIO()
+    eng = f"firmware/blackfin/system/content/engines/{ENGINE_NAME}.engine"
+    reg = "firmware/blackfin/system/content/settings/plugs_patch.json"
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:
+        for f in sorted(tree.rglob("*")):
+            if not f.is_file() or f.name.startswith("._") or f.name == ".DS_Store":
+                continue
+            rel = f"firmware/{f.relative_to(tree).as_posix()}"
+            if rel == eng or rel == reg:
+                continue                      # ours replaces the factory copy
+            z.writestr(rel, f.read_bytes())
+        z.writestr(eng, engine_bytes)
+        z.writestr(reg, json.dumps(plugs_json, indent=1))
+    return buf.getvalue()
+
+
 def main(argv):
     dry = "--dry-run" in argv
     out = pathlib.Path(argv[argv.index("-o") + 1]) if "-o" in argv else pathlib.Path("struck_payload.zip")
@@ -85,8 +110,10 @@ def main(argv):
     print(f"plugs    auto_import now holds {len(auto)} entr{'y' if len(auto) == 1 else 'ies'}; "
           f"ours is id {PLUG_ID} on tracks {TARGET_TRACKS}")
 
-    payload = build_payload(engine, plugs)
-    print(f"payload  {len(payload)} B (ZIP_STORED)")
+    tree = REPO / "from-sergey" / "firmware"
+    full = "--full" in argv
+    payload = build_full_payload(tree, engine, plugs) if full else build_payload(engine, plugs)
+    print(f"payload  {len(payload)} B (ZIP_STORED, {'full firmware tree' if full else 'engine files only'})")
     with zipfile.ZipFile(__import__("io").BytesIO(payload)) as z:
         for info in z.infolist():
             print(f"         {info.filename:52s} {info.file_size:7d} B")
