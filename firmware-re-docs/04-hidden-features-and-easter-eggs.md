@@ -562,6 +562,46 @@ attenuator, an audio routing A/B switch or a `set mode` companion message. The w
 rodata window whose `__FILE__` is `ScoreContext.cpp`, the entry points are vtable slots rather than named
 commands, and every one of them is additionally gated on the Score context being active.
 
+## 4.6c Songs, chains and bounces are three different things
+
+The word "song" appears in three unrelated places in `opz.ldr`, and separating them matters because only one
+of them is the feature the word suggests.
+
+**`RenderSongContext.cpp` is the bounce renderer, not an arrangement engine.** Its rodata block is a WAV
+writer end to end: `init bounce: %s` (`0x8111371c`), `RIFF----WAVEfmt ` (`0x81113730`), `finalize bounce,
+written %u` (`0x81113744`), `%sbounces/bounce0%d/` (`0x8111377c`), `done writing %llu bytes`
+(`0x811137b8`) and `Failed to find available bounce folder. Aborting bounce operation.` (`0x811137d4`), next
+to `bounce.wav` (`0x8111363c`), `bounces` (`0x81113660`) and the file modes `rb`/`ab`/`r+b`/`w+b`
+(`0x81113610`–`0x8111361c`). The context's own name string `RenderSong` (`0x811135d4`) and its source path
+(`0x811136dc`) sit in the same 700-byte window with `Start rendering song` (`0x81113764`) and `Done rendering
+song. Writing %s.` (`0x81113794`). So "song" inside that translation unit means **the performance currently
+playing**, rendered offline to a RIFF file in a numbered bounce folder — which is the documented "up to five
+bounces" feature, not pattern chaining.
+
+**A chain is a first-class synced state.** `ChainState has wrong size.` (`0x8110f29c`) sits inside the
+state-synchronisation block `0x8110f1c0`–`0x8110f320`, which is a wall of fixed-size state guards in the same
+shape — `PlayState`, `SynthState`, `MixerState`, `PatternState`, `PositionState`, `UiState`, `SamplerState`,
+`SamplerUIState`, plus `persistent data has wrong size` and `failed to read global data message`. That is the
+companion-sync protocol: each named state is a blob whose size must match between the two ends. So a chain is
+a modelled object the device can exchange with its host, even though nothing in this analysis shows it being
+edited or played from the device's own UI.
+
+**The sequencer understands MIDI song position.** `received song position pointer %d ` (`0x81059f98`) follows
+the `Sequencer.cpp` path string (`0x81059f3c`) immediately after `reset global tick: %d` (`0x81059f80`), so
+`Sequencer.cpp` parses Song Position Pointer and reacts to it. A song-position message is meaningless without a
+linear timeline to point into, which is independent corroboration that a song timeline exists.
+
+`selectSong %d` (`0x81113394`) is the one string that most suggests a *selectable* song: it sits at the head of
+the sequencer-context rodata block that also holds `Pattern` (`0x8111335c`), and that block begins with the
+`DefaultContext.cpp` path (`0x8111322c`) whose `set additative record mode` strings follow — so the caller of
+`selectSong` is a sequencer context, not the bounce renderer.
+
+**What this does and does not establish.** It establishes that chaining, song selection and MIDI song position
+are all modelled in the firmware, and that offline rendering is the bounce path rather than a song-arrangement
+path. It does **not** establish a user-reachable song mode: no string here is a UI label, and none of the three
+was traced to a key or menu. An earlier reading of this session's own notes treated `RenderSongContext` as a
+possible dormant arrangement engine; the WAV-writer block above supersedes that.
+
 ## 4.7 Method note: how these commands were found
 
 For anyone continuing this work, the technique that worked:

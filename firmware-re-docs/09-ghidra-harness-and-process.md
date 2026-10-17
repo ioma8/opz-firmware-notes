@@ -32,6 +32,12 @@ Load bases, and how each one was *derived* rather than guessed, are in the `## L
 the short version is that getting `0x23000` and `0x1900` wrong produces code that decompiles confidently and
 means nothing.
 
+**The projects are regenerable, so treat them as scratch — but keep the *images* somewhere durable.** A
+mid-session loss of the whole working tree (`/tmp/opz-fw`, holding the Ghidra projects, the expanded engine
+images and every dump) cost a full re-import of `opz.ldr` before work could continue. The decrypted images live
+in the repository's untracked `from-sergey/` tree and the scripts are committed, so nothing irreplaceable was
+lost — but nothing derived should be stored only in a temporary directory either.
+
 **Import once** (analysis runs during import, several minutes for the Blackfin images):
 
 ```bash
@@ -87,7 +93,7 @@ Four things about that line are deliberate and each one cost a run to learn:
 
 ## 9.2 The script inventory — and each tool's blind spot
 
-Ten scripts, all standalone `GhidraScript`s, all committed under `ghidra-scripts/`. They print to a file whose
+Eleven scripts, all standalone `GhidraScript`s, all committed under `ghidra-scripts/`. They print to a file whose
 name is the first argument.
 
 | script | answers | **cannot** answer |
@@ -102,6 +108,7 @@ name is the first argument.
 | `RangeStr.java` | printable strings in a range, with addresses | strings split across a non-printable byte |
 | `FindDword.java` | every occurrence of a 4-byte value in every initialised block | Blackfin constants (they are split immediates — see `FindXImm`) |
 | `LogMap.java` | `function → file:line → format` for a whole code range, by resolving backwards from log calls | functions that never log (many do not) |
+| `EngineAsm.java` | assembles source lines with the program's own SLEIGH assembler and prints the resulting bytes | **on the Blackfin+ module it assembles nothing at all** — see the trap below; it is kept because it proves that negative and works for other languages |
 
 **`LogMap` deserves its own paragraph**, because it is the highest-yield tool here and it is the one that is not
 obvious. Every diagnostic log in this firmware goes through `FUN_8012f1e4(file, line, format, …)`, and all three

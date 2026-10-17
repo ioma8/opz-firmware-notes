@@ -380,6 +380,15 @@ can contain the payload, and a retraction is recorded at the claim it overturns.
     two words per frame, with Q15 parameters and Q16 phase. See doc `11` §11.1 to §11.7 — including §11.6, which
     lists the four things still unknown, of which the instrument render's output-buffer argument is the blocker.
 
+28. **"Song" means three different things, and only one of them is a song.** See doc `04` §4.6c, which separates them:
+    `RenderSongContext.cpp` is the **bounce renderer** — its rodata block is a WAV writer (`RIFF----WAVEfmt `,
+    `init bounce: %s`, `finalize bounce, written %u`, `%sbounces/bounce0%d/`, `done writing %llu bytes`) and its
+    "song" is the performance currently playing, so offline rendering is the bounce path and not an arrangement
+    path; `ChainState` is instead a **first-class synced state**, one of a wall of fixed-size companions to
+    `PlayState`/`PatternState`/`PositionState` in the state-sync protocol; and `Sequencer.cpp` **parses MIDI Song
+    Position Pointer**, which needs a linear timeline to point into. Chaining, song selection and song position
+    are therefore all modelled — but none of it is shown to be user-reachable.
+
 ## Confidence levels
 
 Every fact in these documents is marked, implicitly or explicitly, as one of:
