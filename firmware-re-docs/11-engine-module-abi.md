@@ -337,12 +337,26 @@ lifted from `volt`/`chord`. This table is the same information as a plan:
 | `LINK n`, `UNLINK`, `RTS` | `35-Linkage`, `01-ProgCtrl` | **verified** | `LINK 0x78` → `00e81e00` (the frame field is in **words**: 0x1E); `UNLINK` → `01e8`; `RTS` → `0010` |
 | `JUMP.S` | `10-UJump` | **verified** | 12-bit half-word offset from the instruction: `bc22` reaches +0x578 |
 | `Rd = Rs0 * Rs1 (T)` | `26-Dsp32Mult` | **verified (layout)** | second half solved: `h2 = 0x2000 | dst<<6 | src0<<3 | src1`; the first half appears as `0xca31` or `0xc231` for the same displayed form, differing in bit 11 |
-| `Rd = imm7` | `16-CompI2op` | **layout known** | sig 6, r@11 (0 = dreg, 1 = preg), opc@10, value@3-9 sign-extended, dst@0-2; `R2 = 0x20` → `6102` |
-| `if CC JUMP`, `if !CC JUMP` | `09-BrCC` | **layout known** | sig 1, T@11 (1 = CC), B@10, 10-bit half-word offset from the instruction; `if !CC ... (BP)` → offset 2 reaches +4 |
+| `Rd = imm7` | `16-CompI2op` | **verified** | `R2 = 0x20` → `6102`, `R1 = 0` → `6001`; 13/13 exact across both engines |
+| `Rd = imm32` | `instr64/38-LdImm` | **verified** | an **eight-byte** instruction: `0xDA00|reg`, immH, immL, dummy. `R2 = 0x7fffffff` → `02daff7fffff0000`. 18/18 exact |
+| `if CC JUMP`, `if !CC JUMP` | `09-BrCC` | **verified** | `if !CC JUMP +4 (BP)` → `0214`; 13/13 exact across both engines |
 | `Rd = Rs >>> n` | `29-Dsp32ShfImm` | **partially solved** | second half: sop@14-15, hls@12-13, dst@9-11, imm@3-8 **signed**, src@0-2. For the logical form (sop 0) the field holds **-n**: n = 6, 1 and 31 encode as 58, 63 and 33. The arithmetic form (sop 2) does not follow that rule in the samples collected and is unresolved |
-| `P += imm`, `[P + off]` | `13-Ptr2op`, `17-LdStPmod` | **not started** | `P1 += 8` is a *32-bit* instruction (`416c 88e4`), so it is not the 16-bit pointer class |
+| `P += imm`, `[P + off]` | `13-Ptr2op`, `17-LdStPmod` | **deliberately avoided** | `P1 += 8` is a 32-bit instruction (`416c 88e4`) whose immediate field (`6f81` for -0x10, `6c41` for +8) is not yet decoded. The engine design does not need it: per-mode state is walked with post-increment, and a second pointer is obtained with the register move `P3 = P4` instead of an offset |
 
 Two consequences worth carrying forward. First, **`LINK`'s frame field is in words, not bytes** — a reader who
 assumes bytes builds a frame four times too large and corrupts the caller's stack. Second, the shift field's
 sign convention means a logical right shift is written as a negative count, which is exactly the kind of
 detail that produces code that assembles, loads and computes nonsense.
+
+The encoder now covers every form the DSP needs — **26/26 verified against factory-engine bytes**, including
+three found this round: conditional branches, the 7-bit immediate and the eight-byte 32-bit immediate. Two
+are worth spelling out because both disguise their shape:
+
+- **`Rd = imm32` is eight bytes**, not four (`0xDA00|reg`, immH, immL, dummy). Reading four bytes of it makes
+  the immediate look half-encoded, which is exactly the misreading that stalled this earlier.
+- **`LINK`'s frame field is in words**, so `LINK 0x78` stores `0x1E`.
+
+A third trap belongs to the harness rather than the ISA: hand-written byte expectations in `opzasm.SELFTEST`
+were wrong three times on 32- and 64-bit forms, always by writing the half-words in big-endian order. The
+programmatic check — re-encode every instruction found in a real engine and compare against the bytes in the
+image — was right every time. **Expectations should be lifted from the image, never typed from the listing.**

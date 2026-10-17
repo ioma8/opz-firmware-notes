@@ -9,9 +9,10 @@ the bit-field diagrams, and each emitted form is checked against bytes taken out
 engines (`engines-official/*.engine`) -- see SELFTEST.
 
 Verified so far: 16-bit register move, 16-bit add/subtract, post-increment load and store,
-LINK/UNLINK/RTS, short jumps and the 32-bit multiply. NOT yet implemented: displacement
-load/store (`[P3 + 0xc] = R2` is a different class with a 6-bit offset field), shifts by immediate,
-pointer-plus-immediate, LSETUP and conditional branches. Everything else raises
+LINK/UNLINK/RTS, short jumps, the 32-bit multiply, conditional branches, and both immediate
+loads (7-bit and the 8-byte 32-bit form). That is the whole set the DSP needs. NOT yet implemented: displacement load/store
+(`[P3 + 0xc] = R2`) and pointer-plus-immediate, both of which the engine design avoids: state is
+walked with post-increment and a pointer copy (`P3 = P4`) instead. Everything else raises
 NotImplementedError rather than emitting a guess, because a wrong encoding produces an engine that
 loads and misbehaves instead of failing.
 
@@ -134,6 +135,39 @@ def mul32(dst, src0, src1, variant=0xCA31):
     return _u16(variant, h2)
 
 
+def brcc(here, target, cond=True, bp=False):
+    """`if CC JUMP` / `if !CC JUMP` (16-bit BrCC, 09-BrCC.sinc).
+
+    sig 0x1, T@11 (1 = CC), B@10 (the (BP) predicate), 10-bit half-word offset
+    relative to the instruction itself.
+    """
+    off = (target - here) // 2
+    if not -0x200 <= off <= 0x1FF or (target - here) % 2:
+        raise Unsupported("branch out of range or misaligned")
+    w = 0x1000 | ((1 if cond else 0) << 11) | ((1 if bp else 0) << 10)
+    return _u16(w | (off & 0x3FF))
+
+
+def ldimm7(dst, value, preg=False):
+    """`Rd = imm7 (X)`, sign-extended (16-bit CompI2op, 16-CompI2op.sinc)."""
+    if not -64 <= value <= 63:
+        raise Unsupported(f"{value} does not fit the 7-bit signed immediate")
+    regs = P_REGS if preg else D_REGS
+    w = (0x6 << 12) | ((1 if preg else 0) << 11) | ((0 << 10)) | ((value & 0x7F) << 3)
+    return _u16(w | (regs.index(dst) & 7))
+
+
+def ldimm32(dst, value):
+    """`Rd = imm32 (X)` - an EIGHT-byte instruction (LdImm, instr64/38-LdImm.sinc).
+
+    Four half-words: a fixed 0xDA00|reg header, the immediate's high half, its low half, and a
+    zero dummy word. Reading only four bytes of this form is what made the immediate look
+    half-encoded earlier; the display hides the length.
+    """
+    v = value & 0xFFFFFFFF
+    return _u16(0xDA00 | (D_REGS.index(dst) & 7), (v >> 16) & 0xFFFF, v & 0xFFFF, 0)
+
+
 # (source text, encoder call, expected bytes as seen in a factory engine)
 SELFTEST = [
     ("P5 = R0",    lambda: regmv("P5", "R0"),        bytes.fromhex("2832"), "volt render prologue 0x81bf016a"),
@@ -157,7 +191,13 @@ SELFTEST = [
     ("R6 = R4 * R6 (T)", lambda: mul32("R6", "R4", "R6"), bytes.fromhex("31caa621"), "volt render 0x81bf034a"),
     ("R0 = R4 * R2 (T)", lambda: mul32("R0", "R4", "R2"), bytes.fromhex("31ca2220"), "volt render 0x81bf0314"),
     ("R2 = R7 * R5 (T)", lambda: mul32("R2", "R7", "R5"), bytes.fromhex("31cabd20"), "volt render 0x81bf0424"),
+    ("if !CC JUMP +4 (BP)", lambda: brcc(0x81bf0178, 0x81bf017c, cond=False, bp=True), bytes.fromhex("0214"), "volt render 0x81bf0178"),
+    ("R2 = 0x20", lambda: ldimm7("R2", 0x20), bytes.fromhex("0261"), "chord onNoteOn 0x81be29c6"),
+    ("R1 = 0", lambda: ldimm7("R1", 0), bytes.fromhex("0160"), "chord onNoteOn 0x81be29c4"),
+    ("R2 = 0x7fffffff", lambda: ldimm32("R2", 0x7FFFFFFF), bytes.fromhex("02daff7fffff0000"[:16]), "volt render 0x81bf0188"),
+    ("R3 = 0x1020408", lambda: ldimm32("R3", 0x01020408), bytes.fromhex("03da020108040000"), "volt render 0x81bf02b8"),
 ]
+
 
 
 
