@@ -35,7 +35,7 @@ means nothing.
 **The projects are regenerable, so treat them as scratch — but keep the *images* somewhere durable.** A
 mid-session loss of the whole working tree (`/tmp/opz-fw`, holding the Ghidra projects, the expanded engine
 images and every dump) cost a full re-import of `opz.ldr` before work could continue. The decrypted images live
-in the repository's untracked `from-sergey/` tree and the scripts are committed, so nothing irreplaceable was
+in the repository's untracked firmware tree and the scripts are committed, so nothing irreplaceable was
 lost — but nothing derived should be stored only in a temporary directory either.
 
 **Import once** (analysis runs during import, several minutes for the Blackfin images):
