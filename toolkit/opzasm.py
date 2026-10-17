@@ -9,8 +9,8 @@ the bit-field diagrams, and each emitted form is checked against bytes taken out
 engines (`engines-official/*.engine`) -- see SELFTEST.
 
 Verified so far: 16-bit register move, 16-bit add/subtract, post-increment load and store,
-LINK/UNLINK/RTS and short jumps. NOT yet implemented: displacement load/store (`[P3 + 0xc] = R2`
-is a different class with a 6-bit offset field), the 32-bit multiply, shifts by immediate,
+LINK/UNLINK/RTS, short jumps and the 32-bit multiply. NOT yet implemented: displacement
+load/store (`[P3 + 0xc] = R2` is a different class with a 6-bit offset field), shifts by immediate,
 pointer-plus-immediate, LSETUP and conditional branches. Everything else raises
 NotImplementedError rather than emitting a guess, because a wrong encoding produces an engine that
 loads and misbehaves instead of failing.
@@ -122,6 +122,18 @@ def jump_s(here, target):
     return _u16(0x2000 | (off & 0xFFF))
 
 
+def mul32(dst, src0, src1, variant=0xCA31):
+    """`Rd = Rs0 * Rs1 (T)` - 32-bit multiply (Dsp32Mult, 26-Dsp32Mult.sinc).
+
+    The second half is fully solved against real code: h2 = 0x2000 | dst<<6 | src0<<3 | src1.
+    The first half carries the modifier set; two variants appear in the factory engines for the
+    same displayed `(T)` form (0xca31 and 0xc231), differing only in bit 11, which is an
+    allocation detail the disassembly does not show. The common one is the default here.
+    """
+    h2 = 0x2000 | ((D_REGS.index(dst) & 7) << 6) | ((D_REGS.index(src0) & 7) << 3) | (D_REGS.index(src1) & 7)
+    return _u16(variant, h2)
+
+
 # (source text, encoder call, expected bytes as seen in a factory engine)
 SELFTEST = [
     ("P5 = R0",    lambda: regmv("P5", "R0"),        bytes.fromhex("2832"), "volt render prologue 0x81bf016a"),
@@ -141,7 +153,12 @@ SELFTEST = [
     ("RTS", rts, bytes.fromhex("1000"), "volt render 0x81bf06fa"),
     ("JUMP.S +0x578", lambda: jump_s(0x81bf017a, 0x81bf06f2), bytes.fromhex("bc22"), "volt render 0x81bf017a"),
     ("LINK 0x78", lambda: link(0x78), bytes.fromhex("00e81e00"), "volt render prologue 0x81bf0158"),
+    ("R3 = R3 * R3 (T)", lambda: mul32("R3", "R3", "R3"), bytes.fromhex("31cadb20"), "volt render 0x81bf01c4"),
+    ("R6 = R4 * R6 (T)", lambda: mul32("R6", "R4", "R6"), bytes.fromhex("31caa621"), "volt render 0x81bf034a"),
+    ("R0 = R4 * R2 (T)", lambda: mul32("R0", "R4", "R2"), bytes.fromhex("31ca2220"), "volt render 0x81bf0314"),
+    ("R2 = R7 * R5 (T)", lambda: mul32("R2", "R7", "R5"), bytes.fromhex("31cabd20"), "volt render 0x81bf0424"),
 ]
+
 
 
 
