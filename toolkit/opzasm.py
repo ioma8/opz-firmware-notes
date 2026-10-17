@@ -8,7 +8,10 @@ transcribed from the processor module's own SLEIGH source
 the bit-field diagrams, and each emitted form is checked against bytes taken out of the factory
 engines (`engines-official/*.engine`) -- see SELFTEST.
 
-Verified so far: 16-bit register move and 16-bit add/subtract. Everything else raises
+Verified so far: 16-bit register move, 16-bit add/subtract, post-increment load and store,
+LINK/UNLINK/RTS and short jumps. NOT yet implemented: displacement load/store (`[P3 + 0xc] = R2`
+is a different class with a 6-bit offset field), the 32-bit multiply, shifts by immediate,
+pointer-plus-immediate, LSETUP and conditional branches. Everything else raises
 NotImplementedError rather than emitting a guess, because a wrong encoding produces an engine that
 loads and misbehaves instead of failing.
 
@@ -84,6 +87,41 @@ def addsub32(dst, src0, src1, op):
     return _u16(w)
 
 
+def ldst(ptr, reg, store=False, sz=0, aop=0, z=0):
+    """`[P++] = R` / `R = [P++]` and friends (16-bit LdSt, 18-LdSt.sinc).
+
+    sz 0/1/2 = 32/16/8 bit, aop 0 = [P++], 1 = [P--], 2 = [P], z 0 = data reg,
+    store selects the lsW bit.
+    """
+    w = (0x9 << 12) | (sz << 10) | ((1 if store else 0) << 9) | (aop << 7) | (z << 6)
+    w |= (P_REGS.index(ptr) & 7) << 3
+    w |= D_REGS.index(reg) & 7
+    return _u16(w)
+
+
+def link(frame_bytes):
+    """LINK n. The frame field is in WORDS: LINK 0x78 encodes 0x1E."""
+    if frame_bytes % 4:
+        raise Unsupported("frame size not a multiple of 4")
+    return _u16(0xE800, frame_bytes // 4)
+
+
+def unlink():
+    return _u16(0xE801)
+
+
+def rts():
+    return _u16(0x0010)
+
+
+def jump_s(here, target):
+    """JUMP.S: 12-bit signed offset in half-words, relative to the instruction."""
+    off = (target - here) // 2
+    if not -0x800 <= off <= 0x7FF or (target - here) % 2:
+        raise Unsupported("jump out of range or misaligned")
+    return _u16(0x2000 | (off & 0xFFF))
+
+
 # (source text, encoder call, expected bytes as seen in a factory engine)
 SELFTEST = [
     ("P5 = R0",    lambda: regmv("P5", "R0"),        bytes.fromhex("2832"), "volt render prologue 0x81bf016a"),
@@ -96,7 +134,15 @@ SELFTEST = [
     ("R1 = R7 + R1", lambda: addsub32("R1", "R7", "R1", "+"), bytes.fromhex("4f50"), "volt render 0x81bf04xx"),
     ("R2 = R2 - R6", lambda: addsub32("R2", "R2", "R6", "-"), bytes.fromhex("b252"), "volt render 0x81bf03xx"),
     ("R3 = R3 - R0", lambda: addsub32("R3", "R3", "R0", "-"), bytes.fromhex("c352"), "volt render 0x81bf03xx"),
+    ("[P4++] = R0", lambda: ldst("P4", "R0", store=True), bytes.fromhex("2092"), "chord render 0x81be28ba"),
+    ("R2 = [P0++]", lambda: ldst("P0", "R2"), bytes.fromhex("0290"), "volt render 0x81bf0346"),
+    ("R4 = [P0++]", lambda: ldst("P0", "R4"), bytes.fromhex("0490"), "volt render 0x81bf0364"),
+    ("UNLINK", unlink, bytes.fromhex("01e8"), "volt render 0x81bf06f6"),
+    ("RTS", rts, bytes.fromhex("1000"), "volt render 0x81bf06fa"),
+    ("JUMP.S +0x578", lambda: jump_s(0x81bf017a, 0x81bf06f2), bytes.fromhex("bc22"), "volt render 0x81bf017a"),
+    ("LINK 0x78", lambda: link(0x78), bytes.fromhex("00e81e00"), "volt render prologue 0x81bf0158"),
 ]
+
 
 
 def selftest():

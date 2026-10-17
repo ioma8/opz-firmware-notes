@@ -288,3 +288,38 @@ with the field layouts for `LdImmHalf` and `Dsp32Mult` already read out of the s
 container; then the one hardware test in §11.9 that settles whether `onNoteOn`'s `R1` is a note number.
 None of that can be validated by static analysis alone, which is why §11.9 states the hardware check
 explicitly instead of assuming the answer.
+
+## 11.11 The struck-body DSP, validated as an algorithm
+
+`toolkit/opzstruck.py` is the modal resonator written as fixed-point reference code — the same integer
+arithmetic the engine will run — with a self-test that measures the result instead of trusting it:
+
+```
+PASS  pitch 110 Hz       measured 110.5 Hz (0.48% error)
+PASS  pitch 220 Hz       measured 220.4 Hz (0.18% error)
+PASS  pitch 440 Hz       measured 439.5 Hz (0.11% error)
+PASS  pitch 880 Hz       measured 876.4 Hz (0.41% error)
+PASS  decay grows with macro   T60 0.46 < 0.94 < 1.84 s
+PASS  inharmonicity keeps pitch  220.4 vs 220.4 Hz
+PASS  peak stays in range      peak 0.800 full scale
+PASS  decays to silence        tail 1.05e-06
+PASS  deterministic            identical buffers
+```
+
+Two findings from building it are worth keeping, because both would have cost hours on hardware:
+
+**Direct form II does not fit this core's arithmetic.** The textbook two-pole recursion needs
+`a1 = 2*r*cos(w)`, which reaches almost 2.0 — outside Q31, whose maximum is just under 1.0. In the first
+build that coefficient saturated, and the resonator then oscillated at the wrong frequency. The fix is the
+coupled (rotation) form, `y1' = r*cos(w)*y1 - r*sin(w)*y2`, `y2' = r*sin(w)*y1 + r*cos(w)*y2`, whose two
+coefficients are inside ±1 by construction and whose decay comes from `r < 1` shrinking the state each
+sample. It costs four fractional multiplies per mode per sample instead of two, which is the right trade.
+
+**A correctly interleaved block looks like a subharmonic if you forget it is stereo.** The self-test first
+reported *exactly half* the requested pitch at every frequency. The control experiment — the same estimator
+run on a pure sine — returned the right answer, which localised the fault to the code under test rather than
+the measurement. The block writer was right: it emits two words per frame as the ABI demands, so every
+sample appears twice, and the analysis was reading the interleaved buffer as mono. Any future measurement
+of engine output must take one channel. The estimator itself is a direct DFT peak scan; autocorrelation was
+tried first and produced octave errors (56 Hz for a 220 Hz note) because an unnormalised sum on a decaying
+multi-mode signal is dominated by short lags.
