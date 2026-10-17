@@ -17,9 +17,11 @@ Design, and why each choice was forced:
 * **Volatile registers only, plus the verified push/pop pair** for the registers render() must borrow.
 
 Known limitations, stated rather than hidden:
-  - the decay radius is baked into the table (T60 ~ 1.2 s for mode 0), so the decay macro does not yet
-    change the tail; reading it needs argument 5, which is a stack argument and the encoder has no
-    displacement load. Pitch, inharmonicity, the mode set and the strike comb are live;
+  - the decay macro is read from params[PARAM_DECAY], an index that has not been confirmed on hardware.
+    The mechanism is right (argument 5 is a stack argument, walked with post-increment loads because the
+    encoder has no displacement load) and the mapping is accurate - buckets land within 1% of their
+    target T60 - but which entry of params[] the OS binds to the decay knob is an assumption. If it is
+    wrong, the knob that moves the tail will be a different one;
   - the strike position is fixed at 0.3 (baked into the seed table), not a live macro;
   - `mul32` emits the (T) extraction, and that extraction is `>> 32` rather than the `>> 31` of a Q31
     fractional multiply (SLEIGH's `rounding(..., 4)` clears four bytes). Every multiply therefore
@@ -43,8 +45,12 @@ D_INDEX  = DATA_BASE + 0x04
 D_HOST   = DATA_BASE + 0x08
 D_STRIKE = DATA_BASE + 0x10         # 6 per-mode excitation seeds (the strike comb)
 D_ROWP   = DATA_BASE + 0x28         # the coefficient row pointer, saved so it can be rewound
+D_G      = DATA_BASE + 0x2C         # the decay factor chosen for this note
 D_STATE  = DATA_BASE + 0x30         # 6 modes x (y1, y2) = 12 words
 D_TABLE  = DATA_BASE + 0x60         # 128 notes x 6 modes x (c, s)
+D_GAINS  = DATA_BASE + 0x1860       # 8 per-block decay factors, selected by the decay macro
+T60_LONG = 8.0                      # the table's own damping; the macro shortens from here
+PARAM_DECAY = 2                     # which entry of params[] carries the decay macro (assumption)
 N_MODES = 6
 T60     = 1.2
 
@@ -66,14 +72,23 @@ class Code:
         self.emit(getattr(A, name)(*a, **k))
 
     def branch(self, label, cond=True):
-        """Emit a placeholder and record what to patch once every label is known."""
+        """Conditional branch on CC. Emit a placeholder, patch once every label is known."""
         self.fixups.append((len(self.buf), label, cond))
+        self.emit(b"\x00\x00")
+
+    def jump(self, label):
+        """Unconditional JUMP.S. `branch()` cannot do this - it always tests CC, so using it for an
+        unconditional jump silently makes the jump depend on whatever flag was set last."""
+        self.fixups.append((len(self.buf), label, "jump"))
         self.emit(b"\x00\x00")
 
     def finish(self):
         for off, label, cond in self.fixups:
             here = self.base + off
-            enc = A.brcc(here, self.labels[label], cond)
+            if cond == "jump":
+                enc = A.jump_s(here, self.labels[label])
+            else:
+                enc = A.brcc(here, self.labels[label], cond)
             self.buf[off:off + 2] = enc
         return bytes(self.buf)
 
@@ -90,8 +105,7 @@ def coefficient_table():
                 rows.append((0, 0))
                 continue
             w = 2.0 * math.pi * f / FS
-            tt = max(0.02, T60 / (1.0 + 0.55 * m))
-            r = math.exp(-math.log(1000.0) / (tt * FS))
+            r = 1.0            # no damping here: the per-block gain below owns the whole tail
             rows.append((S.to_q31(r * math.cos(w)), S.to_q31(r * math.sin(w))))
     return rows
 
@@ -160,6 +174,34 @@ def build():
     c.emit(A.push_r7_p5())
     c.emit(A.regmv("P5", "R0"))             # out buffer (interleaved stereo, 64 frames)
 
+    # The decay macro lives in argument 5, a stack argument. The push above moved SP by 7 words,
+    # so arg5 sits at SP+36; nine discarded post-increment loads walk there because the encoder
+    # still has no displacement load (doc 11 section 11.12).
+    c.emit(A.regmv("P0", "SP"))
+    for _ in range(9):
+        c.emit(A.ldst("P0", "R0"))
+    c.emit(A.ldst("P0", "R1"))              # R1 = params pointer
+    c.ins("cmp_eq0", "R1")
+    c.branch("no_params", cond=True)        # a null pointer must not fault the whole device
+    c.emit(A.regmv("P0", "R1"))
+    for _ in range(PARAM_DECAY):
+        c.emit(A.ldst("P0", "R2"))          # walk to params[PARAM_DECAY]
+    c.emit(A.ldst("P0", "R2"))
+    c.emit(A.shr("R2", "R2", 28))           # top three bits select one of eight buckets
+    c.emit(A.shl("R3", "R2", 2))            # *4, the word stride of the gain table
+    c.ins("ldimm32", "R4", D_GAINS)
+    c.emit(A.addsub32("R4", "R4", "R3", "+"))
+    c.emit(A.regmv("P0", "R4"))
+    c.emit(A.ldst("P0", "R3"))              # R3 = the decay factor for this block
+    c.jump("have_gain")
+    c.label("no_params")
+    c.ins("ldimm32", "R3", 0x7FFFFFFF)      # gain 1.0: keep the tail, apply no extra damping
+    c.label("have_gain")
+    c.ins("ldimm32", "R4", D_G)
+    c.emit(A.regmv("P0", "R4"))
+    c.emit(A.ldst("P0", "R3", store=True))  # remember it for the per-block state scaling
+    c.ins("ldimm32", "R0", D_GATE)          # (P0 was borrowed, so reload the gate below)
+
     c.ins("ldimm32", "R0", D_GATE)          # if the gate is closed, this voice costs nothing
     c.emit(A.regmv("P0", "R0"))
     c.emit(A.ldst("P0", "R0", aop=2))
@@ -221,6 +263,22 @@ def build():
     c.emit(A.regmv("P1", "R0"))
     c.ins("cmp_eq0", "R6")
     c.branch("frame", cond=False)
+    # The decay factor belongs to a BLOCK, not a sample: applying it inside the 64-sample loop made
+    # it act 64 times per block (0.99885^64 = 0.929 - a 7% per-block collapse, which is exactly what
+    # the simulator measured before this moved here).
+    # Apply the decay factor to the mode state: one multiply per state word per block is the same
+    # decay as scaling every sample, and it is what makes the decay macro move the tail.
+    c.ins("ldimm32", "R0", D_G)
+    c.emit(A.regmv("P4", "R0"))
+    c.emit(A.ldst("P4", "R5"))                       # R5 = gain
+    c.ins("ldimm32", "R0", D_STATE)
+    c.emit(A.regmv("P0", "R0"))
+    c.emit(A.regmv("P2", "R0"))
+    for _ in range(N_MODES * 2):
+        c.emit(A.ldst("P0", "R0"))
+        c.emit(A.mul32("R1", "R0", "R5"))
+        c.emit(A.addsub32("R1", "R1", "R1", "+"))    # >>32 extraction, doubled back
+        c.emit(A.ldst("P2", "R1", store=True))
     c.label("done")
     c.emit(A.pop_r7_p5())
     c.emit(A.rts())
@@ -249,6 +307,10 @@ def build():
     for cc, ss in coefficient_table():
         data += (cc & 0xFFFFFFFF).to_bytes(4, "little")
         data += (ss & 0xFFFFFFFF).to_bytes(4, "little")
+    # eight buckets: per-block factor for a target T60, longest last so the top bucket barely damps
+    for t60 in (0.1, 0.2, 0.4, 0.8, 1.6, 3.0, 5.0, T60_LONG):
+        g = 10 ** (-3.0 * S.BLOCK / (t60 * FS))
+        data += int(round(g * 2 ** 31)).to_bytes(4, "little")
 
     payload = len(hdr) + len(code) + len(data)
     segs = [

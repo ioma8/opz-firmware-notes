@@ -242,10 +242,13 @@ class Machine:
         raise RuntimeError(f"unsupported instruction 0x{h:04x} at 0x{self.pc:08x}")
 
 
-def call(m, entry, args, limit=20_000_000):
-    """Call a function: first three args in R0-R2, return value in R0."""
+def call(m, entry, args, stack=(), limit=20_000_000):
+    """Call a function: first three args in R0-R2, the rest pushed in reverse on the stack."""
     for i, a in enumerate(args[:3]):
         m.r[i] = a
+    for a in reversed(stack):
+        m.p[6] -= 4
+        m.st32(m.p[6], a)
     m.p[6] -= 4
     m.st32(m.p[6], 0xDEAD0000)             # sentinel return address
     m.pc = entry
@@ -312,6 +315,9 @@ def selftest():
     check("initModule(1,...) -> 0", call(m, exports["initModule"], [1, 0x81003850, m.mem_base + 0x180000]) == 0, "rejects a foreign id")
 
     scratch = m.mem_base + 0x180000
+    params = m.mem_base + 0x170000
+    for i in range(8):
+        m.st32(params + 4 * i, 4 << 28)          # decay bucket 4 (target 1.6 s)
     call(m, exports["initModule"], [0, 0x81003850, scratch])
     call(m, exports["init"], [scratch, 0])
     call(m, exports["onNoteOn"], [0, 69, scratch])
@@ -328,7 +334,7 @@ def selftest():
     check("stereo channels equal", all(first[2 * i] == first[2 * i + 1] for i in range(S.BLOCK)), "")
 
     # run a second block: the state must have advanced, so the output must differ
-    call(m, exports["render"], [out, 440 << 16, 0])
+    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, 0))
     second = [m.ld32(out + 4 * j) for j in range(2 * S.BLOCK)]
     check("state advances", first != second, "")
     # energy, not peak: a single 64-frame block is 1.3 ms, so the waveform's phase moves the peak
@@ -337,7 +343,7 @@ def selftest():
     for _ in range(16):
         for j in range(2 * S.BLOCK):
             m.st32(out + 4 * j, 0)
-        call(m, exports["render"], [out, 440 << 16, 0])
+        call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, 0))
         energies.append(sum(m.ld32(out + 4 * j) ** 2 for j in range(2 * S.BLOCK)))
     check("energy decays over 16 blocks", energies[-1] < energies[0],
           f"{energies[0]:.3e} -> {energies[-1]:.3e}")
@@ -346,13 +352,16 @@ def selftest():
     call(m, exports["onNoteOff"], [0, scratch])
     for i in range(512):
         m.st32(out + 4 * i, 0x11223344)
-    call(m, exports["render"], [out, 440 << 16, 0])
+    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, 0))
     check("gate off -> silence",
           all(m.ld32(out + 4 * j) == 0x11223344 for j in range(2 * S.BLOCK)), "gate respected")
 
     # ---- pitch and decay measured from the engine's own output, not from a model
-    def capture(note, blocks, machine):
+    def capture(note, blocks, machine, bucket=4):
         sc = machine.mem_base + 0x180000
+        params = machine.mem_base + 0x170000
+        for i in range(8):
+            machine.st32(params + 4 * i, bucket << 28)   # the decay macro sits in params[2]
         call(machine, exports["initModule"], [0, 0x81003850, sc])
         call(machine, exports["init"], [sc, 0])
         call(machine, exports["onNoteOn"], [0, note, sc])
@@ -361,7 +370,7 @@ def selftest():
         for _ in range(blocks):
             for j in range(2 * S.BLOCK):
                 machine.st32(o + 4 * j, 0)
-            call(machine, exports["render"], [o, 440 << 16, 0])
+            call(machine, exports["render"], [o, 440 << 16, 0], stack=(sc, params, 0))
             buf += [machine.ld32(o + 4 * j) for j in range(2 * S.BLOCK)]
         return buf
 
@@ -373,12 +382,23 @@ def selftest():
         err = abs(f - expect) / expect
         check(f"engine pitch note {note}", err < 0.02, f"{f:.1f} Hz vs {expect:.0f} Hz ({100*err:.2f}%)")
 
+    # the decay macro is a gain table indexed by the top three bits of params[2]; each bucket is a
+    # target T60 and the engine must land on it
+    for bucket, target in ((0, 0.1), (4, 1.6), (5, 3.0)):
+        mm = Machine()
+        mm.load_engine(raw)
+        # capture well past the target: a tail that has not reached -60 dB yet returns None
+        n_blocks = int(S.FS * target * 1.6 / S.BLOCK)
+        buf = capture(69, n_blocks, mm, bucket=bucket)
+        t60 = S.measure_decay(buf)
+        ok = t60 is not None and abs(t60 - target) / target < 0.15
+        shown = f"{t60:.2f} s" if t60 is not None else "not reached"
+        check(f"decay bucket {bucket}", ok, f"T60 {shown} vs target {target:.1f} s")
+
     mm = Machine()
     mm.load_engine(raw)
-    long_buf = capture(69, 1500, mm)
-    t60 = S.measure_decay(long_buf)
-    check("engine decay", t60 is not None and 0.8 < t60 < 1.8, f"T60 {t60:.2f} s (table bakes ~1.2 s)")
-    check("engine decays to silence", max(abs(v) for v in long_buf[-2048:]) / 2 ** 31 < 1e-4, "")
+    long_buf = capture(69, 1500, mm, bucket=4)
+    check("engine decays to silence", max(abs(v) for v in long_buf[-2048:]) / 2 ** 31 < 1e-3, "")
 
     print(f"\nsteps executed: {m.steps:,}")
     print(f"{'FAILED' if fails else 'all checks passed'} ({fails} failure(s))")

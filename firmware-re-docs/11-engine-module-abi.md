@@ -404,11 +404,17 @@ R0 and R1 and never touches stack arguments; a 128-entry coefficient table compu
 `opzstruck.py` so the engine contains no transcendentals — a note is an index. Registers render needs beyond
 the volatile set are saved with the verified push/pop pair.
 
-**Stated limitation, not a hidden one:** the decay radius is baked into the table (T60 ≈ 1.2 s for mode 0), so
-the decay macro does not yet move the tail. Reading it needs argument 5, which is a *stack* argument, and the
-encoder has no displacement load — so the honest status is "needs one more instruction class", not "forgotten".
-Pitch, inharmonicity, the six-mode set and the strike comb are all live: the comb is a six-word seed table
-whose values carry the cos(π·m·0.3) sign pattern, so the modes do not all start in phase.
+**Stated assumption, not a hidden one:** the decay macro is read from `params[2]`. The mechanism is right —
+argument 5 is a *stack* argument, reached with nine discarded post-increment loads because the encoder has no
+displacement load — and the mapping is accurate, with buckets landing within 1 % of their target T60. But
+*which* entry of `params[]` the OS binds to the decay knob has not been confirmed on hardware. If it is the
+wrong index, then a different knob will move the tail.
+
+The coefficient table itself carries **no** damping: `r = 1.0`, so the rotation is exactly norm-preserving and
+the entire tail comes from a per-block gain. That separation is what makes the macro map to an absolute T60
+instead of stacking on a baked value — the first build did both, and decayed twice as fast as either. Collapse
+of the mode state by `g` once per block is mathematically the same decay as scaling every sample, and costs 12
+multiplies per block instead of 12 per sample.
 
 ### The (T) extraction is `>> 32`, and the engine compensates
 
@@ -467,6 +473,16 @@ right pitch, with the designed decay, that goes silent when the gate closes.
 3. **Nothing had ever run it.** Both bugs are invisible to static checking — the container is valid, the
    encodings match factory bytes, and the reference implementation is correct; only execution shows the
    engine ignoring the note.
+
+Two more, found once the decay macro was wired:
+
+4. **Per-block scaling applied inside the per-sample loop.** The gain belongs to a 64-sample block; placing the
+   scaling inside the loop made it act 64 times per block, and `0.99885^64 = 0.929` is a 7 % collapse per block
+   — which is exactly what the simulator measured. Symptom: T60 of 0.13 s where 8 s was asked for.
+5. **A conditional branch used as an unconditional jump.** The builder's `branch()` always tests `CC`, so an
+   "unconditional" jump inherited whatever flag was last set. The null-argument guard was added, and the code
+   after it silently depended on the flag from that comparison. Fixed by giving the builder a real `JUMP.S`
+   fixup.
 
 The interpreter had two bugs of its own, both worth recording because they are the same class of mistake:
 registers were not held as signed values, so an address like `0x81c0b060` counted as a positive overflow and

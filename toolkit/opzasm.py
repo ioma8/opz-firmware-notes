@@ -195,6 +195,18 @@ def shl(dst, src, n):
     return _u16(0xCE82, h2)
 
 
+def shr(dst, src, n):
+    """`Rd = Rs >>> n` (Dsp32ShfImm).
+
+    Same second-half layout as the left shift but sop 0 and the immediate stored NEGATED: shifts by
+    1, 6 and 31 encode as 63, 58 and 33 in the signed 6-bit field. Verified against factory bytes.
+    """
+    if not 0 <= n <= 31:
+        raise Unsupported(f"shift count {n} out of range")
+    h2 = (0 << 14) | ((D_REGS.index(dst) & 7) << 9) | (((-n) & 0x3F) << 3) | (D_REGS.index(src) & 7)
+    return _u16(0xCE82, h2)
+
+
 # (source text, encoder call, expected bytes as seen in a factory engine)
 SELFTEST = [
     ("P5 = R0",    lambda: regmv("P5", "R0"),        bytes.fromhex("2832"), "volt render prologue 0x81bf016a"),
@@ -229,7 +241,10 @@ SELFTEST = [
     ("pop (R7:4,P5:3)", pop_r7_p5, bytes.fromhex("a305"), "volt epilogue 0x81bf06f4"),
     ("R0 = R4 << 31", lambda: shl("R0", "R4", 31), bytes.fromhex("82cefc80"), "volt render 0x81bf0244"),
     ("R4 = R6 << 16", lambda: shl("R4", "R6", 16), bytes.fromhex("82ce8688"), "chord render 0x81be268a"),
+    ("R3 = R3 >>> 6", lambda: shr("R3", "R3", 6), bytes.fromhex("82ced307"), "volt render 0x81bf01e8"),
+    ("R3 = R6 >>> 0x1f", lambda: shr("R3", "R6", 31), bytes.fromhex("82ce0e07"), "volt render 0x81bf028c"),
 ]
+
 
 
 

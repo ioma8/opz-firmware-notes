@@ -171,7 +171,10 @@ def measure_decay(buf):
         lo, hi = lo * 2, hi * 2
         return math.sqrt(sum((buf[i] / 0x80000000) ** 2 for i in range(lo, hi, 2)) / max(1, (hi - lo) // 2))
     head = rms(BLOCK, BLOCK * 4)
-    for i in range(8, len(buf) // BLOCK):
+    # buf is interleaved stereo, so it holds two words per frame; iterating len(buf)//BLOCK would
+    # walk twice as many blocks as exist and run off the end on long captures
+    n_blocks = (len(buf) // 2) // BLOCK
+    for i in range(8, n_blocks):
         if rms(i * BLOCK, (i + 1) * BLOCK) < head / 1000.0:
             return (i * BLOCK) / FS
     return None
