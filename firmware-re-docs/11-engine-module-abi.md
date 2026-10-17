@@ -169,3 +169,31 @@ plug — so the eight knob values an engine sees are produced on the device, not
 - the effect-side render signature, buffer layout and fixed-point conventions;
 - the plug array, its stride, its 200-entry limit, and the fact that plug definitions come from
   `settings/plugs.json` rather than from the modules.
+
+## 11.8 Reproducing any of this
+
+```bash
+T=toolkit/opzengine.py
+GH=/path/to/Ghidra_12.1.4/support/analyzeHeadless
+
+python3 $T dump   engines-official/chord.engine    # segments + the five exports, resolved
+python3 $T expand engines-official/chord.engine    # -> chord_flat.bin, a loadable image
+python3 $T verify engines-official/*.engine        # byte-exact repack, 21/21
+
+$GH /tmp/eng ENG -import chord_flat.bin \
+    -processor "blackfinplus:LE:32:default" \
+    -loader BinaryLoader -loader-baseAddr 0x81be2400
+```
+
+Two things to get right, both of which cost time when wrong:
+
+- **The language id is `blackfinplus:LE:32:default`** — lowercase, with the `+`, an artifact of the separate
+  Ghidra BlackFin+ extension. `Blackfin:LE:32:default` is rejected outright with `Unsupported language`, and a
+  `.ldr` never shows you this because its own loader auto-detects the language from the boot-stream header.
+  Only the *engines*, which are headerless once expanded, need it spelled out.
+- **The load base is the module's own first data destination** (chord's is `0x81be2400`, which is the `0x04`
+  field of its second segment). Getting it from anywhere else — the `0x11a00000` preamble in particular —
+  produces an image that disassembles into nonsense.
+
+The Ghidra project directory must also already exist: `analyzeHeadless` reports `Directory not found` for the
+project path rather than creating it.
