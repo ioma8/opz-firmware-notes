@@ -488,3 +488,57 @@ The interpreter had two bugs of its own, both worth recording because they are t
 registers were not held as signed values, so an address like `0x81c0b060` counted as a positive overflow and
 every add saturated; and it decoded the shift form as a multiply, because the DSP sub-opcode for the multiply
 is `0x4` (not the `0xA` the first derivation suggested) and for the shift is `0xD`.
+
+## 11.15 Placement, and how a new plug is registered
+
+Two gaps closed, both from device data rather than inference.
+
+### The arena is a 0x1400-byte grid, and the slot rule fits the bank that matters
+
+Pairing each factory engine's module base (its first segment's destination) with the `memoryslot` that
+`plugp.json` assigns it gives a table that is not random. For every engine in slots 59–89 — fourteen of them —
+the mapping is exactly
+
+```
+base = 0x81be4c00 + (slot - 61) * 0x1400
+```
+
+chord (59) → `0x81be2400`, chorus (60) → `0x81be3800`, digital (62) → `0x81be6000`, reverb (66) → `0x81beb000`,
+fdnreverb (89) → `0x81c07c00`. The same arithmetic does **not** hold for the low slots: engines in slots 4–27
+sit on a 0x2800 stride in a different bank (`0x81b32000` upward), so the arena is not one formula. It is a grid
+of 0x1400 slots with at least two allocation regions, and only the 59–89 region is regression-verified.
+
+That is enough to place a new engine *by rule* instead of by guess. Slot 63 is unused, and its three slots
+(`0x81be7400`, `0x81be8800`, `0x81be9c00`) end exactly where reverb begins at `0x81beb000` — a real gap between
+digital (ends `0x81be6a80`) and reverb. The struck-body module is built for that base and occupies
+`0x81be7400`–`0x81be8fdc`, comfortably inside its three slots. A mis-chosen slot would be caught by the
+loader's own `Bad address` check rather than by corrupting a neighbour.
+
+### `plugs_patch.json` is the registration route, and its schema is now known
+
+The firmware's own `system/content/settings/plugs_patch.json` carries an `auto_import` array, and each entry
+registers one plug:
+
+```json
+{ "auto_import": [ { "engine": { "memoryslot": 27, "path": "engines/analoga.engine", "version": 1 },
+                     "plug":   { "engine": "engines/analoga.engine", "flags": 20, "id": 10,
+                                 "memoryslot": 27, "name": "analoga", "samples": "", "version": 25 },
+                     "tracks": [ 4, 5, 6, 7 ] } ] }
+```
+
+The shipped file holds five entries (analoga, organ, ep, fdnreverb, chorus2) — which is exactly the set that
+mis-loads on a unit whose engines were replaced, so this file is the mechanism the vendor uses to re-register
+a plug even though `settings/plugs.json` is app-owned. `tracks` is 0-based: `[4,5,6,7]` are the four synth
+tracks.
+
+`toolkit/install_struck.py` builds the engine, appends one entry (memoryslot 63, plug id 160, tracks 4–7),
+and writes a `ZIP_STORED` payload containing
+
+```
+../user/engines/struck.engine
+../system/content/engines/struck.engine
+../system/content/settings/plugs_patch.json
+```
+
+which is the documented entry-path write primitive, and leaves staging as the ordinary update-medium
+procedure. What remains after that is hands on the device, not code.

@@ -41,15 +41,37 @@ def s32(v):
 
 
 class Machine:
-    def __init__(self, mem_size=0x200000):
+    """A memory window plus the register file.
+
+    The window is derived from the module rather than fixed: an engine is pre-linked to absolute
+    addresses that depend on which memory slot it was built for, so a hard-coded window silently
+    stops covering the module the moment the placement changes.
+    """
+
+    # scratch areas live below the module, the stack above it
+    OUT_OFF, PARAM_OFF, SCRATCH_OFF, HEADROOM = 0x10000, 0x20000, 0x30000, 0x40000
+
+    def __init__(self, mem_base=0x81C00000, mem_size=0x200000):
         self.mem = bytearray(mem_size)
-        self.mem_base = 0x81C00000           # one window that covers code, data, stack and output
+        self.mem_base = mem_base
         self.r = [0] * 8
         self.p = [0] * 8
         self.cc = False
         self.pc = 0
         self.steps = 0
         self.p[6] = self.mem_base + mem_size - 0x100    # SP, top of the window
+
+    @classmethod
+    def for_module(cls, raw):
+        """Size the window around the module's own span, with room for output, params and stack."""
+        segs = [g for g in E.parse(raw) if g[4]]
+        lo = min(g[1] for g in segs)
+        hi = max(g[1] + len(g[4]) for g in segs)
+        base = (lo & ~0xFFF) - cls.HEADROOM
+        size = ((hi - base) + cls.HEADROOM + 0xFFF) & ~0xFFF
+        m = cls(base, size)
+        m.load_engine(raw)
+        return m
 
     # ---- memory -------------------------------------------------------------------------------
     def _off(self, addr, n=4):
@@ -270,18 +292,17 @@ def measure(note=69, seconds=1.0, engine="struck.engine"):
     if not mod:
         raise SystemExit("not a valid module")
     exports = dict(mod["exports"])
-    m = Machine()
-    m.load_engine(raw)
+    m = Machine.for_module(raw)
 
     # initModule(id=0, host=0x81003850, out) then init(), then onNoteOn(a1, note, ctx)
-    scratch = m.mem_base + 0x180000
+    scratch = m.mem_base + Machine.SCRATCH_OFF
     ret = call(m, exports["initModule"], [0, 0x81003850, scratch])
     if ret != 1:
         raise SystemExit(f"initModule returned {ret}, expected 1")
     call(m, exports["init"], [scratch, 0])
     call(m, exports["onNoteOn"], [0, note, scratch])
 
-    out = m.mem_base + 0x100000             # output buffer inside the window
+    out = m.mem_base + Machine.OUT_OFF             # output buffer inside the window
     frames = int(S.FS * seconds)
     blocks = frames // S.BLOCK
     for _ in range(blocks):
@@ -308,14 +329,13 @@ def selftest():
     raw = raw.read_bytes()
     mod = E.read_module(raw)
     exports = dict(mod["exports"])
-    m = Machine()
-    m.load_engine(raw)
+    m = Machine.for_module(raw)
 
-    check("initModule(0,...) -> 1", call(m, exports["initModule"], [0, 0x81003850, m.mem_base + 0x180000]) == 1, "")
-    check("initModule(1,...) -> 0", call(m, exports["initModule"], [1, 0x81003850, m.mem_base + 0x180000]) == 0, "rejects a foreign id")
+    check("initModule(0,...) -> 1", call(m, exports["initModule"], [0, 0x81003850, m.mem_base + Machine.SCRATCH_OFF]) == 1, "")
+    check("initModule(1,...) -> 0", call(m, exports["initModule"], [1, 0x81003850, m.mem_base + Machine.SCRATCH_OFF]) == 0, "rejects a foreign id")
 
-    scratch = m.mem_base + 0x180000
-    params = m.mem_base + 0x170000
+    scratch = m.mem_base + Machine.SCRATCH_OFF
+    params = m.mem_base + Machine.PARAM_OFF
     for i in range(8):
         m.st32(params + 4 * i, 4 << 28)          # decay bucket 4 (target 1.6 s)
     call(m, exports["initModule"], [0, 0x81003850, scratch])
@@ -323,7 +343,7 @@ def selftest():
     call(m, exports["onNoteOn"], [0, 69, scratch])
 
     # one block, captured properly: render once and read the whole 64-frame block
-    out = m.mem_base + 0x100000
+    out = m.mem_base + Machine.OUT_OFF
     for i in range(8192):
         m.st32(out + 4 * i, 0)
     call(m, exports["render"], [out, 440 << 16, 0])
@@ -358,14 +378,14 @@ def selftest():
 
     # ---- pitch and decay measured from the engine's own output, not from a model
     def capture(note, blocks, machine, bucket=4):
-        sc = machine.mem_base + 0x180000
-        params = machine.mem_base + 0x170000
+        sc = machine.mem_base + Machine.SCRATCH_OFF
+        params = machine.mem_base + Machine.PARAM_OFF
         for i in range(8):
             machine.st32(params + 4 * i, bucket << 28)   # the decay macro sits in params[2]
         call(machine, exports["initModule"], [0, 0x81003850, sc])
         call(machine, exports["init"], [sc, 0])
         call(machine, exports["onNoteOn"], [0, note, sc])
-        o = machine.mem_base + 0x100000
+        o = machine.mem_base + Machine.OUT_OFF
         buf = []
         for _ in range(blocks):
             for j in range(2 * S.BLOCK):
@@ -375,8 +395,7 @@ def selftest():
         return buf
 
     for note, expect in ((69, 440.0), (57, 220.0), (81, 880.0), (45, 110.0)):
-        mm = Machine()
-        mm.load_engine(raw)
+        mm = Machine.for_module(raw)
         buf = capture(note, 80, mm)
         f = S.measure_freq(buf)
         err = abs(f - expect) / expect
@@ -385,8 +404,7 @@ def selftest():
     # the decay macro is a gain table indexed by the top three bits of params[2]; each bucket is a
     # target T60 and the engine must land on it
     for bucket, target in ((0, 0.1), (4, 1.6), (5, 3.0)):
-        mm = Machine()
-        mm.load_engine(raw)
+        mm = Machine.for_module(raw)
         # capture well past the target: a tail that has not reached -60 dB yet returns None
         n_blocks = int(S.FS * target * 1.6 / S.BLOCK)
         buf = capture(69, n_blocks, mm, bucket=bucket)
@@ -395,8 +413,7 @@ def selftest():
         shown = f"{t60:.2f} s" if t60 is not None else "not reached"
         check(f"decay bucket {bucket}", ok, f"T60 {shown} vs target {target:.1f} s")
 
-    mm = Machine()
-    mm.load_engine(raw)
+    mm = Machine.for_module(raw)
     long_buf = capture(69, 1500, mm, bucket=4)
     check("engine decays to silence", max(abs(v) for v in long_buf[-2048:]) / 2 ** 31 < 1e-3, "")
 

@@ -35,9 +35,15 @@ import opzasm as A
 import opzengine as E
 import opzstruck as S
 
-MOD_BASE  = 0x81C0A000
-CODE_BASE = MOD_BASE + 0x38
-DATA_BASE = 0x81C0B000
+# Placement is derived, not guessed. In the factory set the slot -> address rule is linear over
+# slots 59..89 (every one of the fourteen engines in that range fits base = 0x81be4c00 +
+# (slot-61)*0x1400), and the arena is a grid of 0x1400-byte slots. Slot 63 is unused and its three
+# slots end exactly where reverb (slot 66) begins, so the engine lands in a real gap:
+#   0x81be7400 .. 0x81be9cc8   (digital ends at 0x81be6a80, reverb starts at 0x81beb000)
+MOD_BASE   = 0x81BE7400  # memoryslot 63
+CODE_BASE  = MOD_BASE + 0x38
+CODE_RESERVE = 0x1000                    # code area kept fixed so the data address never moves
+DATA_BASE  = CODE_BASE + CODE_RESERVE
 FS        = S.FS
 
 D_GATE   = DATA_BASE + 0x00
@@ -289,6 +295,7 @@ def build():
         names[nm] = c.pos()
         c.emit(nm.encode() + b"\x00")
     code = c.finish()
+    assert len(code) <= CODE_RESERVE, f"code grew past its reserved area: {len(code)} > {CODE_RESERVE}"
 
     hdr = bytearray()
     hdr += (0xFEED0AD1).to_bytes(4, "little")
@@ -329,6 +336,7 @@ if __name__ == "__main__":
     out.write_bytes(raw)
     print(f"wrote {out} ({len(raw)} B)")
     print(f"  header {hl} B @0x{MOD_BASE:08x}   code {cl} B @0x{CODE_BASE:08x}   data {dl} B @0x{DATA_BASE:08x}")
+    print(f"  module span 0x{MOD_BASE:08x}..0x{MOD_BASE + hl + cl + dl:08x}  (memoryslot 63, three 0x1400 slots)")
     print("  exports: " + ", ".join(f"{k}=0x{v:08x}" for k, v in c.labels.items()))
     mod = E.read_module(raw)
     print("  container round-trip: " + ("parsed OK" if mod else "PARSE FAILED"))
