@@ -20,9 +20,10 @@ Known limitations, stated rather than hidden:
   - the decay radius is baked into the table (T60 ~ 1.2 s for mode 0), so the decay macro does not yet
     change the tail; pitch, inharmonicity and the mode set are live;
   - all six modes are struck with the same sign, so there is no strike-position comb yet;
-  - `mul32` emits the (T) extraction variant seen in every factory sample, whose exact truncation has
-    not been reconciled with opzstruck's plain `(x*y) >> 31` (doc `11` §11.12). A wrong extraction
-    shows up as a level or decay error, not as wrong pitch.
+  - `mul32` emits the (T) extraction, and that extraction is `>> 32` rather than the `>> 31` of a Q31
+    fractional multiply (SLEIGH's `rounding(..., 4)` clears four bytes). Every multiply therefore
+    returns half scale and each mode output is doubled with one add, mirroring `frac_q31()` in
+    opzstruck.py, which implements the same arithmetic and passes its measurement checks.
 """
 import math, pathlib, sys
 
@@ -182,11 +183,15 @@ def build():
         c.emit(A.mul32("R4", "R2", "R0"))   # c*y1
         c.emit(A.mul32("R5", "R3", "R1"))   # s*y2
         c.emit(A.addsub32("R4", "R4", "R5", "-"))    # y1' = c*y1 - s*y2
+        # the (T) multiply extracts >>32, not the >>31 of a Q31 fractional multiply, so every
+        # term comes back half scale and is doubled here - one add, mirroring frac_q31()
+        c.emit(A.addsub32("R4", "R4", "R4", "+"))
         c.emit(A.ldst("P2", "R4", store=True))
         c.emit(A.addsub32("R7", "R7", "R4", "+"))    # acc += y1'
         c.emit(A.mul32("R4", "R3", "R0"))   # s*y1
         c.emit(A.mul32("R5", "R2", "R1"))   # c*y2
         c.emit(A.addsub32("R4", "R4", "R5", "+"))    # y2' = s*y1 + c*y2
+        c.emit(A.addsub32("R4", "R4", "R4", "+"))    # same >>32 compensation
         c.emit(A.ldst("P2", "R4", store=True))
     c.emit(A.ldst("P5", "R7", store=True))           # left
     c.emit(A.ldst("P5", "R7", store=True))           # right

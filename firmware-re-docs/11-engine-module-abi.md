@@ -405,9 +405,23 @@ R0 and R1 and never touches stack arguments; a 128-entry coefficient table compu
 the volatile set are saved with the verified push/pop pair.
 
 **Stated limitations, not hidden ones:** the decay radius is baked into the table (T60 ≈ 1.2 s for mode 0) so
-the decay macro does not yet move the tail; all six modes are struck with the same sign, so there is no
-strike-position comb; and `mul32` emits the `(T)` extraction variant, whose truncation is not yet reconciled
-with `opzstruck.py`'s plain `(x*y) >> 31` (doc `11` §11.12).
+the decay macro does not yet move the tail, and all six modes are struck with the same sign, so there is no
+strike-position comb.
+
+### The (T) extraction is `>> 32`, and the engine compensates
+
+Resolved from the SLEIGH source rather than from hardware. With `(T)` the modifier bits select
+`dx32ExtrRnd`'s `rounding(rnd, acc, 4)` variant, and `rounding` clears the low `rem_size` **bytes** before
+`strunc4_sat` truncates to 32 bits. Four bytes is 32 bits, so the extraction is `>> 32` — not the `>> 31` a Q31
+fractional multiply needs. Compiled factory code therefore returns **half scale**, and an engine that ignores
+this loses 6 dB per sample and goes silent almost immediately.
+
+The fix costs one add per mode output: double the result back into Q31 (`R4 = R4 + R4`). `opzstruck.py` now
+implements exactly that arithmetic — `frac()` is `(a*b) >> 32` with saturation, and the rotation uses
+`frac_q31()` = two extra adds — and **still passes all nine measurement checks**, including pitch within 0.5 %
+and the doubling of T60 across the decay macro. So the reference and the emitted instruction stream now
+compute the same thing, which is what makes the measured behaviour evidence about the binary rather than only
+about the idea.
 
 ### A tooling ambiguity worth knowing
 

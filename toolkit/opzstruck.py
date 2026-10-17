@@ -47,8 +47,21 @@ def sat32(v):
 
 
 def frac(a, b):
-    """Blackfin (M) fractional multiply: (a*b) >> 31, saturating."""
-    return sat32((a * b) >> Q)
+    """Blackfin `Mult32 (T)` extraction, as the SLEIGH source defines it.
+
+    The product is 64 bits; dx32ExtrRnd with (T) - dxM32I=0, dxM32TNS=1, dxP=0 - runs
+    `rounding(rnd, acc, 4)`, which clears the low FOUR bytes before strunc4_sat truncates to
+    32 bits. Four bytes is 32 bits, so the extraction is `>> 32`, not the `>> 31` a Q31
+    fractional multiply wants. Compiled factory code therefore scales by half, and the rotation
+    below compensates with one doubling add rather than by halving the coefficients (which would
+    overflow Q31, the same trap that broke the direct form).
+    """
+    return sat32((a * b) >> 32)
+
+
+def frac_q31(a, b):
+    """Q31 multiply expressed in terms of the (T) extraction: 2 * (a*b >> 32) == (a*b) >> 31."""
+    return sat32(frac(a, b) + frac(a, b))
 
 
 def to_q31(x):
@@ -100,11 +113,13 @@ class Struck:
         for _ in range(BLOCK):
             acc = 0
             for md in self.modes:
-                y1 = frac(md.c, md.y1) - frac(md.s, md.y2)
-                y2 = frac(md.s, md.y1) + frac(md.c, md.y2)
-                md.y1 = sat32(y1)
-                md.y2 = sat32(y2)
-                acc += md.y1
+                # each product is the (T) extraction (>>32), so every term is doubled back into
+                # Q31 with an add - exactly what the emitted engine code does
+                y1 = sat32(sat32(frac(md.c, md.y1) - frac(md.s, md.y2)) * 2)
+                y2 = sat32(sat32(frac(md.s, md.y1) + frac(md.c, md.y2)) * 2)
+                md.y1 = y1
+                md.y2 = y2
+                acc += y1
             s = frac(master, sat32(acc))
             out.append(s)
             out.append(s)                          # interleaved stereo, same value both sides
