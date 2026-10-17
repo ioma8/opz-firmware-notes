@@ -197,3 +197,73 @@ Two things to get right, both of which cost time when wrong:
 
 The Ghidra project directory must also already exist: `analyzeHeadless` reports `Directory not found` for the
 project path rather than creating it.
+
+## 11.9 The argument semantics, resolved
+
+Section 11.6 previously listed four unknowns. Three are now settled; the fourth is reduced to a single
+hardware check. Everything below was read from the callee's own prologue and loop body, not from the
+decompiler, because the decompiler hides register-carried arguments (doc `09` §9.4).
+
+**`initModule` receives `(0, 0x81003850, out)`.** The call site in `FUN_8002ae50` is unambiguous:
+
+```
+8002af8e  R0 = R0 - R0 (NS)     ; module id = 0
+8002af96  R1 = 0x81003850       ; host services table
+8002af92  R2 = [SP + 0x38]      ; out pointer
+8002af9e  Call CALL (P1)        ; initModule
+```
+
+The module's own copy of the expected id is a variable in its data segment, and in `chord` (`0x81be2d70`)
+it is **0** — so the guard is an ABI-version check, not a per-engine identity. A new engine must expect 0.
+
+**The host services table is 13 pointers at `0x81003850`.** Entries 0–12 mix code from three memories — L2
+(`0x0800bb44`), the L1 overlay (`0x11b019e8`), DDR (`0x8010xxxx`, `0x8003xxxx`) — with three data pointers
+(`0x81128264`, `0x815c8070`, `0x815c7e70`). `chord` calls entry 7 (`0x800314c0`) with
+`(env, params[2], params[3], params[4], params[5])`, and that function is a **parameter smoothing service**:
+it reads `env[4]` as a state machine, writes `env[0]` as the current value, and indexes the curve tables at
+`0x815c7c70` and `0x815c7e70` by the top byte of its scalar arguments — the second of which is itself
+`host_table[6]`. So the table is the engine's route to OS-wide helpers, and the curve tables are shared.
+
+**The instrument render is `render(out, freq_q16, offset, state, params, env)`**, established from `chord`'s
+prologue and loop:
+
+```
+81be2552  P4 = R0              ; arg 1 -> P4
+81be2550  P1 = [FP + 0x14]     ; arg 4 -> per-voice state
+81be2554  P5 = [FP + 0x18]     ; arg 5 -> parameter array
+81be254c  P3 = [FP + 0x1c]     ; arg 6 -> amp/envelope object
+81be2548  R7 = R1              ; arg 2
+...
+81be2794  LSETUP (0x81be290c) LC0 = 0x40      ; 64 frames
+81be28ba  [P4++] = R0                         ; left
+81be28ce  [P4++] = R0                         ; right
+```
+
+So **argument 1 is the audio output buffer**, interleaved 32-bit stereo, two words per frame, and the block is
+**64 frames**. `param_6`/arg 6 is not a buffer at all: `voice+0x10` is the amp state machine and zero there
+means idle, which is the early return every instrument render starts with. Argument 2 is a **frequency in
+Q16** (`f x 65536`): `chord`'s octave thresholds in its data segment are `0x00184cbb`, `0x00309977`,
+`0x006132ee` and `0x0184cbb7` = 1,592,507 / 3,185,015 / 6,370,030 / 25,480,119, which are 24.30, 48.60, 97.20
+and 388.8 Hz — exactly a factor of two apart, at G0/G1/G2/G4 pitch. Argument 3 is added to argument 2 before
+scaling (a bend or detune term). Argument 5 is a read/write parameter array: `chord` reads indices 0–5, 0x10,
+0x14, 0x28 and 0x2c, and `volt` reads 0, 1, 4, 5, 0x10 and 0x14.
+
+**The effect render is the same shape with five arguments** — `renderFX(ctx, scalar, state, in, out)` — and it
+hardcodes the same block size: `crush` sets `iVar28 = 0x40` before its loop. Input is read and output written
+through post-incremented pointers, two words per frame.
+
+**`onNoteOn` receives a pitch and the voice context.** `chord`'s prologue zeroes `R2` through
+`FUN_81be2474(R2, 0, 0x20)`, which is the same 0x20-byte clear `init` performs, so **`R2` is the voice
+context**; `R1` feeds `0x1020408 * R1 + (R1 >> 4)` and is then scaled by a constant at `ctx+0x2c`, which is
+the shape of a note-to-frequency exponential with a per-module tuning factor.
+
+### What still needs the device
+
+One thing: whether `onNoteOn`'s `R1` is a note number or an already-scaled frequency, and therefore whether an
+engine should derive pitch from `R1` or simply use `render`'s Q16 frequency argument. The Q16 reading of
+argument 2 is strongly supported but rests on the octave ratios rather than on a units string. The decidable
+test is one note long — render a note, measure the output frequency, and compare against 440 Hz for A4; a
+wrong assumption shows up as a constant ratio, not as noise.
+
+An engine that ignores argument 2 and computes its own increment from `R1` at note-on is therefore the safer
+first build: it depends on only one unverified assumption instead of two.
