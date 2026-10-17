@@ -18,8 +18,9 @@ Design, and why each choice was forced:
 
 Known limitations, stated rather than hidden:
   - the decay radius is baked into the table (T60 ~ 1.2 s for mode 0), so the decay macro does not yet
-    change the tail; pitch, inharmonicity and the mode set are live;
-  - all six modes are struck with the same sign, so there is no strike-position comb yet;
+    change the tail; reading it needs argument 5, which is a stack argument and the encoder has no
+    displacement load. Pitch, inharmonicity, the mode set and the strike comb are live;
+  - the strike position is fixed at 0.3 (baked into the seed table), not a live macro;
   - `mul32` emits the (T) extraction, and that extraction is `>> 32` rather than the `>> 31` of a Q31
     fractional multiply (SLEIGH's `rounding(..., 4)` clears four bytes). Every multiply therefore
     returns half scale and each mode output is doubled with one add, mirroring `frac_q31()` in
@@ -37,11 +38,12 @@ CODE_BASE = MOD_BASE + 0x38
 DATA_BASE = 0x81C0B000
 FS        = S.FS
 
-D_GATE  = DATA_BASE + 0x00
-D_INDEX = DATA_BASE + 0x04
-D_HOST  = DATA_BASE + 0x08
-D_STATE = DATA_BASE + 0x10          # 6 modes x (y1, y2) = 12 words
-D_TABLE = DATA_BASE + 0x40          # 128 notes x 6 modes x (c, s)
+D_GATE   = DATA_BASE + 0x00
+D_INDEX  = DATA_BASE + 0x04
+D_HOST   = DATA_BASE + 0x08
+D_STRIKE = DATA_BASE + 0x10         # 6 per-mode excitation seeds (the strike comb)
+D_STATE  = DATA_BASE + 0x30         # 6 modes x (y1, y2) = 12 words
+D_TABLE  = DATA_BASE + 0x60         # 128 notes x 6 modes x (c, s)
 N_MODES = 6
 T60     = 1.2
 
@@ -131,11 +133,15 @@ def build():
     c.emit(A.regmv("P0", "R0"))
     c.ins("ldimm7", "R1", 1)
     c.emit(A.ldst("P0", "R1", store=True, aop=2))    # gate = 1
+    # strike: seed each mode from the comb table, so the excitation has the sign pattern of a
+    # body hit at a fixed position (0.3) rather than every mode starting in phase
+    c.ins("ldimm32", "R0", D_STRIKE)
+    c.emit(A.regmv("P1", "R0"))
     c.ins("ldimm32", "R0", D_STATE)
     c.emit(A.regmv("P0", "R0"))
-    c.ins("ldimm32", "R1", 0x10000000)               # strike: seed every mode's y1
     c.ins("ldimm7", "R2", 0)
     for _ in range(N_MODES):
+        c.emit(A.ldst("P1", "R1"))                   # seed for this mode
         c.emit(A.ldst("P0", "R1", store=True))       # y1 = seed
         c.emit(A.ldst("P0", "R2", store=True))       # y2 = 0
     c.emit(A.rts())
@@ -223,7 +229,11 @@ def build():
     hdr += b"\x00" * 8          # the factory header is 56 B: five pairs end at 0x30, then two zero words
     assert len(hdr) == 56, len(hdr)
 
-    data = bytearray(0x40)
+    data = bytearray(0x60)
+    for m in range(N_MODES):
+        gain = 0.55 ** m
+        seed = S.to_q31(0.125 * math.cos(math.pi * (m + 1) * 0.3) * gain)
+        data[0x10 + 4 * m:0x14 + 4 * m] = (seed & 0xFFFFFFFF).to_bytes(4, "little")
     for cc, ss in coefficient_table():
         data += (cc & 0xFFFFFFFF).to_bytes(4, "little")
         data += (ss & 0xFFFFFFFF).to_bytes(4, "little")

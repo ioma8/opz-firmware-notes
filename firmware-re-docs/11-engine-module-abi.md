@@ -404,9 +404,11 @@ R0 and R1 and never touches stack arguments; a 128-entry coefficient table compu
 `opzstruck.py` so the engine contains no transcendentals — a note is an index. Registers render needs beyond
 the volatile set are saved with the verified push/pop pair.
 
-**Stated limitations, not hidden ones:** the decay radius is baked into the table (T60 ≈ 1.2 s for mode 0) so
-the decay macro does not yet move the tail, and all six modes are struck with the same sign, so there is no
-strike-position comb.
+**Stated limitation, not a hidden one:** the decay radius is baked into the table (T60 ≈ 1.2 s for mode 0), so
+the decay macro does not yet move the tail. Reading it needs argument 5, which is a *stack* argument, and the
+encoder has no displacement load — so the honest status is "needs one more instruction class", not "forgotten".
+Pitch, inharmonicity, the six-mode set and the strike comb are all live: the comb is a six-word seed table
+whose values carry the cos(π·m·0.3) sign pattern, so the modes do not all start in phase.
 
 ### The (T) extraction is `>> 32`, and the engine compensates
 
