@@ -211,6 +211,8 @@ breaking it produced a wrong entry that had to be retracted.
 | `SweepAll`-style whole-image sweeps | budget exhausted before reaching the target — the L1 image spanned 2.1 MB of mostly zeros | rebuild as **tight per-cluster images** (a 28 KB and a 54 KB slice instead of 2.1 MB) |
 | decompiler misnames created functions | every new function is called `ble_dispatch` | cosmetic, but it corrupts call-graph reading — fix the helper's naming |
 | building a doc from memory | plausible statement, wrong address | every claim carries an address; `check_docs.py` then guards the set mechanically |
+| SLEIGH assembly assumed to work | `Assemblers.getAssembler` returns a `SleighAssembler`, but every line fails, including `NOP` and `RTS` — the Blackfin+ module's constructors expose display templates, not a usable assembly grammar | the assembler existing is not the assembler working: probe with a no-operand mnemonic first. To author engine code, transcribe the encodings from the module's own `.sinc` (each instruction file carries the bit-field diagram) and round-trip the result through the disassembler |
+| `.engine` described as a flat image | a legal-looking dump, and a parser that desynchronises at the fill segment of `ep`/`organ` | the module is a segment list and a fill segment carries **no** payload (doc `11` §11.1); verify any parser by byte-exact repack of all 21 factory engines |
 
 ## 9.6 Verifying the document set itself
 

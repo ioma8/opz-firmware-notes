@@ -42,6 +42,7 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
 | `08-colour-slots-and-light-flush.md` | the light-slot engine: 5-byte RGBA+mode slot records, the two-variant 20-entry palette and its interpolating lookup, the three parallel buffers, the change-only packet builder with its 60-tick blink phase, and the **Blackfin→PSoC type `0x10`** transport it leaves on |
 | `09-ghidra-harness-and-process.md` | **the working method**: the four-image harness and its invocation form, the ten analysis scripts with what each answers *and cannot* answer, the analysis loop, the rules for making a claim, and the traps with their cost |
 | `10-architecture-diagrams.md` | the whole system as three Mermaid diagrams — the three processors and the two Blackfin images, the runtime sound/note/light flows, and the content-and-update path — plus an explicit list of what the diagrams do not claim |
+| `11-engine-module-abi.md` | the `.engine` module format and ABI — the segment container with its `0xAD` magic and XOR checksum, the 56-byte header with its two magics and five named exports, the `initModule`/`init`/`render`/`renderFX` signatures, the OS-side record and plug array, and an explicit list of what is still missing before a new engine can be built |
 
 ## Headline findings
 
@@ -365,6 +366,19 @@ can contain the payload, and a retraction is recorded at the claim it overturns.
     the diagrams do **not** claim: the physical wires between the chips, the PSoC-to-Blackfin direction type by
     type, the codec's register sequence, what `jack_task`'s jack actually is, and the contents of the L1
     overlay. See doc `10` §10.1, §10.2, §10.3 and §10.4.
+
+27. **A `.engine` is a loadable module with a documented ABI, and one can now be written.** Doc `11` specifies the
+    format: a list of segments, each with a 16-byte header carrying an `0xAD` magic, an XOR checksum over the
+    other fifteen bytes, an absolute destination, a length and an optional fill flag — where a fill segment
+    zeroes memory and carries **no** payload, the detail that separates `ep` and `organ` from the other nineteen
+    engines and desynchronises any parser that assumes otherwise. `toolkit/opzengine.py verify` repacks all 21
+    factory engines byte-exactly. The module header is 56 bytes: two magics and five `(name, address)` exports —
+    `initModule`, `init`, `render` **or** `renderFX`, `onNoteOn`, `onNoteOff` — resolved by name at load, with
+    `init`, `onNoteOn` and `onNoteOff` mandatory. `initModule` receives a **host services table** and is the
+    engine's only route back into the OS, since modules import nothing and are pre-linked to absolute addresses.
+    Effects take five arguments and instruments six; the effect side reads and writes interleaved 32-bit stereo,
+    two words per frame, with Q15 parameters and Q16 phase. See doc `11` §11.1 to §11.7 — including §11.6, which
+    lists the four things still unknown, of which the instrument render's output-buffer argument is the blocker.
 
 ## Confidence levels
 
