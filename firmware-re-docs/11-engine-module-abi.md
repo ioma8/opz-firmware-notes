@@ -360,3 +360,20 @@ A third trap belongs to the harness rather than the ISA: hand-written byte expec
 were wrong three times on 32- and 64-bit forms, always by writing the half-words in big-endian order. The
 programmatic check — re-encode every instruction found in a real engine and compare against the bytes in the
 image — was right every time. **Expectations should be lifted from the image, never typed from the listing.**
+
+### The multiply's extraction mode is a choice, not a given
+
+`Mult32` is really `Mult32` plus an *extraction* operator, and the modifier bits select which one runs
+(`26-Dsp32Mult.sinc`): `strunc4_sat` and `trunc4_sat` apply a four-bit truncation and saturation, the
+`dxM32I & dxM32TNS` variant writes the raw low word with no shift at all, and the `Reg8` variants extract
+eight bits signed or unsigned. The seven modifier strings — `(T)`, `(IS)`, `(NS)`, `(M)`, `(M,T)`, `(M,IS)`,
+… — are selects into that set.
+
+The practical consequence: **the engine must pick the variant that performs the Q31 fractional shift, and the
+choice is a decision to be made deliberately and then measured, not copied from whatever the compiler happened
+to allocate.** The factory samples collected here are all the `(T)` form, and their extraction is not the plain
+`(x*y) >> 31` that `toolkit/opzstruck.py` uses — so the reference implementation and the emitted code are not
+yet bit-identical, and that difference is the last thing standing between "the algorithm is validated" and
+"the module is validated". It is measurable on the device: a wrong extraction shows up as a level error or
+as truncation noise, and the self-test's pitch and decay measurements would fail the same way they did when
+the Q31 coefficient overflowed.
