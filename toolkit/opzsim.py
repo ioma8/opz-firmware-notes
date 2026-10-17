@@ -346,7 +346,7 @@ def selftest():
     out = m.mem_base + Machine.OUT_OFF
     for i in range(8192):
         m.st32(out + 4 * i, 0)
-    call(m, exports["render"], [out, 440 << 16, 0])
+    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, 0))
     # the buffer is interleaved stereo: two consecutive 32-bit words per frame, so words are 4 bytes
     # apart. Stepping by 8 would read only one channel and make the channel check meaningless.
     first = [m.ld32(out + 4 * j) for j in range(2 * S.BLOCK)]
@@ -416,6 +416,52 @@ def selftest():
     mm = Machine.for_module(raw)
     long_buf = capture(69, 1500, mm, bucket=4)
     check("engine decays to silence", max(abs(v) for v in long_buf[-2048:]) / 2 ** 31 < 1e-3, "")
+
+    # ---- polyphony: two voices must keep separate state, or every voice plays the same note
+    mp = Machine.for_module(raw)
+    ctx_a, ctx_b = mp.mem_base + Machine.SCRATCH_OFF, mp.mem_base + Machine.SCRATCH_OFF + 0x400
+    prm = mp.mem_base + Machine.PARAM_OFF
+    for i in range(8):
+        mp.st32(prm + 4 * i, 4 << 28)
+    call(mp, exports["initModule"], [0, 0x81003850, ctx_a])
+    call(mp, exports["init"], [ctx_a, 0])
+    call(mp, exports["init"], [ctx_b, 0])
+    call(mp, exports["onNoteOn"], [0, 69, ctx_a])
+    call(mp, exports["onNoteOn"], [0, 81, ctx_b])
+    check("two contexts hold different notes",
+          mp.ld32(ctx_a + 4) == 69 and mp.ld32(ctx_b + 4) == 81, "")
+    o = mp.mem_base + Machine.OUT_OFF
+
+    def render_into(machine, ctx, blocks=1):
+        for _ in range(blocks):
+            for j in range(2 * S.BLOCK):
+                machine.st32(o + 4 * j, 0)
+            call(machine, exports["render"], [o, 440 << 16, 0], stack=(ctx, prm, 0))
+        return [machine.ld32(o + 4 * j) for j in range(2 * S.BLOCK)]
+
+    render_into(mp, ctx_a, 2)
+    before = [mp.ld32(ctx_a + 0x10 + 4 * i) for i in range(12)]
+    render_into(mp, ctx_b, 2)                      # render the OTHER voice in between
+    after = [mp.ld32(ctx_a + 0x10 + 4 * i) for i in range(12)]
+    check("voice A state untouched by voice B", before == after, "")
+
+    # and each voice still sounds at its own pitch when rendered from its own context
+    buf_a = []
+    mp2 = Machine.for_module(raw)
+    ctx = mp2.mem_base + Machine.SCRATCH_OFF
+    for i in range(8):
+        mp2.st32(mp2.mem_base + Machine.PARAM_OFF + 4 * i, 4 << 28)
+    call(mp2, exports["initModule"], [0, 0x81003850, ctx])
+    call(mp2, exports["init"], [ctx, 0])
+    call(mp2, exports["onNoteOn"], [0, 81, ctx])   # the high voice this time
+    for _ in range(80):
+        for j in range(2 * S.BLOCK):
+            mp2.st32(mp2.mem_base + Machine.OUT_OFF + 4 * j, 0)
+        call(mp2, exports["render"], [mp2.mem_base + Machine.OUT_OFF, 440 << 16, 0],
+             stack=(ctx, mp2.mem_base + Machine.PARAM_OFF, 0))
+        buf_a += [mp2.ld32(mp2.mem_base + Machine.OUT_OFF + 4 * j) for j in range(2 * S.BLOCK)]
+    f = S.measure_freq(buf_a)
+    check("per-voice pitch (note 81 alone)", abs(f - 880) / 880 < 0.02, f"{f:.1f} Hz vs 880")
 
     print(f"\nsteps executed: {m.steps:,}")
     print(f"{'FAILED' if fails else 'all checks passed'} ({fails} failure(s))")

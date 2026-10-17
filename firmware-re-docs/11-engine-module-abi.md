@@ -542,3 +542,36 @@ and writes a `ZIP_STORED` payload containing
 
 which is the documented entry-path write primitive, and leaves staging as the ordinary update-medium
 procedure. What remains after that is hands on the device, not code.
+
+## 11.16 Per-voice state, and the sequence that makes it work
+
+An engine that keeps its state in module globals is wrong the moment the OS runs more than one voice:
+`render` is called per voice, so every voice would read and write the same state and they would all play
+whichever note was struck last. The struck-body engine keeps everything in the context the OS passes in —
+`init` (arg 1), `onNoteOn` (arg 3), `render` (arg 4):
+
+```
+ctx+0x00  gate
+ctx+0x04  note
+ctx+0x08  coefficient row pointer (saved, because P1 advances past the row within a block)
+ctx+0x0c  reserved
+ctx+0x10  state: six modes x (y1, y2)  -> ends at 0x40
+```
+
+Only the coefficient and gain tables remain in module data, where they are read-only and shared. The
+simulator now proves the isolation rather than asserting it: two contexts are initialised with different
+notes, voice A's state is snapshotted, voice B is rendered in between, and voice A's state is compared —
+identical. Each voice rendered alone still measures its own pitch (876 Hz for note 81).
+
+### The bug this refactor introduced, and why it was subtle
+
+After the first version, the output collapsed within two blocks — energy 1.8e17 → 4.8e5 → 0. The cause was
+**ordering inside the per-block rewind**: the state pointers were reset before the saved row pointer was read
+back, and that read advances its own pointer by one word, leaving `P0` at `ctx+0x0c` instead of `ctx+0x10`.
+The next frame then read the reserved word as `y1` and every state word was shifted by one. Reading the row
+pointer first and setting the state pointers last fixed it.
+
+Two lessons worth the space. **Pointer-walking code has no visible offsets** — the arithmetic is a side effect
+of how many reads happened, so a single `[P0++]` in the wrong place silently shifts a whole structure. And
+**the failure looked like excessive damping, not like misalignment**, which is exactly the shape of bug that a
+"does it make sound?" test passes: it did make sound, for one block.

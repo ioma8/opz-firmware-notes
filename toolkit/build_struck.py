@@ -6,9 +6,16 @@ builds the 56-byte module header and the segment list, and writes a loadable `.e
 
 Design, and why each choice was forced:
 
-* **Monophonic, state in the module's data segment.** The ABI hands each voice a context pointer, but a
-  fixed data area keeps the engine away from stack arguments, whose offsets are where an unverifiable
-  bug would hide. render() therefore reads only R0 (out) and R1 (frequency), both register args.
+* **Per-voice state, in the context the OS passes in.** The first build kept state in module globals, which
+  is wrong the moment the OS runs more than one voice: every voice would play the same note. All state now
+  lives in the context handed to `init` (arg 1), `onNoteOn` (arg 3) and `render` (arg 4):
+
+      +0x00 gate          +0x10 state[6][2]  (y1, y2 per mode)
+      +0x04 note          ...
+      +0x08 coefficient row pointer (saved so it can be rewound each block)
+      +0x0c reserved
+
+  Only the coefficient and gain tables stay in module data, where they are read-only and shared.
 * **A 128-entry coefficient table indexed directly by MIDI note.** The table is computed at build time
   by toolkit/opzstruck.py, so the engine contains no transcendentals at all - a note is an index, not
   a computation - and no clamping is needed for the legal 0..127 range.
@@ -136,155 +143,151 @@ def build():
     c.ins("ldimm7", "R0", 0)
     c.emit(A.rts())
 
-    # ---------------------------------------------------------- init: clear the mode state
+    # ---------------------------------------------------------- init(ctx, variant)
+    # Every note's state lives in the context the OS passes in, not in module globals: the OS calls
+    # render() once per voice, so global state would make every voice play the same note.
     c.label("init")
-    c.ins("ldimm32", "R0", D_STATE)
-    c.emit(A.regmv("P0", "R0"))
+    c.emit(A.regmv("P0", "R0"))              # ctx is argument 1
     c.ins("ldimm7", "R1", 0)
-    for _ in range(N_MODES * 2):
+    for _ in range(16):                      # 0x40 bytes: gate, note, rowp, reserved, 12 state words
         c.emit(A.ldst("P0", "R1", store=True))
     c.emit(A.rts())
 
     # ---------------------------------------------------------- onNoteOn(a1, note, ctx, a4)
     c.label("onNoteOn")
-    c.ins("ldimm32", "R0", D_INDEX)         # index = R1 (the note) -> the table row
-    c.emit(A.regmv("P0", "R0"))
-    c.emit(A.ldst("P0", "R1", store=True, aop=2))
-    c.ins("ldimm32", "R0", D_GATE)
-    c.emit(A.regmv("P0", "R0"))
-    c.ins("ldimm7", "R1", 1)
-    c.emit(A.ldst("P0", "R1", store=True, aop=2))    # gate = 1
-    # strike: seed each mode from the comb table, so the excitation has the sign pattern of a
-    # body hit at a fixed position (0.3) rather than every mode starting in phase
-    c.ins("ldimm32", "R0", D_STRIKE)
+    c.emit(A.regmv("P0", "R2"))              # ctx is argument 3
+    c.ins("ldimm7", "R3", 1)
+    c.emit(A.ldst("P0", "R3", store=True))   # +0x00 gate = 1
+    c.emit(A.ldst("P0", "R1", store=True))   # +0x04 the note, which the table row is derived from
+    c.emit(A.ldst("P0", "R3", store=True))   # +0x08 row pointer, filled in by render
+    c.ins("ldimm7", "R3", 0)
+    c.emit(A.ldst("P0", "R3", store=True))   # +0x0c reserved
+    c.ins("ldimm32", "R0", D_STRIKE)         # strike comb: per-mode seed, not one seed for all
     c.emit(A.regmv("P1", "R0"))
-    c.ins("ldimm32", "R0", D_STATE)
-    c.emit(A.regmv("P0", "R0"))
-    c.ins("ldimm7", "R2", 0)
     for _ in range(N_MODES):
-        c.emit(A.ldst("P1", "R1"))                   # seed for this mode
-        c.emit(A.ldst("P0", "R1", store=True))       # y1 = seed
-        c.emit(A.ldst("P0", "R2", store=True))       # y2 = 0
+        c.emit(A.ldst("P1", "R0"))           # seed for this mode
+        c.emit(A.ldst("P0", "R0", store=True))   # y1 = seed
+        c.emit(A.ldst("P0", "R3", store=True))   # y2 = 0
     c.emit(A.rts())
 
-    # ---------------------------------------------------------- onNoteOff
+    # ---------------------------------------------------------- onNoteOff(a1, ctx)
     c.label("onNoteOff")
-    c.ins("ldimm32", "R0", D_GATE)
-    c.emit(A.regmv("P0", "R0"))
-    c.ins("ldimm7", "R1", 0)
-    c.emit(A.ldst("P0", "R1", store=True, aop=2))
+    c.emit(A.regmv("P0", "R1"))              # ctx is argument 2 (see doc 11 section 11.16)
+    c.ins("ldimm7", "R2", 0)
+    c.emit(A.ldst("P0", "R2", store=True, aop=2))
     c.emit(A.rts())
 
-    # ---------------------------------------------------------- render(out, freq_q16, ...)
+    # ---------------------------------------------------------- render(out, freq, off, ctx, params, env)
     c.label("render")
     c.emit(A.push_r7_p5())
-    c.emit(A.regmv("P5", "R0"))             # out buffer (interleaved stereo, 64 frames)
+    c.emit(A.regmv("P5", "R0"))              # out: interleaved stereo, 64 frames
 
-    # The decay macro lives in argument 5, a stack argument. The push above moved SP by 7 words,
-    # so arg5 sits at SP+36; nine discarded post-increment loads walk there because the encoder
-    # still has no displacement load (doc 11 section 11.12).
+    # Arguments 4 and 5 are stack arguments. The push above moved SP by seven words, so arg4 sits at
+    # SP+32 and arg5 at SP+36; eight discarded post-increment loads then two reads collect both,
+    # because the encoder still has no displacement load (doc 11 section 11.12).
     c.emit(A.regmv("P0", "SP"))
-    for _ in range(9):
+    for _ in range(8):
         c.emit(A.ldst("P0", "R0"))
-    c.emit(A.ldst("P0", "R1"))              # R1 = params pointer
+    c.emit(A.ldst("P0", "R2"))               # R2 = ctx
+    c.emit(A.ldst("P0", "R1"))               # R1 = params
+    c.emit(A.regmv("P3", "R2"))              # keep ctx in P3; the push saved it
+
+    # ---- decay macro: params[PARAM_DECAY] -> one of eight per-block gain buckets
     c.ins("cmp_eq0", "R1")
-    c.branch("no_params", cond=True)        # a null pointer must not fault the whole device
+    c.branch("no_params", cond=True)         # a null pointer must not fault the whole device
     c.emit(A.regmv("P0", "R1"))
     for _ in range(PARAM_DECAY):
-        c.emit(A.ldst("P0", "R2"))          # walk to params[PARAM_DECAY]
+        c.emit(A.ldst("P0", "R2"))
     c.emit(A.ldst("P0", "R2"))
-    c.emit(A.shr("R2", "R2", 28))           # top three bits select one of eight buckets
-    c.emit(A.shl("R3", "R2", 2))            # *4, the word stride of the gain table
+    c.emit(A.shr("R2", "R2", 28))            # top three bits select the bucket
+    c.emit(A.shl("R3", "R2", 2))             # *4, the word stride of the gain table
     c.ins("ldimm32", "R4", D_GAINS)
     c.emit(A.addsub32("R4", "R4", "R3", "+"))
     c.emit(A.regmv("P0", "R4"))
-    c.emit(A.ldst("P0", "R3"))              # R3 = the decay factor for this block
+    c.emit(A.ldst("P0", "R3"))
     c.jump("have_gain")
     c.label("no_params")
-    c.ins("ldimm32", "R3", 0x7FFFFFFF)      # gain 1.0: keep the tail, apply no extra damping
+    c.ins("ldimm32", "R3", 0x7FFFFFFF)       # gain 1.0: apply no extra damping
     c.label("have_gain")
     c.ins("ldimm32", "R4", D_G)
     c.emit(A.regmv("P0", "R4"))
-    c.emit(A.ldst("P0", "R3", store=True))  # remember it for the per-block state scaling
-    c.ins("ldimm32", "R0", D_GATE)          # (P0 was borrowed, so reload the gate below)
+    c.emit(A.ldst("P0", "R3", store=True))
 
-    c.ins("ldimm32", "R0", D_GATE)          # if the gate is closed, this voice costs nothing
-    c.emit(A.regmv("P0", "R0"))
-    c.emit(A.ldst("P0", "R0", aop=2))
+    # ---- gate
+    c.emit(A.regmv("P0", "P3"))
+    c.emit(A.ldst("P0", "R0", aop=2))        # ctx+0x00
     c.ins("cmp_eq0", "R0")
     c.branch("done", cond=True)
 
-    c.label("setup_ptr")                    # row = table + index*48 ; state pointers
-    c.ins("ldimm32", "R0", D_INDEX)
-    c.emit(A.regmv("P0", "R0"))
-    c.emit(A.ldst("P0", "R2", aop=2))       # R2 = index
-    # row = index * 48 bytes, built from shifts: mul32 is a FRACTIONAL multiply ((a*b)>>32), so using
-    # it for integer arithmetic silently returns 0 and every note plays row 0
-    c.emit(A.shl("R4", "R2", 4))            # index * 16
-    c.emit(A.shl("R5", "R2", 5))            # index * 32
-    c.emit(A.addsub32("R2", "R4", "R5", "+"))
-    c.ins("ldimm32", "R3", D_TABLE)
-    c.emit(A.addsub32("R3", "R3", "R2", "+"))
-    c.emit(A.regmv("P1", "R3"))             # P1 walks the coefficient row
-    c.emit(A.regmv("P0", "R3"))
-    c.ins("ldimm32", "R4", D_ROWP)          # save the row pointer: P1 advances 96 bytes per frame
-    c.emit(A.regmv("P4", "R4"))             # and must be put back at the start of the next one
-    c.emit(A.ldst("P4", "R3", store=True, aop=2))
-    c.ins("ldimm32", "R3", D_STATE)
-    c.emit(A.regmv("P0", "R3"))             # P0 walks the state
-    c.emit(A.regmv("P2", "R3"))             # P2 writes it back, trailing P0
-    c.ins("ldimm32", "R6", 64)              # 64 frames per block
+    # ---- row pointer from the note, saved into the context so it can be rewound each frame
+    c.emit(A.regmv("P0", "P3"))
+    c.emit(A.ldst("P0", "R0"))               # skip the gate; P0 = ctx+0x04
+    c.emit(A.ldst("P0", "R4"))               # R4 = note
+    c.emit(A.shl("R2", "R4", 4))             # note * 16
+    c.emit(A.shl("R5", "R4", 5))             # note * 32; together note * 48 without a multiply,
+    c.emit(A.addsub32("R4", "R2", "R5", "+"))# since mul32 is a FRACTIONAL multiply
+    c.ins("ldimm32", "R5", D_TABLE)
+    c.emit(A.addsub32("R5", "R5", "R4", "+"))# R5 = the coefficient row
+    c.emit(A.ldst("P0", "R5", store=True))   # ctx+0x08 = row, P0 = ctx+0x0c
+    c.emit(A.ldst("P0", "R0"))               # skip reserved, P0 = ctx+0x10
+    c.emit(A.regmv("P2", "P0"))              # writer trails the reader
+    c.emit(A.regmv("P1", "R5"))              # P1 walks the coefficient row
+    c.ins("ldimm32", "R6", 64)               # 64 frames per block
 
     c.label("frame")
-    c.ins("ldimm7", "R7", 0)                # accumulator
+    c.ins("ldimm7", "R7", 0)                 # accumulator
     for _ in range(N_MODES):
-        c.emit(A.ldst("P0", "R0"))          # y1
-        c.emit(A.ldst("P0", "R1"))          # y2
-        c.emit(A.ldst("P1", "R2"))          # c
-        c.emit(A.ldst("P1", "R3"))          # s
-        c.emit(A.mul32("R4", "R2", "R0"))   # c*y1
-        c.emit(A.mul32("R5", "R3", "R1"))   # s*y2
-        c.emit(A.addsub32("R4", "R4", "R5", "-"))    # y1' = c*y1 - s*y2
-        # the (T) multiply extracts >>32, not the >>31 of a Q31 fractional multiply, so every
-        # term comes back half scale and is doubled here - one add, mirroring frac_q31()
+        c.emit(A.ldst("P0", "R0"))           # y1
+        c.emit(A.ldst("P0", "R1"))           # y2
+        c.emit(A.ldst("P1", "R2"))           # c
+        c.emit(A.ldst("P1", "R3"))           # s
+        c.emit(A.mul32("R4", "R2", "R0"))    # c*y1
+        c.emit(A.mul32("R5", "R3", "R1"))    # s*y2
+        c.emit(A.addsub32("R4", "R4", "R5", "-"))
+        c.emit(A.addsub32("R4", "R4", "R4", "+"))   # >>32 extraction, doubled back into Q31
+        c.emit(A.ldst("P2", "R4", store=True))
+        c.emit(A.addsub32("R7", "R7", "R4", "+"))
+        c.emit(A.mul32("R4", "R3", "R0"))    # s*y1
+        c.emit(A.mul32("R5", "R2", "R1"))    # c*y2
+        c.emit(A.addsub32("R4", "R4", "R5", "+"))
         c.emit(A.addsub32("R4", "R4", "R4", "+"))
         c.emit(A.ldst("P2", "R4", store=True))
-        c.emit(A.addsub32("R7", "R7", "R4", "+"))    # acc += y1'
-        c.emit(A.mul32("R4", "R3", "R0"))   # s*y1
-        c.emit(A.mul32("R5", "R2", "R1"))   # c*y2
-        c.emit(A.addsub32("R4", "R4", "R5", "+"))    # y2' = s*y1 + c*y2
-        c.emit(A.addsub32("R4", "R4", "R4", "+"))    # same >>32 compensation
-        c.emit(A.ldst("P2", "R4", store=True))
-    c.emit(A.ldst("P5", "R7", store=True))           # left
-    c.emit(A.ldst("P5", "R7", store=True))           # right
+    c.emit(A.ldst("P5", "R7", store=True))   # left
+    c.emit(A.ldst("P5", "R7", store=True))   # right
     c.ins("ldimm7", "R0", 1)
     c.emit(A.addsub32("R6", "R6", "R0", "-"))
-    # rewind both walks: the state pointer pair, and the coefficient row pointer
-    c.ins("ldimm32", "R0", D_STATE)
-    c.emit(A.regmv("P0", "R0"))
-    c.emit(A.regmv("P2", "R0"))
-    c.ins("ldimm32", "R0", D_ROWP)
-    c.emit(A.regmv("P4", "R0"))
-    c.emit(A.ldst("P4", "R0", aop=2))
-    c.emit(A.regmv("P1", "R0"))
+
+    # Rewind the per-frame walks. Order matters: reading the saved row pointer advances its pointer
+    # by one word, so the state pointers must be set AFTER that read, not before it - getting this
+    # backwards leaves P0 one word short of the state and the next frame reads the reserved word as
+    # y1, which collapses the output within two blocks.
+    c.emit(A.regmv("P0", "P3"))
+    for _ in range(2):
+        c.emit(A.ldst("P0", "R0"))           # skip gate and note, P0 = ctx+0x08
+    c.emit(A.ldst("P0", "R1"))               # ctx+0x08 = the saved row pointer
+    c.emit(A.regmv("P1", "R1"))
+    c.emit(A.regmv("P0", "P3"))
+    for _ in range(4):
+        c.emit(A.ldst("P0", "R0"))           # P0 = ctx+0x10, the first state word
+    c.emit(A.regmv("P2", "P0"))
     c.ins("cmp_eq0", "R6")
     c.branch("frame", cond=False)
+
     # The decay factor belongs to a BLOCK, not a sample: applying it inside the 64-sample loop made
-    # it act 64 times per block (0.99885^64 = 0.929 - a 7% per-block collapse, which is exactly what
-    # the simulator measured before this moved here).
-    # Apply the decay factor to the mode state: one multiply per state word per block is the same
-    # decay as scaling every sample, and it is what makes the decay macro move the tail.
+    # it act 64 times per block (0.99885^64 = 0.929, a 7% collapse - measured, see doc 11 section 11.14).
     c.ins("ldimm32", "R0", D_G)
     c.emit(A.regmv("P4", "R0"))
-    c.emit(A.ldst("P4", "R5"))                       # R5 = gain
-    c.ins("ldimm32", "R0", D_STATE)
-    c.emit(A.regmv("P0", "R0"))
-    c.emit(A.regmv("P2", "R0"))
+    c.emit(A.ldst("P4", "R5"))               # R5 = gain
+    c.emit(A.regmv("P0", "P3"))
+    for _ in range(4):
+        c.emit(A.ldst("P0", "R0"))
+    c.emit(A.regmv("P2", "P0"))
     for _ in range(N_MODES * 2):
         c.emit(A.ldst("P0", "R0"))
         c.emit(A.mul32("R1", "R0", "R5"))
-        c.emit(A.addsub32("R1", "R1", "R1", "+"))    # >>32 extraction, doubled back
+        c.emit(A.addsub32("R1", "R1", "R1", "+"))
         c.emit(A.ldst("P2", "R1", store=True))
+
     c.label("done")
     c.emit(A.pop_r7_p5())
     c.emit(A.rts())
