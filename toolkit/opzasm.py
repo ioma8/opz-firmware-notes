@@ -168,6 +168,21 @@ def ldimm32(dst, value):
     return _u16(0xDA00 | (D_REGS.index(dst) & 7), (v >> 16) & 0xFFFF, v & 0xFFFF, 0)
 
 
+def cmp_eq0(reg):
+    """`CC = Rx == 0` (16-bit CC2Dreg, 03-CC2Dreg.sinc): sig 0x0C00 | reg."""
+    return _u16(0x0C00 | (D_REGS.index(reg) & 7))
+
+
+def push_r7_p5():
+    """`push (R7:4, P5:3)` - the prologue pair every factory engine uses."""
+    return _u16(0x05E3)
+
+
+def pop_r7_p5():
+    """`pop (R7:4, P5:3)` - its epilogue."""
+    return _u16(0x05A3)
+
+
 # (source text, encoder call, expected bytes as seen in a factory engine)
 SELFTEST = [
     ("P5 = R0",    lambda: regmv("P5", "R0"),        bytes.fromhex("2832"), "volt render prologue 0x81bf016a"),
@@ -196,7 +211,12 @@ SELFTEST = [
     ("R1 = 0", lambda: ldimm7("R1", 0), bytes.fromhex("0160"), "chord onNoteOn 0x81be29c4"),
     ("R2 = 0x7fffffff", lambda: ldimm32("R2", 0x7FFFFFFF), bytes.fromhex("02daff7fffff0000"[:16]), "volt render 0x81bf0188"),
     ("R3 = 0x1020408", lambda: ldimm32("R3", 0x01020408), bytes.fromhex("03da020108040000"), "volt render 0x81bf02b8"),
+    ("CC = R3 == 0", lambda: cmp_eq0("R3"), bytes.fromhex("030c"), "volt render 0x81bf0176"),
+    ("CC = R0 == 0", lambda: cmp_eq0("R0"), bytes.fromhex("000c"), "volt render 0x81bf01da"),
+    ("push (R7:4,P5:3)", push_r7_p5, bytes.fromhex("e305"), "volt prologue 0x81bf015c"),
+    ("pop (R7:4,P5:3)", pop_r7_p5, bytes.fromhex("a305"), "volt epilogue 0x81bf06f4"),
 ]
+
 
 
 

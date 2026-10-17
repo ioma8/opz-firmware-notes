@@ -377,3 +377,42 @@ yet bit-identical, and that difference is the last thing standing between "the a
 "the module is validated". It is measurable on the device: a wrong extraction shows up as a level error or
 as truncation noise, and the self-test's pitch and decay measurements would fail the same way they did when
 the Q31 coefficient overflowed.
+
+## 11.13 The engine builds
+
+`toolkit/build_struck.py` assembles the module and writes a loadable `.engine`:
+
+```
+$ python3 toolkit/build_struck.py struck.engine
+wrote struck.engine (6848 B)
+  header 56 B @0x81c0a000   code 504 B @0x81c0a038   data 6208 B @0x81c0b000
+  container round-trip: parsed OK
+    initModule   0x81c0a038
+    init         0x81c0a058
+    render       0x81c0a0d6
+    onNoteOn     0x81c0a07e
+    onNoteOff    0x81c0a0c6
+```
+
+It round-trips through `opzengine.py` (segment magic, checksums, the five exports), and the emitted
+instruction stream decodes back to what was intended — including the two things composition can break: the
+patched branch offsets (`if !CC JUMP 0x81c0a054` lands exactly on the `im_fail` label) and the absolute
+addresses (`R0 = -0x7e3f4ff8` is `0x81c0b008`, the host-table slot).
+
+Design as built: monophonic, six inharmonic modes, state in the module's data segment so `render` reads only
+R0 and R1 and never touches stack arguments; a 128-entry coefficient table computed at build time by
+`opzstruck.py` so the engine contains no transcendentals — a note is an index. Registers render needs beyond
+the volatile set are saved with the verified push/pop pair.
+
+**Stated limitations, not hidden ones:** the decay radius is baked into the table (T60 ≈ 1.2 s for mode 0) so
+the decay macro does not yet move the tail; all six modes are struck with the same sign, so there is no
+strike-position comb; and `mul32` emits the `(T)` extraction variant, whose truncation is not yet reconciled
+with `opzstruck.py`'s plain `(x*y) >> 31` (doc `11` §11.12).
+
+### A tooling ambiguity worth knowing
+
+On a raw-binary import Ghidra decodes some 16-bit `LdSt` forms as the *32-bit* `LdStIdxI` class instead —
+`0b 90 31 ca` becomes a two-byte `R3 = [P1++]` followed by a `Mult32`, or one four-byte indexed load,
+depending on the consumer. Factory code contains the same two-byte sequences, so the 16-bit reading is the
+one the hardware uses; the ambiguity is Ghidra's, not the encoding's. It does mean emitted code should be
+verified by re-encoding and comparing bytes, not only by reading a disassembly back.
