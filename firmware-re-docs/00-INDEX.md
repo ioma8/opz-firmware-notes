@@ -43,6 +43,7 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
 | `09-ghidra-harness-and-process.md` | **the working method**: the four-image harness and its invocation form, the ten analysis scripts with what each answers *and cannot* answer, the analysis loop, the rules for making a claim, and the traps with their cost |
 | `10-architecture-diagrams.md` | the whole system as three Mermaid diagrams — the three processors and the two Blackfin images, the runtime sound/note/light flows, and the content-and-update path — plus an explicit list of what the diagrams do not claim |
 | `11-engine-module-abi.md` | the `.engine` module format and ABI — the segment container with its `0xAD` magic and XOR checksum, the 56-byte header with its two magics and five named exports, the `initModule`/`init`/`render`/`renderFX` signatures, the OS-side record and plug array, and an explicit list of what is still missing before a new engine can be built |
+| `12-installing-a-new-engine.md` | **how a from-scratch engine gets onto a real unit**: what "installed" means (module file, registry entry, and the device's own `~<id>.engine` assignment markers), the three attempts with the control experiment that proved the content-disk check is a registry lookup rather than a file check, the working full-firmware-tree recipe, the three traps that cost attempts, and how to verify an install from logs rather than ears |
 
 ## Headline findings
 
@@ -388,6 +389,16 @@ can contain the payload, and a retraction is recorded at the claim it overturns.
     `PlayState`/`PatternState`/`PositionState` in the state-sync protocol; and `Sequencer.cpp` **parses MIDI Song
     Position Pointer**, which needs a linear timeline to point into. Chaining, song selection and song position
     are therefore all modelled — but none of it is shown to be user-reachable.
+
+29. **A new engine can be installed on a real unit, and the route is now known.** Doc `12` records it: a
+    from-scratch six-mode modal resonator, built for memoryslot 63 (`0x81be7400`), installed as plug id 160 on
+    the lead track of a physical OP-Z and playing in tune. Two routes failed for instructive reasons — copying
+    the `.engine` onto the content disk is refused by **name, not by content** (a pristine factory engine was
+    rejected identically once renamed, so the check is a plug-registry lookup) and a three-entry update zip is
+    refused before extraction (`failed to find ble firmware file`) — while repacking the unit's own 1.2.45 tree
+    with the engine inside `firmware/blackfin/system/content/` was accepted, after which the device wrote
+    `~160.engine` markers on all four synth tracks. See doc `12` §12.2 for the evidence chain and §12.3 for
+    the recipe.
 
 ## Confidence levels
 

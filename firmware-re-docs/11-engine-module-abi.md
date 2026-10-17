@@ -578,8 +578,9 @@ of how many reads happened, so a single `[P0++]` in the wrong place silently shi
 
 ## 11.17 Installing a new engine on a real unit: what actually works
 
-Three routes were tried on hardware (firmware 1.2.45 / OS 1.2.43). Only the third worked,
-and the two failures each answered a question that reading code had left open.
+Three routes were tried on hardware (firmware 1.2.45 / OS 1.2.43). Only the third worked. The full procedure,
+its verification steps and its failure-mode table are doc `12`; this section keeps the diagnostic conclusions,
+because the two failures each answered a question that reading code had left open.
 
 ### Route 1 - copy the .engine onto the content disk: refused by name, not by content
 

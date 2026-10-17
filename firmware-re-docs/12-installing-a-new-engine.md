@@ -1,0 +1,210 @@
+# Installing a new engine on a real OP-Z
+
+This document records how a new `.engine` — a from-scratch synthesizer module, not a factory one — was put on
+a physical OP-Z and made to play. It is written as a procedure with its evidence attached: every step below
+was executed, every claim marked *verified* was read back out of the device or its logs, and the two routes
+that failed are kept because their failure messages are the most useful part.
+
+The engine used as the vehicle is `struck`, a six-mode modal resonator built for slot 63; the install machinery
+is `toolkit/install_struck.py`. Nothing in the procedure depends on that particular engine except the file
+name and the plug id.
+
+## 12.1 What "installed" actually means
+
+Three separate things have to be true, and they are written to three different places. Confusing them is the
+main reason the first two attempts looked like they should have worked:
+
+| part | where it lives | who writes it | checked by |
+|---|---|---|---|
+| the module file | `/yaffs2/system/content/engines/<name>.engine` (also `/yaffs2/user/engines/`) | the update payload | file present, correct size |
+| the registry entry | `/yaffs2/system/content/settings/plugs_patch.json`, an `auto_import` array | the update payload | `auto_import` holds the plug id |
+| the assignment | 0-byte `~<id>.engine` markers under `/yaffs2/user/samplepacks/<track>/<slot>/` | **the device itself** | markers exist after boot |
+
+The third row is the one to look at first when diagnosing, because the device writes it only after it has
+accepted the registry entry. A plug that is registered but whose module fails to load still gets its marker;
+a plug the OS does not know never gets one.
+
+## 12.2 The evidence chain
+
+Each attempt was a hypothesis with a test attached. This is the order they were tried, including the control
+experiment that overturned the first reading — the same discipline doc `09` describes, applied to hardware
+rather than to disassembly.
+
+### Attempt 1: copy the file onto the content disk — refused, and not for the expected reason
+
+Content mode exposes `/yaffs2/user/` as a FAT volume with `samplepacks/`, `config/`, `projects/`, `bounces/`
+and `rejected/`. The obvious move is to drop the engine into a sample-pack slot. `samplepacks/6-lead/08/struck.engine`
+produced, in `/Volumes/OP-Z/import.log`:
+
+```
+[IMPORT STARTED]
+Reading content disk...SUCCESS
+  rejecting invalid engine : /samplepacks/6-lead/08/struck.engine
+Calculating used sample space...0.8/24.0 MB
+  rejecting invalid engine : /samplepacks/6-lead/08/struck.engine
+```
+
+The natural reading — "my module is malformed" — is wrong, and the error message alone cannot distinguish the
+two possibilities. The **control experiment** does: a pristine factory `chorus.engine`, byte-identical to the
+module shipped on that very device, was placed in the same kind of slot under the name `probe.engine`. It was
+refused with the identical message.
+
+*Identical bytes, different name, same refusal* — therefore the check is a **plug-registry lookup, not a file
+check**. The OS has already decided which engines are legitimate (the `auto_import` entries of
+`plugs_patch.json` plus the plugs it ships with), recognises `.engine` as a type — the sibling string
+`Ignoring file of wrong type: %s` exists for extensions outside `wav|aif|aiff|engine` — and then judges the
+file by *identity*. A file whose name corresponds to no known plug can never be accepted, no matter how valid
+its container is.
+
+**Consequence:** a new engine cannot be side-loaded. The registry entry must exist *before* the OS will look
+at the module, and that registry lives in system content, which content mode does not expose.
+
+Two side observations from this attempt: the rejection is logged twice (once while reading the disk, once
+while assigning), and a `.txt` file in the same slot produced *no* log line at all — so silence in
+`import.log` does not mean "accepted", it usually means "never considered".
+
+### Attempt 2: a three-entry update zip — refused before extraction
+
+Update mode exposes a much smaller volume carrying only `systeminfo/`. The updater is fed
+`firmware_bin_only_with_bootloader.zip` at the volume root. A zip containing just the engine and a patched
+`plugs_patch.json` was refused, and `systeminfo/upgrade.log` recorded exactly why:
+
+```
+[2026-10-17 15:35] upgrade started
+failed to find ble firmware file
+[2026-10-17 15:35] upgrade not compatible with this device
+```
+
+The archive is validated as a *firmware* archive **before anything is extracted**, and the first component it
+looked for was the BLE image. The strings in `bootloader.ldr` enumerate the whole set it expects under
+`/yaffs2/upgrade/`:
+
+```
+firmware/firmware.version
+firmware/blackfin/bin/opz.ldr              firmware/blackfin/bin/opz.crc32
+firmware/blackfin/bin/bootloader.ldr       firmware/blackfin/bin/os.version
+firmware/blackfin/bin/bootloader.version
+firmware/nordic/bin/nrf52832_opz.bin       firmware/nordic/bin/nrf52832_opz.dat
+firmware/nordic/bin/nordic.version
+firmware/psoc_keyboard/bin/SnakeKeyboardModule_*.cyacd
+firmware/psoc_keyboard/bin/keyboard.version
+firmware/blackfin/system/content/          <-- content, and therefore engines
+```
+
+That last line is the key: the updater installs `firmware/blackfin/system/content/` wholesale, so content
+files — including a new engine and a patched registry — can ride inside a firmware archive.
+
+### Attempt 3: the whole firmware tree plus the engine — accepted
+
+Repacking the unit's own 1.2.45 tree with the engine added was accepted. The payload was 32 entries,
+`ZIP_STORED`, every entry's CRC correct, no macOS `._` files, and it differed from a stock archive in exactly
+two places:
+
+```
+firmware/blackfin/system/content/engines/struck.engine              7,136 B
+firmware/blackfin/system/content/settings/plugs_patch.json          1,924 B  (6 auto_import entries)
+```
+
+**Verification that it worked** — the device's own record, read from the content volume afterwards:
+
+```
+/Volumes/OP-Z/samplepacks/5-bass/05/~160.engine
+/Volumes/OP-Z/samplepacks/6-lead/08/~160.engine
+/Volumes/OP-Z/samplepacks/7-arpeggio/09/~160.engine
+/Volumes/OP-Z/samplepacks/8-chord/07/~160.engine
+```
+
+Four 0-byte markers, one per synth track, exactly matching the `tracks: [4,5,6,7]` of the registry entry
+(0-based: bass, lead, arpeggio, chord). The engine then played a note in tune, which is the audio check
+detailed in §12.5.
+
+## 12.3 The working recipe
+
+```bash
+# 1. build the engine and the payload (--full uses the unit's own firmware tree as the base)
+python3 toolkit/install_struck.py -o /tmp/payload.zip --full
+
+# 2. put the unit in UPDATE mode (the volume must show systeminfo/ and nothing else)
+
+# 3. stage it, and remove the AppleDouble file macOS always leaves behind
+cp /tmp/payload.zip "/Volumes/OP-Z/firmware_bin_only_with_bootloader.zip"
+rm -f "/Volumes/OP-Z/._firmware_bin_only_with_bootloader.zip"
+sync
+
+# 4. eject, let it flash and reboot on its own
+diskutil eject /Volumes/OP-Z
+```
+
+Then select the plug on a synth track (a synth track shows it by name), play a note, and confirm the markers
+appear on the content disk as in §12.2.
+
+The registry entry it writes, appended after the five factory patches so none of them are lost:
+
+```json
+{"engine": {"memoryslot": 63, "path": "engines/struck.engine", "version": 1},
+ "plug": {"engine": "engines/struck.engine", "flags": 0, "id": 160,
+          "memoryslot": 63, "name": "struck", "samples": "", "version": 1},
+ "tracks": [4, 5, 6, 7]}
+```
+
+`memoryslot` is not decoration: it is what makes the OS load the module at the address the module was linked
+for, and the slot→address law is doc `11` §11.15. Slot 63 is `0x81be7400`, whose three 0x1400-byte slots end
+exactly where `reverb` begins.
+
+## 12.4 Three traps, all about *where* rather than *what*
+
+1. **A zip staged in content mode is eaten silently.** The content importer consumes unknown files at the
+   volume root, logs nothing, and `upgrade.log` never gains an entry — so the archive simply disappears and
+   the next boot looks normal. One attempt was lost this way and initially looked like a validation failure.
+   The tell is that `upgrade.log`'s mtime is unchanged. **Stage only while the volume shows `systeminfo/`.**
+2. **macOS pollutes FAT volumes.** Every file written from Finder or `cp` on some setups brings a 4 KB
+   AppleDouble `._<name>` companion. Those are unexpected entries in an update payload and unexpected files in
+   a sample pack. Remove them (`dot_clean -m <dir>`), and re-check after copying.
+3. **`systeminfo/` only exists on the update volume.** It is the only place `system.log`, `upgrade.log`,
+   `import.log`, `version.txt` and `serial.txt` can be read. If the logs look stale, the volume is in the wrong
+   mode, not the device.
+
+## 12.5 Verifying that it actually works
+
+Three checks, cheapest first. The first is a file listing, the second is a log read, and only the third needs
+ears.
+
+**1. Assignment markers** (§12.2) — one `~<plugid>.engine` per target track. No marker means the registry
+entry was not accepted, and nothing about the module matters yet.
+
+**2. The boot log.** In update mode, `systeminfo/system.log` gains a session per boot. For a healthy install
+there is no `Can't load engine <id>` line. For a failed one there is, and the neighbouring `dlm:` lines give
+the loader's own reason — `Bad header`, `Bad header checksum`, `Bad address (…)`, `Data outside buffer`. Note
+the factory engines themselves emit five `dlm: Unsupported fill value` lines per boot; those are benign and
+are a handy baseline for "the log is from a real boot".
+
+**3. The audio check.** Select the plug on a synth track and play:
+
+| observation | conclusion |
+|---|---|
+| a pitched note, in tune with the keyboard | the note→coefficient mapping and the load base are both right |
+| the tail shortens as the decay macro is turned down | the `params` binding is right (doc `11` §11.14) |
+| silence for every note | the module loaded but the gate or the note path is wrong — check the boot log first |
+| sound but wrong pitch, or a fixed pitch | the coefficient row indexing is wrong; compare against the table dump |
+
+For `struck` all three passed: the plug is assigned on four tracks, the module loads, and it plays in tune.
+
+## 12.6 What was still unproven at that point
+
+Recorded honestly, because an install that works is not the same as an ABI that is fully characterised:
+
+* whether the decay macro is bound to the *intended* knob. `params[2]` is an engine-author choice, not a
+  recovered mapping — plug metadata carries no parameter names, ranges or curves.
+* the exact rounding the hardware applies to the `(T)` multiply extraction, which the simulator models as
+  truncation (doc `11` §11.12). The engine sounds correct, so truncation is at worst very close, but "sounds
+  correct" cannot distinguish a one-LSB difference.
+* whether the installer skips components whose versions match. The payload re-applies the same 1.2.45 build,
+  so this never had to be resolved to install an engine.
+
+## 12.7 Reproducing this procedure for a different engine
+
+Only four things are engine-specific: the module file, its `memoryslot`, the plug `id` and the `name`. Choose
+a free slot inside a verified bank (doc `11` §11.15) and build the module for the address that slot maps to;
+pick a plug id above the factory range and below the large user id; keep `tracks` to the tracks the plug
+should appear on. Everything else — the firmware tree in the payload, the staging procedure, the marker check
+— is identical, which is what makes this a procedure rather than a one-off.
