@@ -323,3 +323,26 @@ sample appears twice, and the analysis was reading the interleaved buffer as mon
 of engine output must take one channel. The estimator itself is a direct DFT peak scan; autocorrelation was
 tried first and produced octave errors (56 Hz for a 220 Hz note) because an unnormalised sum on a decaying
 multi-mode signal is dominated by short lags.
+
+## 11.12 Encoder coverage, form by form
+
+`toolkit/opzasm.py` states its own coverage in `selftest`, which compares every emitted form against bytes
+lifted from `volt`/`chord`. This table is the same information as a plan:
+
+| form | SLEIGH source | status | evidence / note |
+|---|---|---|---|
+| `P = R`, `P = P`, `I = P` | `11-RegMv` | **verified** | `P4 = R0` → `2032`; gd 1 = P, 2 = I; gs 0 = R, 1 = P, 2 = I |
+| `Rd = Rs0 ± Rs1` | `15-Comp3op` | **verified** | `R1 = R7 + R1` → `4f50`; opc@9-11, dst@6-8, src1@3-5, src0@0-2 |
+| `[P++] = R`, `R = [P++]` | `18-LdSt` | **verified** | `[P4++] = R0` → `2092`; store sets bit 9; ptr@3-5, reg@0-2, sz@10-11 |
+| `LINK n`, `UNLINK`, `RTS` | `35-Linkage`, `01-ProgCtrl` | **verified** | `LINK 0x78` → `00e81e00` (the frame field is in **words**: 0x1E); `UNLINK` → `01e8`; `RTS` → `0010` |
+| `JUMP.S` | `10-UJump` | **verified** | 12-bit half-word offset from the instruction: `bc22` reaches +0x578 |
+| `Rd = Rs0 * Rs1 (T)` | `26-Dsp32Mult` | **verified (layout)** | second half solved: `h2 = 0x2000 | dst<<6 | src0<<3 | src1`; the first half appears as `0xca31` or `0xc231` for the same displayed form, differing in bit 11 |
+| `Rd = imm7` | `16-CompI2op` | **layout known** | sig 6, r@11 (0 = dreg, 1 = preg), opc@10, value@3-9 sign-extended, dst@0-2; `R2 = 0x20` → `6102` |
+| `if CC JUMP`, `if !CC JUMP` | `09-BrCC` | **layout known** | sig 1, T@11 (1 = CC), B@10, 10-bit half-word offset from the instruction; `if !CC ... (BP)` → offset 2 reaches +4 |
+| `Rd = Rs >>> n` | `29-Dsp32ShfImm` | **partially solved** | second half: sop@14-15, hls@12-13, dst@9-11, imm@3-8 **signed**, src@0-2. For the logical form (sop 0) the field holds **-n**: n = 6, 1 and 31 encode as 58, 63 and 33. The arithmetic form (sop 2) does not follow that rule in the samples collected and is unresolved |
+| `P += imm`, `[P + off]` | `13-Ptr2op`, `17-LdStPmod` | **not started** | `P1 += 8` is a *32-bit* instruction (`416c 88e4`), so it is not the 16-bit pointer class |
+
+Two consequences worth carrying forward. First, **`LINK`'s frame field is in words, not bytes** — a reader who
+assumes bytes builds a frame four times too large and corrupts the caller's stack. Second, the shift field's
+sign convention means a logical right shift is written as a negative count, which is exactly the kind of
+detail that produces code that assembles, loads and computes nonsense.
