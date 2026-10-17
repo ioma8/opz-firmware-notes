@@ -42,6 +42,7 @@ D_GATE   = DATA_BASE + 0x00
 D_INDEX  = DATA_BASE + 0x04
 D_HOST   = DATA_BASE + 0x08
 D_STRIKE = DATA_BASE + 0x10         # 6 per-mode excitation seeds (the strike comb)
+D_ROWP   = DATA_BASE + 0x28         # the coefficient row pointer, saved so it can be rewound
 D_STATE  = DATA_BASE + 0x30         # 6 modes x (y1, y2) = 12 words
 D_TABLE  = DATA_BASE + 0x60         # 128 notes x 6 modes x (c, s)
 N_MODES = 6
@@ -169,11 +170,18 @@ def build():
     c.ins("ldimm32", "R0", D_INDEX)
     c.emit(A.regmv("P0", "R0"))
     c.emit(A.ldst("P0", "R2", aop=2))       # R2 = index
-    c.ins("ldimm7", "R3", 48)
-    c.emit(A.mul32("R2", "R2", "R3"))       # index * 48 bytes
+    # row = index * 48 bytes, built from shifts: mul32 is a FRACTIONAL multiply ((a*b)>>32), so using
+    # it for integer arithmetic silently returns 0 and every note plays row 0
+    c.emit(A.shl("R4", "R2", 4))            # index * 16
+    c.emit(A.shl("R5", "R2", 5))            # index * 32
+    c.emit(A.addsub32("R2", "R4", "R5", "+"))
     c.ins("ldimm32", "R3", D_TABLE)
     c.emit(A.addsub32("R3", "R3", "R2", "+"))
     c.emit(A.regmv("P1", "R3"))             # P1 walks the coefficient row
+    c.emit(A.regmv("P0", "R3"))
+    c.ins("ldimm32", "R4", D_ROWP)          # save the row pointer: P1 advances 96 bytes per frame
+    c.emit(A.regmv("P4", "R4"))             # and must be put back at the start of the next one
+    c.emit(A.ldst("P4", "R3", store=True, aop=2))
     c.ins("ldimm32", "R3", D_STATE)
     c.emit(A.regmv("P0", "R3"))             # P0 walks the state
     c.emit(A.regmv("P2", "R3"))             # P2 writes it back, trailing P0
@@ -203,10 +211,14 @@ def build():
     c.emit(A.ldst("P5", "R7", store=True))           # right
     c.ins("ldimm7", "R0", 1)
     c.emit(A.addsub32("R6", "R6", "R0", "-"))
-    # rewind the state walk for the next frame
+    # rewind both walks: the state pointer pair, and the coefficient row pointer
     c.ins("ldimm32", "R0", D_STATE)
     c.emit(A.regmv("P0", "R0"))
     c.emit(A.regmv("P2", "R0"))
+    c.ins("ldimm32", "R0", D_ROWP)
+    c.emit(A.regmv("P4", "R0"))
+    c.emit(A.ldst("P4", "R0", aop=2))
+    c.emit(A.regmv("P1", "R0"))
     c.ins("cmp_eq0", "R6")
     c.branch("frame", cond=False)
     c.label("done")

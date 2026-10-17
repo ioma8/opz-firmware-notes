@@ -183,6 +183,18 @@ def pop_r7_p5():
     return _u16(0x05A3)
 
 
+def shl(dst, src, n):
+    """`Rd = Rs << n` (Dsp32ShfImm, 29-Dsp32ShfImm.sinc).
+
+    Second half: sop@14-15 (2 = left shift), hls@12-13, dst@9-11, imm@3-8 (signed), src@0-2.
+    Unlike the right-shift form, whose immediate is stored negated, a left shift carries +n.
+    """
+    if not 0 <= n <= 31:
+        raise Unsupported(f"shift count {n} out of range")
+    h2 = (2 << 14) | ((D_REGS.index(dst) & 7) << 9) | ((n & 0x3F) << 3) | (D_REGS.index(src) & 7)
+    return _u16(0xCE82, h2)
+
+
 # (source text, encoder call, expected bytes as seen in a factory engine)
 SELFTEST = [
     ("P5 = R0",    lambda: regmv("P5", "R0"),        bytes.fromhex("2832"), "volt render prologue 0x81bf016a"),
@@ -215,7 +227,10 @@ SELFTEST = [
     ("CC = R0 == 0", lambda: cmp_eq0("R0"), bytes.fromhex("000c"), "volt render 0x81bf01da"),
     ("push (R7:4,P5:3)", push_r7_p5, bytes.fromhex("e305"), "volt prologue 0x81bf015c"),
     ("pop (R7:4,P5:3)", pop_r7_p5, bytes.fromhex("a305"), "volt epilogue 0x81bf06f4"),
+    ("R0 = R4 << 31", lambda: shl("R0", "R4", 31), bytes.fromhex("82cefc80"), "volt render 0x81bf0244"),
+    ("R4 = R6 << 16", lambda: shl("R4", "R6", 16), bytes.fromhex("82ce8688"), "chord render 0x81be268a"),
 ]
+
 
 
 

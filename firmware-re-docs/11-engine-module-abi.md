@@ -432,3 +432,43 @@ On a raw-binary import Ghidra decodes some 16-bit `LdSt` forms as the *32-bit* `
 depending on the consumer. Factory code contains the same two-byte sequences, so the 16-bit reading is the
 one the hardware uses; the ambiguity is Ghidra's, not the encoding's. It does mean emitted code should be
 verified by re-encoding and comparing bytes, not only by reading a disassembly back.
+
+## 11.14 The engine runs, and the numbers are measured from its own output
+
+Everything above validates descriptions. `toolkit/opzsim.py` executes the module: it is a small interpreter
+for exactly the forms `opzasm.py` emits, faithful to the SLEIGH semantics each encoding was derived from, and
+it refuses any instruction it does not implement rather than guessing. Its self-test now includes the two
+measurements that matter:
+
+```
+PASS  engine pitch note 69     439.5 Hz vs 440 Hz (0.11%)
+PASS  engine pitch note 57     220.4 Hz vs 220 Hz (0.18%)
+PASS  engine pitch note 81     876.4 Hz vs 880 Hz (0.41%)
+PASS  engine pitch note 45     110.5 Hz vs 110 Hz (0.48%)
+PASS  engine decay             T60 1.17 s (table bakes ~1.2 s)
+PASS  engine decays to silence
+PASS  energy decays over 16 blocks   1.956e18 -> 1.485e18
+PASS  gate off -> silence
+PASS  stereo channels equal
+PASS  initModule(1,...) -> 0   rejects a foreign id
+```
+
+So the emitted instruction stream is not merely well-formed: it computes a sixth-order modal resonator at the
+right pitch, with the designed decay, that goes silent when the gate closes.
+
+### Three real bugs it caught, which no amount of reading would have
+
+1. **The fractional multiply used as an integer multiply.** Row lookup was `index * 48` via `mul32`, which is
+   `(a*b) >> 32` — so `69*48 = 3312` became **0**, and every note played table row 0 (8.18 Hz). Symptom:
+   identical pitch for every note. Fix: build the row offset from two shifts, `(index<<4) + (index<<5)`.
+2. **The coefficient row pointer was never rewound.** `P1` advances 96 bytes per 64-frame block, so from the
+   second block onward it read past the row. Fix: save the row pointer in a data word and restore it each
+   block, the same way the state pointers are restored.
+3. **Nothing had ever run it.** Both bugs are invisible to static checking — the container is valid, the
+   encodings match factory bytes, and the reference implementation is correct; only execution shows the
+   engine ignoring the note.
+
+The interpreter had two bugs of its own, both worth recording because they are the same class of mistake:
+registers were not held as signed values, so an address like `0x81c0b060` counted as a positive overflow and
+every add saturated; and it decoded the shift form as a multiply, because the DSP sub-opcode for the multiply
+is `0x4` (not the `0xA` the first derivation suggested) and for the shift is `0xD`.
