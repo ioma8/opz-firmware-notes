@@ -267,3 +267,24 @@ wrong assumption shows up as a constant ratio, not as noise.
 
 An engine that ignores argument 2 and computes its own increment from `R1` at note-on is therefore the safer
 first build: it depends on only one unverified assumption instead of two.
+
+## 11.10 Tooling status
+
+Two tools exist and both self-verify:
+
+| tool | does | proof |
+|---|---|---|
+| `toolkit/opzengine.py` | parse, dump, expand and repack `.engine` containers | `verify` repacks all 21 factory engines byte-exactly |
+| `toolkit/opzasm.py` | encodes the Blackfin+ subset an engine needs | `selftest` matches 10 encodings against bytes taken from `volt`/`chord` |
+
+`opzasm.py` deliberately raises `Unsupported` rather than emitting a guess: a wrong encoding yields an engine
+that loads and misbehaves, which is far worse to debug than one that refuses to build. Encodings are
+transcribed from the processor module's SLEIGH source, then confirmed against real instruction bytes — the
+verified set is 16-bit register move (`P4 = R0` → `2032`) and 16-bit add/subtract (`R1 = R7 + R1` → `4f50`),
+with the field layouts for `LdImmHalf` and `Dsp32Mult` already read out of the same source.
+
+**What remains before an engine can exist**: encode the load/store forms (`[P++] = R`, `R = [P + off]`), the
+32-bit multiply, the branches and the epilogue; write the modal DSP against the ABI in §11.9; emit the
+container; then the one hardware test in §11.9 that settles whether `onNoteOn`'s `R1` is a note number.
+None of that can be validated by static analysis alone, which is why §11.9 states the hardware check
+explicitly instead of assuming the answer.
