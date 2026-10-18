@@ -1091,3 +1091,21 @@ Concretely, running the sequencer now needs, in this order:
    in L1 data and then writes `0x8030000` - a device register base),
 3. the flash/file layer, since the plug registry the sequencer needs is parsed from `settings/plugs.json`
    at boot.
+
+## Why the firmware bring-up cannot finish with the images we have
+
+Following the boot to its first out-of-segment jump gave a clear answer, and it is not a decoder gap:
+
+- **`0x04xxxxxx` is a heavily used code region, not a wrong turn.** Scanning for the `Jump32` encoding
+  finds **1,195 `CALL.A` sites in `opz.ldr`** and **459 in `bootloader.ldr`** targeting it.
+- **It is not an L2 alias that gets unpacked.** The offsets line up exactly
+  (`0x04020610 - 0x04000000 == 0x08020610 - 0x08000000`), but after 203,443 boot steps L2 at those
+  addresses is still zero and byte-identical to the image — nothing unpacked code there.
+- **`opz.ldr` is not truncated.** 164 segments, 825,512 payload bytes plus 2,624 header bytes, which is
+  exactly the 828,136-byte file. The container is complete, so the missing region is not a parsing
+  mistake on our side.
+
+So the firmware executes from a memory region that neither image contains, and the boot cannot get past
+it. Reaching the sequencer — and therefore pitched factory engines — needs either that region (a further
+image, or a memory dump from the device), or the device's memory map for it. That is a data problem, not
+an emulator problem, and it is where this line of work ends with the material available here.
