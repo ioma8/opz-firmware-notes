@@ -206,6 +206,21 @@ def decode(img, addr, eaddr):
             if sopc == 0x04:                                      # Pack16Vec: PACK(Rs0.L, Rs1.L)
                 return 4, (f"R[{dst}]=(int32_t)(((uint32_t)R[{s0}] & 0xFFFFu) << 16 | "
                            f"((uint32_t)R[{s1}] & 0xFFFFu)); pc = {e4}u; break;")
+            if sopc == 0x06 and sop == 3:                         # Ones: population count
+                return 4, (f"R[{dst}]=(int32_t)__builtin_popcount((uint32_t)R[{s0}]); "
+                           f"pc = {e4}u; break;")
+            if sopc == 0x05:                                      # SignBits: leading sign-redundant bits
+                half = {1: 16, 2: 0, 3: 16}.get(sop, 32)
+                return 4, (f"{{ int32_t v_=(int32_t)R[{s1}]; "
+                           f"if({half}==16) v_=(({'R[%d]>>16' % s1}) if {1 if sop == 3 else 0} else "
+                           f"((int32_t)((uint32_t)R[{s1}]<<16)>>16)); "
+                           f"int n_=0; if(v_>=0){{ while(n_<31 && (v_ & (1<<(30-n_)))==0) n_++; n_++; }} "
+                           f"else {{ uint32_t u_=~(uint32_t)v_; n_=0; while(n_<31 && (u_ & (1u<<(30-n_)))==0) n_++; n_++; }} "
+                           f"R[{dst}]=n_; }} pc = {e4}u; break;")
+            if sopc == 0x0A:                                      # Extract: len bits at off from src1
+                return 4, (f"{{ uint32_t sp_=(uint32_t)R[{s0}], ln_=sp_&0x1Fu, of_=(sp_>>8)&0x1Fu, "
+                           f"v_=(uint32_t)R[{s1}]; R[{dst}]=(int32_t)(ln_?((v_>>of_)&((1u<<ln_)-1u)):0u); }} "
+                           f"pc = {e4}u; break;")
             raise Unsupported(f"Dsp32Shf sopc={sopc:#x} at 0x{eaddr:08x}")
         if sig2 == 1:                                             # Dsp32Mult (T): >> 32
             dst, s0, s1 = (h2 >> 6) & 7, (h2 >> 3) & 7, h2 & 7
@@ -236,6 +251,29 @@ def decode(img, addr, eaddr):
                     return 4, f"R[{d0}]=SAT(-(int64_t)R[{s0}]); pc = {e4}u; break;"
             raise Unsupported(f"Dsp32Alu aopc={aopc:#x} aop={aop} at 0x{eaddr:08x}")
         raise Unsupported(f"DSP sig2={sig2} sigd={sigd:#x} at 0x{eaddr:08x}")
+    if (h & 0xFF80) == 0xE080:                                    # LSETUP, both forms
+        # Semantics mirror opzsim exactly: rop at bits 5-6 says where the count comes from (0 = keep the
+        # current value, 1 = LC = Preg, 2 = immediate, 3 = LC = Preg>>1); the loop start comes from the
+        # first half's 4-bit offset and the end from the second half's 10-bit one. The end address is
+        # static, so the back-edge can be emitted at exactly that instruction.
+        rop, slot = (h >> 5) & 3, (h >> 4) & 1
+        soff = h & 0xF
+        reg, lop, eoff = (h2 >> 12) & 7, (h2 >> 10) & 3, h2 & 0x3FF
+        start = eaddr + 4 if rop == 2 else (eaddr + soff * 2) & 0xFFFFFFFF
+        end = (eaddr + eoff * 2) & 0xFFFFFFFF
+        if rop == 2:
+            cnt = ((h & 0xF) << 6) | ((h2 >> 10) & 0x3F)
+            setc = f"LC[{slot}]={cnt};"
+        elif rop == 1:
+            setc = f"LC[{slot}]=P[{reg}];"
+        elif rop == 3:
+            setc = f"LC[{slot}]=P[{reg}]>>1;"
+        else:
+            setc = ""
+        LOOP_ENDS.setdefault(end, set()).add(slot)
+        skip = f" if (LC[{slot}]==0) {{ HAVE[{slot}]=0; pc = {end}u; break; }}" if lop == 1 else ""
+        return 4, (f"{{ {setc} LB[{slot}]={start}u; LE[{slot}]={end}u; HAVE[{slot}]=1;{skip} "
+                    f"pc = {eaddr + 4}u; break; }}")
     sig = (h >> 12) & 0xF
     if sig == 0x1:                                                # BrCC
         offv = h & 0x3FF
@@ -443,7 +481,12 @@ def reachable(img, addr0, entries):
     return seen
 
 
+LOOP_ENDS = {}
+
+
 def emit(raw):
+    global LOOP_ENDS
+    LOOP_ENDS = {}
     base, size, img, exports, mod_base = layout(raw)
     entries = sorted({v for v in exports.values() if v})
     seen = reachable(img, mod_base, entries)
@@ -459,12 +502,20 @@ def emit(raw):
            "    { int32_t st[6]={s0,s1,s2,s3,s4,s5};"
            "      for (int i=n_stack-1;i>=0;i--){ P[6]-=4; WR(P[6],(uint32_t)st[i]); } }",
 
+           "    int32_t LC[2]={0,0}; uint32_t LB[2]={0,0}, LE[2]={0,0}; int HAVE[2]={0,0};",
            "    uint32_t rets = 0x%08uu;   /* RETS: set by every call form, restored by UNLINK */" % SENTINEL,
            "    uint32_t pc = entry;",
            "    for (;;) {",
            "        switch (pc) {"]
     for a in sorted(seen):
         ln, code = seen[a]
+        ends = LOOP_ENDS.get(a)
+        if ends:
+            # a registered loop whose END is this address either jumps back to its start or finishes
+            chk = " ".join(
+                f"if (HAVE[{sl}] && LE[{sl}]==0x{a:08x}u) {{ if (LC[{sl}]) {{ LC[{sl}]--; "
+                f"pc = LB[{sl}]; break; }} HAVE[{sl}]=0; }}" for sl in sorted(ends))
+            code = chk + " " + code
         out.append(f"    case 0x{a:08x}u: {{ {code} }}")
     out.append("    default: return R[0];")
     out.append("        }")

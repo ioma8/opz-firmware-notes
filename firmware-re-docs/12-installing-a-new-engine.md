@@ -1680,8 +1680,13 @@ After adding the NOP32 test and register-shift (`Dsp32Shf`) to `opzjit`, the fac
 instruction and stop on **`0xe0a2`** - `LSETUP` in its register-count form. `opzjit` implements no `LSETUP` at
 all, and never needed to: our own engines are loop-free, so nothing exercised it.
 
-That makes live factory playback a substantially larger job than a gap or two (loop frames with LC/LT/LB,
-begin/end addresses and the back-edge), and it would not change the engine count either - the ten non-playing
+That loop support now exists: `opzjit` implements `LSETUP` in both forms, with LC/LB/LE loop state and a
+back-edge emitted at each static loop-end address, plus the `Dsp32Shf` families `popcount`, `extract` and
+`signbits`. Our own engines are unaffected (52 us per block, 17/17). The chain then continues - `digital` next
+stops on `ALU2op opc=0x8`, **DIVQ**, the conditional division step, which `opzsim` does not implement either
+because its interpreter path never reaches it.
+
+None of this changes the engine count: it would not, since - the ten non-playing
 engines are blocked on state, not on the JIT. So the three working factory engines stay on the interpreter path
 (`opzenginetool`), where they are verified at 220 and 440 Hz, and the JIT keeps its NOP32 and shift fixes, which
 are correct regardless (our engines still measure 440.1 Hz and play in realtime).
