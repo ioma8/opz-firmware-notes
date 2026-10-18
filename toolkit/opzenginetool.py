@@ -79,8 +79,14 @@ def describe(path):
     mod = E.read_module(raw)
     ex = dict(mod["exports"])
     kind = "instrument" if "render" in ex else ("effect" if "renderFX" in ex else "?")
+    # Say plainly how much of this module is known to work. The factory binaries are only partly understood:
+    # one instrument plays correct notes across the range, two do so at two tested pitches, two effects run but
+    # cannot be verified, and the rest need firmware runtime state. Listing them as ordinary playable modules
+    # without that caveat would misrepresent them.
+    support = ("factory: partial (see firmware-re-docs/13-factory-engine-status.md)"
+               if "engines-official" in str(path) else "verified")
     return {"path": str(path), "name": pathlib.Path(path).name, "raw": raw, "exports": ex,
-            "kind": kind, "base": mod["base"], "size": len(raw),
+            "kind": kind, "base": mod["base"], "size": len(raw), "support": support,
             "md5": hashlib.md5(raw).hexdigest()}
 
 
@@ -377,7 +383,8 @@ class Handler(BaseHTTPRequestHandler):
                 for p in find_engines():
                     try:
                         i = describe(p)
-                        out.append({"name": i["name"], "kind": i["kind"], "size": i["size"], "ok": True})
+                        out.append({"name": i["name"], "kind": i["kind"], "size": i["size"],
+                                    "support": i.get("support", ""), "ok": True})
                     except Exception as e:
                         out.append({"name": p.name, "kind": "unreadable", "size": p.stat().st_size,
                                     "ok": False})
@@ -406,6 +413,10 @@ def serve(port):
     url = f"http://127.0.0.1:{port}/"
     print(f"opzenginetool: {url}   (ctrl-c to stop)")
     print(f"  {len(find_engines())} modules discovered; renders cached in {CACHE}")
+    factory = sum(1 for p in find_engines() if "engines-official" in str(p))
+    if factory:
+        print(f"  note: {factory} of these are OP-Z factory binaries and are only PARTLY supported - "
+              "see firmware-re-docs/13-factory-engine-status.md")
     if sys.stdout.isatty():
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
