@@ -43,6 +43,10 @@ sweeping the argument at 1174.7 Hz shows that **900** produces the note with a c
 band table's ~777 Hz edge and the linear prediction of 802. So above the edge the mapping turns non-linear, and the
 top register needs its own calibration rather than being impossible.
 
+That calibration does not survive repetition, though: the best argument for 1174.7 Hz is 900 in one run and 1300 in
+the next, and 1396.9 Hz never exceeds a contrast of 4.3 at any argument tried. The contrast measure itself is unstable
+at these frequencies, so the top register is **measurement-limited** rather than merely uncalibrated.
+
 So **two** factory instruments play correctly through most of the range: `digital` (32768) and `chord` (16384). The same
 sweep applied to the rest finds no further calibration: `ep` peaks at contrast 2.5, `electric` 9.7, `volt` 1.5,
 `cluster` 1.0 and `organ` 2.2, while `sampleplayergain` and `synthsampler` are silent. Refining `electric` against
