@@ -1590,3 +1590,14 @@ problem, now reached by a different route, and it also makes the OS-mapped route
 
 `electric` is separately ruled out: it responds to `state+0x10` only weakly (energy at 440 Hz moves between
 2.6e-4 and 4.3e-4) and never beats its 330/660 Hz neighbours, while its pitch argument has no effect whatever.
+
+### The remaining silent engines need the OS, not more seeding
+
+Seeding the amp object's byte fields (`amp+0x14`, which `FUN_8012e0a4` writes at note start) with 0x01, 0x02 and
+0xff changes nothing on `organ`, `cluster`, `sampleplayergain` or `synthsampler`: organ and the two sample
+engines stay at peak 0.0000 and cluster at a constant 2e-4.
+
+One detail explains the rest: `organ` with its `params` set to 0x7fffffff does make progress - and immediately
+raises *"keeps calling outside its window"*. So these engines are not blocked by a missing seed; they are
+blocked because their rendering path issues a call the OS must answer. That is the same conclusion the four
+erroring engines reached from the other direction.
