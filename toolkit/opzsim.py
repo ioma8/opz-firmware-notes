@@ -1018,13 +1018,17 @@ class Machine:
                 # instr32/26-Dsp32Mult.sinc builds res = (src0 * src1) << 1 and then takes bits 63:32, so
                 # the product is shifted by 31, not 32. Shifting by 32 halved every multiply in every
                 # engine and turned small products into zero, which is what kept chord's oscillator silent.
-                # Scaling is selected by the modifier field (dxMmod), not by the class: the SLEIGH's
-                # fractional forms build res = (src0 * src1) << 1 and take bits 63:32, i.e. >> 31, while
-                # the form `struck` emits - validated against real hardware, which sounds correct at
-                # 110/220/440/880 Hz with the old behaviour - needs >> 32. Shifting the whole class by 31
-                # made struck's pitch and decay tests fail, so this stays at 32 until chord's modifier is
-                # decoded and the two forms are separated properly.
-                self.r[dst] = sat32((self.r[src0] * self.r[src1]) >> 32)
+                # instr32/26-Dsp32Mult.sinc selects the scaling with the modifier field (dxMmod, bits 5-8):
+                # dxM32M/U/I all zero is the FRACTIONAL form, which builds res = (src0 * src1) << 1 before
+                # bits 63:32 are taken (a shift of 31), and any of those bits set is the INTEGER form, which
+                # takes the product directly (a shift of 32). chord uses mmod=1 and `struck` uses the same,
+                # which is why a class-wide >>31 broke struck while a class-wide >>32 left the fractional
+                # form untested.
+                mmod = (h >> 5) & 0xF
+                prod = self.r[src0] * self.r[src1]
+                if mmod == 0:
+                    prod <<= 1
+                self.r[dst] = sat32(prod >> 32)
             elif sig2 == 0:                                  # Dsp32Mac
                 self._mac(h, h2)
             elif sig2 == 2:                                  # Dsp32Alu

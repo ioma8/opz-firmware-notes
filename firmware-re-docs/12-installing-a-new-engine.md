@@ -767,7 +767,16 @@ writes), and the fifth - "the zero comes from the value chain" - was proved to b
 hypothesis per iteration, with a written conclusion each time, is what stopped the same ground being covered
 twice.
 
-### The multiply-scaling question, and why it cannot be answered class-wide
+### The multiply-scaling question, answered by the modifier field
+
+Resolved: `dxMmod` (bits 5-8) selects the scaling. When `dxM32M`, `dxM32U` and `dxM32I` are all zero the
+multiply is the **fractional** form - `res = (src0 * src1) << 1`, then bits 63:32, i.e. a shift of 31. When
+any of them is set it is the **integer** form and the product is taken directly, a shift of 32. chord's
+multiply is `mmod = 1`, the integer form, which is why a class-wide `>> 31` broke `struck` (also `mmod = 1`)
+while changing nothing for chord. Both forms are implemented now, and the earlier split evidence makes sense:
+the fractional shift belongs to a form neither engine actually uses.
+
+### Earlier note: why the question could not be answered class-wide
 
 `Dsp32Mult` is the next suspect after the oscillator started working. `instr32/26-Dsp32Mult.sinc` builds
 `res = (src0 * src1) << 1` and then extracts bits 63:32, which is a right shift by **31**, while the emulator
