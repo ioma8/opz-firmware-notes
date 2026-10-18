@@ -1118,6 +1118,13 @@ class Machine:
         # bits were non-zero, which is how a multiply came back as "sub-opcode 0x8".
         if (h & 0xF000) == 0xC000:
             h2 = int.from_bytes(m[o + 2:o + 4], "little")
+            # NOP32 (instr32/24-NOP32.sinc) lives under the same 0xC nibble: mnopSigDsp=0xc, bits 0-10
+            # = 0x003 and the second halfword 0x1800. It MUST be tested before the DSP forms - routed
+            # into Dsp32Mac it was executed as a multiply-accumulate, which both corrupted A0/A1 and
+            # swallowed the padding instruction the compiler emits inside tight loops.
+            if (h & 0xF800) == 0xC800 and h2 == 0x1800:
+                self.pc = self.pc + 4
+                return True
             sig2 = (h >> 9) & 3          # Mac=0, Mult=1, Alu=2
             sigd = (h >> 7) & 0xF        # Shf=0xC, ShfImm=0xD
             if sigd == 0xD:                                  # shift by immediate, all four families
