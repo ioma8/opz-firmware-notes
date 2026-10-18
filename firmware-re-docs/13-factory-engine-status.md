@@ -19,6 +19,12 @@ spectrum (see `electric` below) but **overstates** engines like `chord` whose ou
 fifth: at 165 and 659 Hz the target's neighbour is its own interval, so the test fails on correct behaviour.
 Taken across the range, only **digital** plays robustly; `chord` and `ep` pass at the two tested notes.
 
+The eight factory **effect** engines were exercised for the first time in this work. Through `renderFX` with the
+five-argument stack (as `opzenginesweep` uses) plus host memory: `crush` (peak 0.019) and `chorus2` (peak 0.027)
+transform a fed 440 Hz sine rather than passing it through, while `chorus` and `dist` stay silent, `reverb` raises
+"keeps calling outside its window", and `delay`, `tapetwo` and `fdnreverb` never return. Neither of the two that run
+is demonstrably correct - `chorus2` latches a constant value - so this shows they execute, not that they behave.
+
 `volt` produces full-scale DC. `electric` becomes audible (peak 0.0315) when `state+0x10` is seeded but does not
 track pitch. `cluster` emits a constant 2e-4. `organ`, `sampleplayergain`, `synthsampler` emit nothing.
 `analoga`, `fm003b`, `ministringshort`, `saw013a` raise errors.
