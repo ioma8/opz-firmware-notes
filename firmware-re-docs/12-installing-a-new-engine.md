@@ -1475,3 +1475,24 @@ read** at a 440 Hz request, marching from `0x0800bb44` to `0x08013xxx` over ten 
 So the oscillator runs continuously and its stride is the requested frequency. What defeats measurement is the
 output itself: each block is a ramp whose intra-block slope steps repeat at the 64-sample block rate, and that
 751 Hz component dominates the spectrum (1.4e-2) whether or not per-block DC is removed.
+
+### The pitch unit is off by 48000/32768, and that is measurable
+
+The shared L2 table at `0x0800bb48` is not a full waveform: all 8191 words are positive and monotone from
+1,647,049 to 2,145,962,988 (0.999 of full scale) with **zero sign changes** - a quarter-sine. The engine walks
+it at a byte stride equal to the pitch argument, so the output frequency is
+
+    f_out = f_in * 48000 / 32768 = f_in * 1.4648
+
+which predicts that passing `q` produces a tone at `1.4648 q`. Measured, with energy probes at fixed
+frequencies:
+
+| pitch passed | predicted tone | energy @440 | @644.5 | @880 |
+|---|---|---|---|---|
+| 300 Hz | 440 Hz | **2.21e-3** | 3.73e-4 | 3.82e-5 |
+| 440 Hz | 644 Hz | 3.39e-4 | **1.26e-3** | 1.00e-4 |
+| 600 Hz | 880 Hz | **3.35e-4** | 2.99e-4 | 9.59e-5 |
+
+Two of three probes land exactly where the model says. The third (600 to 880) does not, so the scaling is
+confirmed for some bands but not all - and the tone still sits well below a 751 Hz block-rate component
+(1.4e-2), which is why a plain spectral peak never revealed it.
