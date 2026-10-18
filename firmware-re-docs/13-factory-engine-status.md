@@ -44,7 +44,9 @@ Each is root-caused, with the evidence in `HYPOTHESES.csv`:
   table at `0x81b7f698`. The numerator arrives small and negative, the divide saturates to 52 million, and the
   read lands outside the module. No pitch from 300 Hz to 1.6 MHz avoids it; the numerator is phase-derived.
 - **analoga, saw013a, ministringshort, fm003b** call out of their window. Mapping the OS image makes those calls
-  resolve into real firmware and they then either never return or run into uninitialised OS data.
+  resolve into real firmware and they then either never return or run into uninitialised OS data. They are also
+  not merely mistuned: all four raise the same error at every pitch argument from 50 Hz to 1200 Hz, unlike
+  `digital`, whose calibration sweep found a working factor.
 - **electric, cluster, sampleplayergain, synthsampler** respond to seeds but never track pitch.
 
 The common factor: the engines consult runtime state that the sequencer creates, and that state does not exist
