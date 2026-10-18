@@ -795,6 +795,21 @@ An engine that sounds correct on real silicon is the strongest evidence availabl
 modifier field (`dxMmod`), with the fractional forms shifting by 31 and the form `struck` emits shifting by 32.
 Splitting them is the next step, and it needs chord's modifier decoded rather than a class-wide constant.
 
+### The amp object carries the voice gain, and the harness leaves it zero
+
+Tracing chord's `R1` lifetime pins the last structural gap. At `0x81be278c` chord does `R1 = [P3 + 0x4]`, and
+`P3` is argument 6 - the **amp object**. So `amp+0x4` is a per-voice gain the OS fills before the tick, and the
+harness was leaving it zero (only `amp+0x08` and `amp+0x10` were being set).
+
+Supplying it is measurable: with `amp+0x4 = 0x7fffffff`, `digital` goes from 7 to **24 distinct output values**
+and chord's loop produces real oscillator data (`0x565d942`, `0xab61b1`, `0xac93d17` - growing, then wrapping).
+Chord still ends up writing zeros, because after the gain it multiplies by `R2`, a second per-voice coefficient
+that is still zero.
+
+That is a different kind of finding from the last three rounds: `DspLdSt`, `Comp3op` and the multiply modifier
+were all emulator faults, whereas this is the amp object's contents - the area doc 11 has described all along,
+now narrowed to two specific dwords (`amp+0x4` gain, and whatever feeds `R2`).
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.
