@@ -33,7 +33,11 @@ So `digital` and `chord` both track the note (the latter on top of fixed content
 spectrum whatever note it is given - its earlier two-note passes were coincidences of a test that never asked
 whether the note mattered.
 
-So **two** factory instruments now play correctly across the range: `digital` (32768) and `chord` (16384). The same
+**Range limit:** measured at every five semitones from note 36 to 96, `digital` passes 10 of 13 (it loses the tone at
+notes 86, 91 and 96 - 1174 Hz and above) and `chord` 9 of 13 (from note 81, 880 Hz, upward). Both are clean from C2 to
+about C6 and degrade in the top register, so "six of six" describes the mid range rather than the whole keyboard.
+
+So **two** factory instruments play correctly through most of the range: `digital` (32768) and `chord` (16384). The same
 sweep applied to the rest finds no further calibration: `ep` peaks at contrast 2.5, `electric` 9.7, `volt` 1.5,
 `cluster` 1.0 and `organ` 2.2, while `sampleplayergain` and `synthsampler` are silent. Refining `electric` against
 a 220 Hz target gives an identical contrast of 38.9 at every argument from 19 to 112 - it ignores the pitch
