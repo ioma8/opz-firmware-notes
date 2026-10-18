@@ -1305,3 +1305,28 @@ than by name.
 `tapetwo`, `chorus`, `chorus2`, `reverb`, `fdnreverb`. Together with the thirteen instrument voices, the
 app has a working engine for **every one of the twenty-one factory slots** - built by us, not the OP-Z
 binaries, which still need state only the sequencer can supply.
+
+### Measuring "plays the requested note" without being fooled by harmonics
+
+A plain frequency reading cannot answer the question. An engine whose loudest partial is the 2nd or 3rd
+harmonic reads 2x or 3x the requested pitch while being perfectly in tune - which is why an earlier
+version of this check reported 33 false failures and was deleted rather than trusted.
+
+`toolkit/opzfamilycheck.py` now uses two tests that a harmonic cannot fake:
+
+- **octave tracking** - the reading must double when the note rises an octave, whatever partial it locked
+  onto. A detuned engine fails this; a bright one passes it.
+- **energy at f0** - a fallback for engines that switch which partial dominates (`fm003b` does, between
+  notes 57 and 69), asking whether the requested fundamental is present at all.
+
+Two measurement traps are baked into it: use the **whole clip** for the spectral test (a fast-decaying
+note leaves the tail near silent, so the last 8192 samples measure noise, not the engine), and never
+compare absolute readings between presets - `analoga`, `bell`, `organ`, `saw013a` and `volt` legitimately
+read exactly 2x while `bar`, `ep`, `glass`, `pluck` and `synthsampler` read 1x.
+
+Current verdicts:
+
+| set | result |
+|---|---|
+| `engines-family` (ours, 17 modules) | **17/17 PASS** - every engine tracks the requested note with exact octave steps |
+| `engines-official` (OP-Z binaries, 21 modules) | **21/21 FAIL** - silent, or a null function pointer that wants OS-populated state |
