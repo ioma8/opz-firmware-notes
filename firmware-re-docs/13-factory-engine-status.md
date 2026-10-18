@@ -47,7 +47,11 @@ Each is root-caused, with the evidence in `HYPOTHESES.csv`:
   resolve into real firmware and they then either never return or run into uninitialised OS data. They are also
   not merely mistuned: all four raise the same error at every pitch argument from 50 Hz to 1200 Hz, unlike
   `digital`, whose calibration sweep found a working factor.
-- **electric, cluster, sampleplayergain, synthsampler** respond to seeds but never track pitch.
+- **electric, cluster, sampleplayergain, synthsampler** respond to seeds but never track pitch. A blanket
+  fill of the whole state block does not change that: organ, cluster and synthsampler stay at peak 0.0000
+  and electric emits a **fixed** spectrum (peak 0.0181 at every pitch), which can fool a one-note neighbour
+  test into passing at 330 and 660 Hz. That is why `opzfactorycheck` requires two notes - with 220 and 440
+  both required, electric is correctly rejected.
 
 The common factor: the engines consult runtime state that the sequencer creates, and that state does not exist
 in an unbooted image. `settings/plugs.json` inside `opz.ldr` holds no parameter values; the factory patches *are*
