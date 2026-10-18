@@ -278,6 +278,35 @@ is where `onNoteOn` is stored. The export is resolved and its address is kept, s
 the sequencer. Pitch therefore comes from `render`'s argument 2 (Q16), not from `onNoteOn`'s `R1`, which
 answers the question left open below in favour of `render` while leaving `onNoteOn`'s own arguments unverified.
 
+**Chord's render prologue, instruction by instruction** - this is the ground truth for the argument order
+and for what an engine does with its state:
+
+```
+0x81be2540  LINK 0x54                       ; frame, after pushing (R7:4, P5:3) and SP += -0x14
+0x81be2548  R7 = R1                         ; arg2 = pitch
+0x81be254c  P3 = [FP + 0x1c]                ; arg6 = amp
+0x81be254e  [FP - 0x3c] = R2                ; arg3 = bend, spilled
+0x81be2550  P1 = [FP + 0x14]                ; arg4 = the engine's state
+0x81be2552  P4 = R0                         ; arg1 = output buffer
+0x81be2554  P5 = [FP + 0x18]                ; arg5 = params
+0x81be2556  R3 = [P3 + 0x10]                ; amp state; `CC = R3 == 0` returns at 0x81be292c
+0x81be255c  P1 += 0x8                       ; state + 8
+0x81be255e  R0 = B[P1 + 0x15]               ; byte at state + 0x1d
+0x81be2564  [SP + 0x3c] = P1                ; a local holding state + 8
+```
+
+Later `I0 = [SP + 0x3c]`, so **`I0` and `I1` point at `state + 8`** and the 64-frame loop reads and writes through
+them. In other words chord treats its own state block as a working buffer - a wavetable or delay area starting
+eight bytes in - and reads a flag byte at `state + 0x1d` (which is the second byte of the note number that
+`onNoteOn` stores at `state + 0x1c`, `0x45` for note 69). The argument order is therefore
+`render(out, pitch_q16, bend, state, params, amp)` with arguments 3-6 read back from the stack, which matches
+the OS call site in `FUN_8012e2c0` exactly.
+
+Filling `state + 8` onwards with real waveform data (a 64-entry sine repeated across the state block) changes
+nothing: chord still reaches its loop, writes a peak of 0.037 and then corrupts its caller's frame. So the
+buffer's *contents* are not the whole story either - what the engine does with them depends on values it expects
+elsewhere in the state.
+
 ### What still needs the device
 
 One thing: whether `onNoteOn`'s `R1` is a note number or an already-scaled frequency, and therefore whether an
