@@ -23,7 +23,9 @@ The eight factory **effect** engines were exercised for the first time in this w
 five-argument stack (as `opzenginesweep` uses) plus host memory: `crush` (peak 0.019) and `chorus2` (peak 0.027)
 transform a fed 440 Hz sine rather than passing it through, while `chorus` and `dist` stay silent, `reverb` raises
 "keeps calling outside its window", and `delay`, `tapetwo` and `fdnreverb` never return. Neither of the two that run
-is demonstrably correct - `chorus2` latches a constant value - so this shows they execute, not that they behave.
+is demonstrably correct - `chorus2` latches a constant value - so this shows they execute, not that they behave. Characterised further: fed a rising ramp, `crush` produces 195
+distinct outputs and `chorus2` 308, while `dist` and `chorus` produce exactly **one** under every state seed tried
+(0x7fffffff, 0x40000000, 0x01010101) - the seeding that helps instruments never reaches them.
 
 `volt` produces full-scale DC. `electric` becomes audible (peak 0.0315) when `state+0x10` is seeded but does not
 track pitch. `cluster` emits a constant 2e-4. `organ`, `sampleplayergain`, `synthsampler` emit nothing.
