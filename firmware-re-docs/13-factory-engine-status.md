@@ -43,9 +43,12 @@ sweeping the argument at 1174.7 Hz shows that **900** produces the note with a c
 band table's ~777 Hz edge and the linear prediction of 802. So above the edge the mapping turns non-linear, and the
 top register needs its own calibration rather than being impossible.
 
-That calibration does not survive repetition, though: the best argument for 1174.7 Hz is 900 in one run and 1300 in
-the next, and 1396.9 Hz never exceeds a contrast of 4.3 at any argument tried. The contrast measure itself is unstable
-at these frequencies, so the top register is **measurement-limited** rather than merely uncalibrated.
+**Correction:** that calibration *does* reproduce - renders are byte-identical on repeat and the contrast figures are
+stable; an earlier note claiming the measurement was unstable came from comparing two runs whose candidate argument
+sets differed. The real behaviour above the edge is **folding**: arg 600 puts its tone at 879 Hz, the linear
+`1.4648x` prediction, but arg 1900 puts it at 1397 Hz - exactly half of its 2783 Hz prediction - and arg 1300 at
+1175 Hz rather than 1904. So the linear period law holds in the mid range and the output folds once the argument
+passes the band edge, which is why no single period covers the top register.
 
 So **two** factory instruments play correctly through most of the range: `digital` (32768) and `chord` (16384). The same
 sweep applied to the rest finds no further calibration: `ep` peaks at contrast 2.5, `electric` 9.7, `volt` 1.5,
