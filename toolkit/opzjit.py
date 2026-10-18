@@ -174,7 +174,9 @@ def decode(img, addr, eaddr):
             if sopc != 0x02:
                 raise Unsupported(f"shift family {sopc:#x} at 0x{eaddr:08x}")
             n = (0x20 - imm5) if right else imm5
-            if sop == 2:
+            # sop 2 and 3 are both logical (unsaturated) shifts; the interpreter treats them alike, and
+            # factory engines use sop 3, so rejecting it here made them unplayable in the JIT player.
+            if sop in (2, 3):
                 st = (f"R[{dst}]=(int32_t)((uint32_t)R[{src}] >> {n});" if right
                       else f"R[{dst}]=(int32_t)((uint32_t)R[{src}] << {n});")
             elif sop in (0, 1):
@@ -425,13 +427,15 @@ def emit(raw):
     seen = reachable(img, mod_base, entries)
     out = [PRELUDE, "int32_t opz_call(void *mem, int64_t base, int64_t size, uint32_t entry,",
            "                 int32_t a1, int32_t a2, int32_t a3, int32_t s0, int32_t s1, int32_t s2,",
+           "                 int32_t s3, int32_t s4, int32_t s5,",
            "                 int n_stack, uint32_t sp)", "{",
            "    A.mem=(uint8_t*)mem; A.base=base; A.size=size;",
            "    R[0]=a1; R[1]=a2; R[2]=a3; CC=0;",
            "    P[6]=sp;",
            # arguments go on in REVERSE so the first stack argument ends up at the lowest address,
            # which is what the Python reference does and what the engines' [FP+..] reads assume
-           "    for (int i=n_stack-1;i>=0;i--){ int32_t v = (i==0)?s0:((i==1)?s1:s2); P[6]-=4; WR(P[6],(uint32_t)v); }",
+           "    { int32_t st[6]={s0,s1,s2,s3,s4,s5};"
+           "      for (int i=n_stack-1;i>=0;i--){ P[6]-=4; WR(P[6],(uint32_t)st[i]); } }",
 
            "    uint32_t rets = 0x%08uu;   /* RETS: set by every call form, restored by UNLINK */" % SENTINEL,
            "    uint32_t pc = entry;",

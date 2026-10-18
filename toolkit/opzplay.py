@@ -49,7 +49,7 @@ class Engine:
         self.lib = ctypes.CDLL(str(self.dylib))
         self.lib.opz_call.restype = ctypes.c_int32
         self.lib.opz_call.argtypes = [ctypes.c_void_p, ctypes.c_int64, ctypes.c_int64, ctypes.c_uint32] + \
-                                     [ctypes.c_int32] * 6 + [ctypes.c_int32, ctypes.c_uint32]
+                                     [ctypes.c_int32] * 9 + [ctypes.c_int32, ctypes.c_uint32]
         self.buf = (ctypes.c_char * size)()
         self.base, self.size, self.exports = base, size, dict(exports)
         mod = E.read_module(raw)
@@ -65,6 +65,15 @@ class Engine:
                 ctypes.memmove(off, blob, len(blob))
         for i, v in enumerate(H.host_table()):
             ctypes.c_uint32.from_address(self._host(self.table) + 4 * i).value = v
+        # a factory engine differs in four ways: its pitch argument is a byte stride into the shared
+        # quarter-sine table (so 48000/32768 scales it), it reads context/params/amp from six stack
+        # words, and the OS fills an amp object before every tick
+        self.factory = "engines-official" in str(path)
+        self.amp = base + J.SCRATCH_OFF + 0x2000
+        if self.factory:
+            for off, val in ((0x04, 0x40000000), (0x08, 0x7F000000),
+                             (0x0C, -0x40000000 & 0xFFFFFFFF), (0x10, 2)):
+                ctypes.c_uint32.from_address(self._host(self.amp + off)).value = val
         self.params = [int(0.5 * (1 << 28))] * 8
         for i, v in enumerate(self.params):
             ctypes.c_uint32.from_address(self._host(self.prm) + 4 * i).value = v
@@ -80,11 +89,11 @@ class Engine:
         return ctypes.addressof(self.buf) + (eaddr - self.base)
 
     def call(self, name, args, stack=()):
-        st = list(stack) + [0] * (3 - len(stack))
+        st = list(stack) + [0] * (6 - len(stack))
         return self.lib.opz_call(ctypes.cast(self.buf, ctypes.c_void_p), self.base, self.size,
                                  self.exports[name],
                                  *[a & 0xFFFFFFFF for a in (list(args) + [0, 0, 0])[:3]],
-                                 *[s & 0xFFFFFFFF for s in st[:3]], len(stack), self.sp)
+                                 *[s & 0xFFFFFFFF for s in st[:6]], len(stack), self.sp)
 
     # ---- voice control
     def note_on(self, note, hold=1.0):
@@ -116,9 +125,16 @@ class Engine:
             if v["note"] is None:
                 continue
             active = True
-            freq = int(440.0 * 2 ** ((v["note"] - 69) / 12.0) * 65536) & 0xFFFFFFFF
+            hz = 440.0 * 2 ** ((v["note"] - 69) / 12.0)
+            if self.factory:
+                hz *= 32768.0 / 48000.0
+            freq = int(hz * 65536) & 0xFFFFFFFF
             ctypes.memset(self._host(self.out), 0, 2 * BLOCK * 4)
-            self.call("render", [self.out, freq, 0], (v["ctx"], self.prm, 0))
+            if self.factory:
+                self.call("render", [self.out, freq, 0],
+                          (self.out, freq, 0, v["ctx"], self.prm, self.amp))
+            else:
+                self.call("render", [self.out, freq, 0], (v["ctx"], self.prm, 0))
             src = ctypes.cast(self._host(self.out), ctypes.POINTER(ctypes.c_int32))
             for i in range(2 * BLOCK):
                 acc[i] = max(-2 ** 31, min(2 ** 31 - 1, acc[i] + src[i]))

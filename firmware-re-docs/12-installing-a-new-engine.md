@@ -1658,3 +1658,18 @@ So the "keeps calling outside its window" failure is a **negative table index**:
 returns a value that runs off the front of organ's own table, and the read lands outside the module. It is a
 data-dependent fault inside organ's arithmetic, not a missing host service - which also explains why no
 `host_return` value or table stub changed anything.
+
+### Factory engines can only be auditioned on the interpreter path
+
+Bringing the JIT player up to factory engines needed two things, both now in place: `opzjit` passes **six**
+stack arguments (factory engines read context, params and amp from the stack) and treats `sop=3` as the
+logical shift the interpreter already implements. Our own engines still play at 29 us per block.
+
+That is not enough for the factory modules. They then stop on instruction classes the JIT does not emit:
+**Dsp32Shf** (shift by a register, `sigd=0xC`) and a form that decodes as **Dsp32Mac** (`sig2=0`), which the
+interpreter does not implement either. `opzplay` therefore raises `Unsupported` for every factory engine - an
+honest failure, rather than the wrong pitch it would otherwise produce.
+
+Consequence: the three working factory engines (`chord`, `digital`, `ep`) are playable through
+`opzenginetool` (the interpreter path), not through the realtime JIT player. Closing that needs register-shift
+emission in `opzjit` plus a Mac implementation in both engines.
