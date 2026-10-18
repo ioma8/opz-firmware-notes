@@ -28,6 +28,27 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import opzenginetool as T
 
 FS = 48000.0
+
+
+def contrast(samples, freq):
+    """How far the tone at `freq` stands above the broadband floor, per channel, best channel wins.
+
+    Used for the note-dependence test because raw energy is dominated by an engine's fixed partials: `chord`
+    emits strong content at 220 Hz whatever note it is given, but the tone is 2.5x more prominent when 220 is
+    actually requested, while `ep` is exactly 1.00 (a fixed spectrum)."""
+    import numpy as np
+    best = 0.0
+    for ch in (samples[0::2], samples[1::2]):
+        x = np.asarray(ch, dtype=np.float64)
+        if len(x) < 8192 or not np.any(x):
+            continue
+        spec = np.abs(np.fft.rfft(x[-8192:] * np.hanning(8192)))
+        f = np.fft.rfftfreq(8192, 1 / FS)
+        band = (f >= 200) & (f <= 2500)
+        floor = float(np.median(spec[band])) or 1.0
+        i = int(np.argmin(np.abs(f - freq)))
+        best = max(best, spec[max(0, i - 1):i + 2].max() / floor)
+    return best
 NOTES = ((57, 220.0), (69, 440.0))
 PARAMS = [int(0.5 * (1 << 28))] * 8
 
@@ -65,10 +86,10 @@ def check(path):
     # exactly that, producing the same contrast at every pitch argument. Require that the tone at note A's
     # frequency is markedly stronger in note A's render than in note B's.
     (a_samples, a_target), (b_samples, _) = (rendered[n] for n in sorted(rendered))
-    here, there = energy(a_samples, a_target), energy(b_samples, a_target)
+    here, there = contrast(a_samples, a_target), contrast(b_samples, a_target)
     if there and here < 1.5 * there:
-        return False, (f"does not depend on the note: {a_target:.0f} Hz energy is {here:.1e} when requested "
-                       f"and {there:.1e} when a different note is")
+        return False, (f"does not depend on the note: the {a_target:.0f} Hz tone stands {here:.1f}x above the "
+                       f"floor when requested and {there:.1f}x when a different note is")
     return True, "; ".join(detail)
 
 

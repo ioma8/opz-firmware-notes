@@ -19,12 +19,19 @@ contrast peaks at **150**, not 300 - a table period of **16384 bytes** rather th
 period chord plays all four targets tested (contrast 18-44, its fifth only 2-7) and, through the app path, passes
 **6 of 6** pitches at contrast 17-31. `opzenginetool` now keeps a per-engine table period for this reason.
 
-**A stricter verifier:** `opzfactorycheck` now also requires that changing the note changes the output - the tone
-at note A must be at least 1.5x stronger in note A's render than in note B's. Under that test `ep` is rejected
-outright (identical 3.6e6 at 220 Hz whether 220 or 440 is requested, i.e. a fixed spectrum), and **`chord` only
-reaches 1.27x** (3.3e5 against 2.6e5) because it emits strong fixed partials alongside the tracked fundamental. So
-under the strictest criterion **only `digital` is verified**; `chord` is strongly suggestive by contrast but does
-not satisfy it.
+**A stricter verifier:** `opzfactorycheck` now also requires that changing the note changes the output, measured in
+**contrast** terms - how far the tone stands above the broadband floor - because raw energy is dominated by an
+engine's fixed partials. In those terms the 220 Hz tone stands:
+
+| engine | when 220 Hz is requested | when 440 Hz is | ratio |
+|---|---|---|---|
+| digital | 179.2x | 0.3x | **643** |
+| chord | 23.8x | 9.5x | **2.51** |
+| ep | 12.9x | 12.9x | **1.00** (fixed spectrum) |
+
+So `digital` and `chord` both track the note (the latter on top of fixed content), while `ep` produces the same
+spectrum whatever note it is given - its earlier two-note passes were coincidences of a test that never asked
+whether the note mattered.
 
 So **two** factory instruments now play correctly across the range: `digital` (32768) and `chord` (16384). The same
 sweep applied to the rest finds no further calibration: `ep` peaks at contrast 2.5, `electric` 9.7, `volt` 1.5,
