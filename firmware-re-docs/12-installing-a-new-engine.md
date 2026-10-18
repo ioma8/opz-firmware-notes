@@ -479,6 +479,26 @@ And `opzsim.call` now names the null-pointer case instead of spinning: an engine
 pointer raises `engine called a null function pointer: it wants OS-populated state`, which is what turns a hang
 into a diagnosis in the table above.
 
+### Two engines that are close, and what "close" looks like
+
+`volt` is the clearest case of an engine that is *running correctly and still wrong*, which is why the sweep
+reports it as `flat` rather than `silent`. It executes its accumulation loop and writes into the output through
+`[P5++]` at `0x81bf0678`, but what it accumulates is a constant: the left channel receives
+`0x0c000000, 0x18000000, 0x24000000, 0x30000000` - a phase ramp that rises by `0x0c000000` per sample and
+saturates - while the right channel gets `0`. So the loop, the store and the output pointer are all right; the
+*waveform* that should be summed into the buffer is missing, which is the same missing-state story told from the
+other side. A saw oscillator whose phase accumulator never wraps produces exactly this.
+
+`delay` fails earlier and differently: its `init` enters the buffer-fill helper at `0x81be4cf8`, whose
+`LSETUP(0x81be4d06, 0x81be4d06) LC0 = P2` is a *single-instruction* fill loop (`[P0++] = R3` with the count taken
+from `P2 = P1 >> 1`). Start and end being equal is legitimate there - the body is one instruction - but the count
+comes out around 404,000 because `P1` is a length the engine derives from state it does not have. Raising the
+step budget lets `init` finish, and it then returns 0 and renders nothing.
+
+The lesson generalises across the remaining engines: when a factory engine loops for hundreds of thousands of
+iterations or writes a constant, that is not an emulator bug to chase in the instruction decoder - it is the
+engine acting on a state value the OS would have supplied.
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.
