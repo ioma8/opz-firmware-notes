@@ -1351,3 +1351,29 @@ chord to 0.0751.
 It is necessary but **not sufficient**: with the tables present neither engine tracks the octave
 (chord's steps are 0.38/4.57, digital's readings 19.6/784.5/1275.2 across notes 45/57/69), and the 21-engine
 sweep is unchanged at 2 detuned / 3 flat / 3 loops / 5 needs-state / 8 silent.
+
+### The factory patches were in the app, not the firmware
+
+The OS image's `settings/plugs.json` holds engine ids and paths with **no parameter values**, which made
+it look as though the factory patches were unavailable. They are in the OP-Z app package:
+`assets/factory-plug-cache/<id>/metadata.json` carries, per factory plug, the engine it drives, its
+parameter names and every factory preset with its values:
+
+```
+digital.engine  params=['offset', 'space']  3 presets
+  dust        [0, 255, 14, 84, 30, 17, 2, 0, 156, 163, 127, 123, 0, 210, 125, 203, 255, 0]
+chord.engine    params=['phase', 'shape']   8 presets
+```
+
+`toolkit/opzplugs.py` reads them straight out of the APK (16 engines, 58 presets), and the preset names match
+`plugPresets.dat` in the OS image, which is the same data in packed form.
+
+Two limits found while checking whether this closes the gap:
+
+- **Engines do read `params`** - hooking the params region during a render counts 8 accesses for `digital`,
+  `chord` and `electric` and none for `organ`.
+- **It does not change their output.** Feeding every `digital` preset, as plain bytes and as bytes shifted
+  into the top of each word, gives byte-identical output (peak 0.1240 in all six cases), so the parameter
+  values are consumed but do not carry the voice coefficient that is keeping these engines silent.
+
+So the factory patch data was genuinely missing and is now available; it is simply not the missing piece.
