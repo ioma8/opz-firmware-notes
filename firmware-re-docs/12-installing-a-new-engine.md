@@ -258,3 +258,48 @@ pushed five pointer registers instead of three, which shifted the entire argumen
 `render` read a garbage `params` pointer. The engine's own argument walk is order-independent (it counts
 words), so the fix was invisible to `struck` - and would have been invisible to any engine that only ever
 reads its arguments by counting.
+
+## 12.9 Playing a module live, and why the native path exists
+
+`toolkit/opzplay.py` plays a module from the keyboard: `a s d f g h j k l ;` are the notes of the current
+scale, `z`/`x` change octave. It works because the module's machine code is **translated to C and compiled**
+(`toolkit/opzjit.py`) rather than interpreted:
+
+| path | cost per 64-frame block | realtime factor |
+|---|---|---|
+| interpreter (`opzsim.py`) | ~5.8 ms | 0.23x |
+| translated C (`opzjit.py`) | **6.8 us** | **197x** |
+
+A block's budget at 48 kHz is 1333 us, so the translated engine leaves room for ~196 voices, and the player
+runs four with a measured 46x headroom end to end (`opzplay.py --selftest`).
+
+Two things make this trustworthy rather than merely fast. First, the generated code is a switch dispatch over
+instruction addresses - the same shape as the interpreter - so its semantics are the interpreter's by
+construction. Second, the gate is **bit-exactness**: the same module, note and parameters must produce
+identical samples from both paths, and they do (`opzjit.py` was validated that way before anything was built on
+it). Anything the translator does not support raises `Unsupported` rather than emitting a guess.
+
+Audio output needs nothing installed: `toolkit/audiosink.c` is a ~100-line CoreAudio `AudioQueue` helper that
+plays raw PCM from stdin, compiled on first use. Python cannot open a low-latency device without a third-party
+package, and the harness stays dependency-free.
+
+### The host memory a factory engine needs
+
+Chasing the silence of the factory engines turned up the missing piece, and it is not an instruction: an
+engine is **not self-contained**. `initModule` receives a pointer to the OS's host-services table, and the
+engines store it in their own data and read through it while rendering. `chord` keeps it at `0x81be2d58`; in
+its render loop it reads `[table + 0xc]`, which is `0x0800bb44` - a 2048-entry Q31 **sine table** the OS keeps
+in L2 SRAM for exactly this purpose. A harness that returns zero there produces silence no matter how correct
+its emulation is.
+
+`toolkit/opzhost.py` extracts the two regions that matter from the OS image and caches them outside the
+repository (`~/.cache/opzenginetool/hostmem.json`):
+
+```
+0x0800b000 + 0x3000   L2 SRAM, containing the shared sine table at 0x0800bb44
+0x81003850 + 0x40     the 13-entry host-services table itself
+```
+
+With that memory present, the engines get further but still do not all reach their sample loops; the remaining
+gap is the voice and envelope state the OS maintains around them, which is a separate piece of work and is
+recorded as such rather than papered over.

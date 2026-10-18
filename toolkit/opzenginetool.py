@@ -30,8 +30,10 @@ What works, measured rather than assumed:
     enough to give them a signal to shape. Making them audible needs the host-services table at 0x81003850
     characterised entry by entry, which is a separate piece of reverse engineering.
 
-Rendering is OFFLINE: the interpreter runs at about 0.2x realtime, so a one-second clip takes a few seconds.
-Renders are cached on disk by content hash, so the first play of a setting is slow and repeats are instant.
+Rendering speed depends on the path: the interpreter runs at about 0.2x realtime, while toolkit/opzplay.py
+translates the module to C (opzjit.py) and runs it at roughly 200x realtime, which is what makes live
+keyboard playing possible - see opzplay.py for that. This page uses the interpreter because it renders any
+module the interpreter can run, including ones the translator does not cover yet.
 """
 import hashlib, json, math, os, pathlib, sys, threading, urllib.parse, wave, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
