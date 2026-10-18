@@ -19,6 +19,10 @@ mine - the DFT was evaluated at a rounded 659.3 Hz instead of the true 659.255 H
 enough to swing the magnitude by about 20 percent. Tested at exactly `440 * 2^((note-69)/12)`, all six pitches pass.
 Under the same exact-frequency method `chord` reads 1 of 6 and `ep` 2 of 6.
 
+An independent measure agrees, so that result is not an artefact of the neighbour test: the contrast of the
+fundamental against the broadband floor (`mag(f0) / median magnitude over 200-2500 Hz`) is **124-285x for
+digital at all six pitches**, but only **1.8-14.8x for chord** and **3.3-21.6x for ep**.
+
 The table has been re-run end to end and reproduces: `digital` passes 5 of 6 (failing only 659 Hz), and
 `chord` and `ep` pass exactly the 220 and 440 Hz ones. Every one of the 21 factory modules is named somewhere in
 this document with a verdict, so the inventory is complete rather than a summary.
