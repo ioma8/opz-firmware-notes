@@ -596,3 +596,34 @@ z rootu svazku; **nikdy** nebootovat funkční přístroj do content módu (ejec
 
 **Zbytky (neblokující):** pět DLC engineů bez publikovaného memory slotu, chybějící `arpeggiators/01-06.txt`,
 občas `libaiff: AIFF_ReadOpen failed`.
+
+## STAV CÍLE: „aby hrály všechny tovární enginy správně“ (2026-10-19)
+
+**Cíl nesplněn.** Ověřeně hraje **1 z 13** továrních nástrojů; u efektů 2 z 8 jen běží, ale správnost nelze
+prokázat. Podrobnosti a tabulky: `firmware-re-docs/13-factory-engine-status.md`; všech 111 testů:
+`HYPOTHESES.csv`; měřítko: `toolkit/opzfactorycheck.py`.
+
+| engine | stav | důkaz |
+|---|---|---|
+| `digital` | **hraje správně** | 5 z 6 výšek (110/165/220/330/440 Hz), selhává jen 659 Hz |
+| `chord`, `ep` | projdou jen 2 ze 6 | 220 a 440 Hz; padají přesně na 0,75× a 1,5× (vlastní intervaly) |
+| `crush`, `chorus2` | běží, neověřeno | mění vstup, ale jsou stavové, převodní funkce neurčí správnost |
+| `volt`, `electric`, `cluster` | nehrají | DC / fixní spektrum / konstanta 2e-4 |
+| `organ`, `sampleplayergain`, `synthsampler` | ticho | `organ` po `state+0x10` bráně indexuje vlastní tabulku záporným indexem |
+| `analoga`, `fm003b`, `ministringshort`, `saw013a` | chyba | volají mimo okno při každé výšce 50–1200 Hz |
+| `delay`, `tapetwo`, `reverb`, `dist`, `chorus` | ticho/chyba | `delay` při init čistí 1 MB buffer, jehož ukazatel je 0 |
+
+**Co bylo objeveno a je použitelné:** výška se předává jako bajtový krok do čtvrtvlnné sinusové tabulky, tedy
+`f_out = arg × 48000/32768` (faktor 1,4648) — to je důvod, proč `digital` hraje. Dále: všech šest argumentů na
+stacku, amp objekt (`+4 = 0x40000000`, `+8 = 0x7f000000`, `+0xc = -0x40000000`, `+0x10 = 2`) a host paměť
+(sinusová tabulka + host tabulka), kterou `opzhost` skládá přímo z `opz.ldr` bez Ghidry.
+
+**Blokátor (prokázán ze tří stran):** nástroje potřebují per-voice stav od sekvenceru, efekty hostitelem
+přidělené buffery; obě cesty (interpret i JIT) končí na tomtéž. Žádný artefakt v repu tento stav nenese —
+`opz.ldr` nemá region `0x04xxxxxx`, `.zfw` je AES bez klíče, `.opz` projekty jsou písňová data, APK presety
+engine ignoruje, `.plz` soubory jsou nulové.
+
+**Co odblokuje práci:** (1) dump paměti zařízení `0x04000000`–`0x04100000`, (2) AES klíč k `.zfw`,
+(3) výslovné zadání na více­týdenní emulaci OS služeb, (4) přijetí náhradních enginů. Zařízení je podle sekce
+výše funkční a čtení z něj funguje (`opzcopyprobe`, `sergey-extraction/opzget.py`) — dump se tedy jeví jako
+nejschůdnější cesta.
