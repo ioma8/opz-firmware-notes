@@ -184,6 +184,66 @@ def build_delay():
     return _pack(c, "renderFX", data_bytes=D_BUF_OFF + BUF_BYTES)
 
 
+TAP1_BYTES = 1024         # 256 samples ~ 5.3 ms
+TAP2_BYTES = 3072         # 768 samples ~ 16 ms
+
+
+def build_tapetwo():
+    """Two-tap delay: out = in + buf[idx-TAP1] + buf[idx-TAP2]. Same circular buffer as `delay`; the
+    constants are reloaded per frame into a scratch register so no extra register allocation is needed."""
+    c = B.Code(CODE_BASE)
+    for nm in ("initModule", "init", "onNoteOn", "onNoteOff"):
+        c.label(nm)
+        c.emit(A.ldimm7("R0", 0))
+        c.emit(A.rts())
+
+    c.label("renderFX")
+    c.emit(A.link(0))
+    c.emit(A.regmv("P0", "SP"))
+    for _ in range(2):
+        c.emit(A.ldst("P0", "R0"))
+    c.emit(A.ldst("P0", "R1"))
+    c.emit(A.ldst("P0", "R2"))
+    c.emit(A.regmv("P1", "R1"))
+    c.emit(A.regmv("P2", "R2"))
+    c.emit(A.push_r7_p5())
+    c.emit(A.ldimm32("R7", 256))
+    c.emit(A.ldimm7("R6", 4))
+    c.emit(A.ldimm32("P0", DATA_BASE))
+    c.emit(A.ldst("P0", "R5", aop=2))
+
+    c.label("loop")
+    c.emit(A.ldst("P1", "R0"))                          # R0 = in
+    c.emit(A.ldimm32("R3", DATA_BASE + D_BUF_OFF))
+    c.emit(A.addsub32("R3", "R3", "R5", "+"))
+    c.emit(A.regmv("P4", "R3"))
+    c.emit(A.ldst("P4", "R0", store=True, aop=2))       # buf[idx] = in
+    for tap in (TAP1_BYTES, TAP2_BYTES):
+        c.emit(A.ldimm32("R3", tap))
+        c.emit(A.addsub32("R3", "R5", "R3", "-"))       # idx - tap
+        c.emit(A.ldimm32("R1", BUF_MASK))
+        c.emit(A.logic32("R3", "R3", "R1", "&"))        # wrap
+        c.emit(A.ldimm32("R1", DATA_BASE + D_BUF_OFF))
+        c.emit(A.addsub32("R3", "R1", "R3", "+"))
+        c.emit(A.regmv("P4", "R3"))
+        c.emit(A.ldst("P4", "R1", aop=2))               # R1 = tap
+        c.emit(A.addsub32("R0", "R0", "R1", "+"))
+    c.emit(A.ldst("P2", "R0", store=True))
+    c.emit(A.addsub32("R5", "R5", "R6", "+"))
+    c.emit(A.ldimm32("R1", BUF_MASK))
+    c.emit(A.logic32("R5", "R5", "R1", "&"))
+    c.emit(A.addsub32("R7", "R7", "R6", "-"))
+    c.emit(A.cmp_eq0("R7"))
+    c.branch("loop", cond=False)
+
+    c.emit(A.ldimm32("P0", DATA_BASE))
+    c.emit(A.ldst("P0", "R5", store=True, aop=2))
+    c.emit(A.pop_r7_p5())
+    c.emit(A.unlink())
+    c.emit(A.rts())
+    return _pack(c, "renderFX", data_bytes=D_BUF_OFF + BUF_BYTES)
+
+
 def _pack(c, render_name, data_bytes=0x40):
     names = {}
     for nm in ("initModule", "init", render_name, "onNoteOn", "onNoteOff"):
@@ -212,7 +272,7 @@ def _pack(c, render_name, data_bytes=0x40):
 def main(argv):
     outdir = pathlib.Path(argv[1] if len(argv) > 1 else "engines-effects")
     outdir.mkdir(parents=True, exist_ok=True)
-    for name, builder in (("dist", build_dist), ("crush", build_crush), ("delay", build_delay)):
+    for name, builder in (("dist", build_dist), ("crush", build_crush), ("delay", build_delay), ("tapetwo", build_tapetwo)):
         raw = builder()
         p = outdir / f"{name}.engine"
         p.write_bytes(raw)

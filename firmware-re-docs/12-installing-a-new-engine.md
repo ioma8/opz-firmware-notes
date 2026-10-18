@@ -1267,3 +1267,12 @@ the data-register form, so every `Preg = imm32` in a built engine silently wrote
 exact bug the interpreter had two rounds ago. `ldimm32` now emits `0xda08|reg` for pointer destinations
 and `0xda00|reg` for data ones. Every module was rebuilt afterwards and all gates pass: 34/34 encodings,
 `struck` selftest, `opzplay` realtime and audible, 440.1 Hz, 21/21 containers round-trip clean.
+
+`tapetwo` is the same circular buffer with two taps (`TAP1` 1024 bytes = 256 samples, `TAP2` 3072 bytes =
+768 samples). Verified with an impulse: one `0x40000000` at frame 0, echoes at exactly frame **256** and
+frame **768**, nothing else. Constant reloads happen per frame into a scratch register, which keeps the
+register allocation at eight without spilling.
+
+Effect status: `dist`, `crush`, `delay`, `tapetwo` built and measured. `chorus`, `chorus2`, `reverb` and
+`fdnreverb` remain - they need an LFO and a feedback network respectively, both of which build on this
+same buffer.
