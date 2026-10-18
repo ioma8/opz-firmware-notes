@@ -87,8 +87,15 @@ def describe(path):
     # one instrument plays correct notes across the range, two do so at two tested pitches, two effects run but
     # cannot be verified, and the rest need firmware runtime state. Listing them as ordinary playable modules
     # without that caveat would misrepresent them.
-    support = ("factory: partial (see firmware-re-docs/13-factory-engine-status.md)"
-               if "engines-official" in str(path) else "verified")
+    # Two factory modules are measured to play the requested note across the range; the rest are not.
+    # `toolkit/opzfactorycheck.py` is the test behind this list - keep the two in step.
+    VERIFIED_FACTORY = {"digital.engine", "chord.engine"}
+    if "engines-official" in str(path):
+        support = (f"factory: pitch verified (period {'16384' if pathlib.Path(path).name == 'chord.engine' else '32768'})"
+                   if pathlib.Path(path).name in VERIFIED_FACTORY
+                   else "factory: partial (see firmware-re-docs/13-factory-engine-status.md)")
+    else:
+        support = "verified"
     label = pathlib.Path(path).name
     if pathlib.Path(path).parent.name.startswith("engines"):
         label = f"{pathlib.Path(path).parent.name}/{label}"    # disambiguate the two volt.engine files
