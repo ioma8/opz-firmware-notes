@@ -136,7 +136,12 @@ def render_clip(info, note, seconds, params):
         m.st32(amp + 0x0C, -0x40000000 & 0xFFFFFFFF)
         m.st32(amp + 0x10, 2)
     hz = 440.0 * 2 ** ((note - 69) / 12.0)
-    freq_q16 = int((hz * (32768.0 / 48000.0) if factory else hz) * 65536) & 0xFFFFFFFF
+    # The pitch argument is a byte stride into the engine's own wave table, and the table size differs per
+    # engine: digital walks 32768 bytes per cycle, chord 16384. Measured by sweeping the argument and finding
+    # where the requested frequency peaks (chord: 150 for 440 Hz, digital: 300 for 440 Hz).
+    FACTORY_PERIOD = {"chord.engine": 16384.0}
+    period = FACTORY_PERIOD.get(pathlib.Path(info["path"]).name, 32768.0) if factory else 0.0
+    freq_q16 = int((hz * (period / 48000.0) if factory else hz) * 65536) & 0xFFFFFFFF
     samples, envelope = [], []
     # an effect has nothing to process without an input: feed it a short burst of a decaying sine at the
     # note's frequency, so the effect's own character comes through instead of silence

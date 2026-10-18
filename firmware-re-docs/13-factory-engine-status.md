@@ -10,9 +10,17 @@ through the app's own render path, at 220 Hz and 440 Hz, against both neighbouri
 
 | engine | 220 Hz (at f0 vs neighbours) | 440 Hz | across six pitches | notes |
 |---|---|---|---|---|
-| chord | 2.6e5 vs 1.1e5 | 8.8e4 vs 5.2e4 | **1 of 6** | fails at exactly 0.75x and 1.5x - its own interval components |
+| chord | 2.6e5 vs 1.1e5 | 8.8e4 vs 5.2e4 | **6 of 6** (with its 16384-byte period) | plays every pitch tested |
 | digital | 5.0e5 vs 3.2e5 | 4.7e5 vs 1.8e5 | **6 of 6** | plays every pitch tested |
 | ep | 3.6e6 vs 1.7e6 | 1.6e6 vs 9.1e5 | **2 of 6** | writes the **right channel only** |
+
+**The pitch scale is per engine.** Sweeping the pitch argument for `chord` against a 440 Hz target shows its
+contrast peaks at **150**, not 300 - a table period of **16384 bytes** rather than digital's 32768. With that
+period chord plays all four targets tested (contrast 18-44, its fifth only 2-7) and, through the app path, passes
+**6 of 6** pitches at contrast 17-31. `opzenginetool` now keeps a per-engine table period for this reason.
+
+So **two** factory instruments now play correctly across the range: `digital` (32768) and `chord` (16384). `ep` is
+insensitive to the pitch argument at every scale tried, so it stays at 2 of 6.
 
 **Correction:** `digital` plays **6 of 6**, not 5 of 6. The apparent miss at note 76 was a measurement fault of
 mine - the DFT was evaluated at a rounded 659.3 Hz instead of the true 659.255 Hz, which is under one DFT bin but
