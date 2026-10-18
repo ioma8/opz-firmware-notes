@@ -945,3 +945,30 @@ The dwords from `0x815c808c` onward are a semitone table in Q16 Hz — 12.157, 1
 15.311, each `2^(1/12)` above the last — which is the table `FUN_8011aa1c` (called twice per tick from
 `FUN_8012e2c0` for the slow and fast glide conversions) walks. That independently confirms the pitch unit
 the engines receive is Q16 Hz, the same unit their own band tables use.
+
+## Running the firmware itself: `toolkit/opzos.py`
+
+The conclusion that drove this tool: the factory engines were never silent from a decoder fault. They
+multiply a working oscillator by a per-voice coefficient the **sequencer** computes, and no synthetic
+harness input reaches it. So instead of synthesising that state, run the firmware and let it compute the
+state itself.
+
+What the tool does, and what it establishes:
+
+- `opz.ldr` is the same dlm container as an engine (byte 3 = `0xad`) and parses into **164 segments**:
+  83 in the main image `0x80000000..0x815caea0` (648 KB), 75 L1 overlays at `0x11a...`, 6 at `0x08...`.
+  The engine windows (`0x81b93800+`) do **not** overlap the OS image, so one flat 32 MB window
+  (`0x80000000..0x82000000`) holds both.
+- With that mapping, **the OS's own code executes in `opzsim`**. `FUN_8012e2c0` (the per-voice tick) runs
+  to completion in 2,121 steps, and `FUN_8012e0a4` (note start) runs to completion and fills the amp
+  object by itself — `amp+0x08 = 0x7fffffff`, `amp+0x10 = 1` — which is exactly the state the harness
+  could never synthesise.
+- Two ISA gaps had to be closed to get there: **`UNLINK` is a 4-byte instruction** (it was consuming 2,
+  so every UNLINK executed its own frame halfword), and **`Jump32` (`CALL.A`/`JUMP.A`, `0xDE00`-class)** was
+  missing entirely — `FUN_8011aa1c`, the note-to-frequency conversion the tick calls twice, issues
+  `CALL.A` on its own.
+
+Remaining block, precisely stated: the tick stops with a null function pointer because the synthetic
+record's **patch fields** are not populated. Those are the values the plug manager reads from the plug
+definition and hands to the voice; `record+0x34` (which the OS scales by `[0x815c8088] = 0x007fffff` into
+`amp+0x0c`) is one of them and is still a guess. Filling them from the real plug data is the next step.

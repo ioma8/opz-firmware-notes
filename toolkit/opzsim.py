@@ -1063,6 +1063,25 @@ class Machine:
                 off -= 0x1000
             self.pc = self.pc + off * 2
             return True
+        # Jump32 (instr64/39-Jump32.sinc): an 8-byte absolute/relative jump or call. jmpSig is bits 10-15
+        # (0x37), jmpC is bit 9, jmpRel is bit 0, and the immediates are the two halfwords that follow,
+        # with a fourth halfword that must be zero. FUN_8011aa1c (the note-to-frequency conversion the
+        # per-voice tick calls twice) issues CALL.A here, so without this the OS itself cannot run.
+        if (h >> 10) == 0x37 and ((h >> 1) & 0xFF) == 0:
+            call = (h >> 9) & 1
+            rel = h & 1
+            immh = int.from_bytes(m[o + 2:o + 4], "little")
+            imml = int.from_bytes(m[o + 4:o + 6], "little")
+            if rel:
+                if immh & 0x8000:
+                    immh -= 0x10000
+                target = (self.pc + ((immh << 16) | imml)) & 0xFFFFFFFF
+            else:
+                target = ((immh << 16) | imml) & 0xFFFFFFFF
+            if call:
+                self.rets = self.pc + 8
+            self.pc = target
+            return True
         # DspLdSt (instr16/19-DspLdSt.sinc): sig 0x27 at bits 10-15 - the class for [I0++], [I0--], [I0]
         # and [I0++M]. It MUST be tested before the 16-bit LdSt class, whose signature at bits 12-15 (0x9)
         # is a prefix of it: decoding these as LdSt advanced P0 instead of I0, and chord's P0 then drifted
