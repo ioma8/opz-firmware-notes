@@ -1682,9 +1682,12 @@ all, and never needed to: our own engines are loop-free, so nothing exercised it
 
 That loop support now exists: `opzjit` implements `LSETUP` in both forms, with LC/LB/LE loop state and a
 back-edge emitted at each static loop-end address, plus the `Dsp32Shf` families `popcount`, `extract` and
-`signbits`. Our own engines are unaffected (52 us per block, 17/17). The chain then continues - `digital` next
-stops on `ALU2op opc=0x8`, **DIVQ**, the conditional division step, which `opzsim` does not implement either
-because its interpreter path never reaches it.
+`signbits`. Our own engines are unaffected (52 us per block, 17/17). The chain then continues through `ALU2op opc=0x8`/`0x9` (**DIVQ**/**DIVS**), which the interpreter already had
+and the JIT now has too - both written from `instr16/12-ALU2op.sinc` - followed by `sopc=0x5`/`0x7`
+(sign bits and ExpAdj, now sharing a single `SGNB` helper). It stops at `Dsp32Alu aopc=0x19`, **AddSubAC0**,
+which reads the ASTAT `AC0` carry bit that `opzjit` does not model at all: a partial implementation would
+silently diverge from the interpreter, and modelling `ASTAT` throughout the JIT is a larger change than this
+objective justifies.
 
 None of this changes the engine count: it would not, since - the ten non-playing
 engines are blocked on state, not on the JIT. So the three working factory engines stay on the interpreter path

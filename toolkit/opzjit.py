@@ -210,13 +210,23 @@ def decode(img, addr, eaddr):
                 return 4, (f"R[{dst}]=(int32_t)__builtin_popcount((uint32_t)R[{s0}]); "
                            f"pc = {e4}u; break;")
             if sopc == 0x05:                                      # SignBits: leading sign-redundant bits
-                half = {1: 16, 2: 0, 3: 16}.get(sop, 32)
-                return 4, (f"{{ int32_t v_=(int32_t)R[{s1}]; "
-                           f"if({half}==16) v_=(({'R[%d]>>16' % s1}) if {1 if sop == 3 else 0} else "
-                           f"((int32_t)((uint32_t)R[{s1}]<<16)>>16)); "
-                           f"int n_=0; if(v_>=0){{ while(n_<31 && (v_ & (1<<(30-n_)))==0) n_++; n_++; }} "
-                           f"else {{ uint32_t u_=~(uint32_t)v_; n_=0; while(n_<31 && (u_ & (1u<<(30-n_)))==0) n_++; n_++; }} "
-                           f"R[{dst}]=n_; }} pc = {e4}u; break;")
+                arg = {1: f"((int32_t)((uint32_t)R[{s1}] << 16) >> 16)",
+                       2: f"((int32_t)((uint32_t)R[{s1}] << 16) >> 16)",
+                       3: f"((int32_t)(uint32_t)R[{s1}] >> 16)"}.get(sop, f"R[{s1}]")
+                return 4, f"R[{dst}]=SGNB({arg}); pc = {e4}u; break;"
+            if sopc == 0x07:                                      # ExpAdj: MIN(sign bits, src1)
+                lo = f"((int32_t)((uint32_t)R[{s0}] << 16) >> 16)"
+                hi = f"((int32_t)(uint32_t)R[{s0}] >> 16)"
+                if sop == 1:
+                    arg = f"((SGNB({lo})<SGNB({hi}))?SGNB({lo}):SGNB({hi}))"
+                elif sop == 2:
+                    arg = f"SGNB({lo})"
+                elif sop == 3:
+                    arg = f"SGNB({hi})"
+                else:
+                    arg = f"SGNB(R[{s0}])"
+                return 4, (f"{{ int a_={arg}, b_=R[{s1}]; R[{dst}]=(a_<b_)?a_:b_; }} "
+                           f"pc = {e4}u; break;")
             if sopc == 0x0A:                                      # Extract: len bits at off from src1
                 return 4, (f"{{ uint32_t sp_=(uint32_t)R[{s0}], ln_=sp_&0x1Fu, of_=(sp_>>8)&0x1Fu, "
                            f"v_=(uint32_t)R[{s1}]; R[{dst}]=(int32_t)(ln_?((v_>>of_)&((1u<<ln_)-1u)):0u); }} "
@@ -391,6 +401,18 @@ def decode(img, addr, eaddr):
                   0xE: f"R[{dst}]=W32(-(int64_t)R[{src}]);",
                   0xF: f"R[{dst}]=~R[{src}];"}[opc]
             return 2, fin(st)
+        if opc == 8:                                              # DIVQ: one division step
+            # instr16/12-ALU2op.sinc: add or subtract src<<16 depending on AQ, then set
+            # AQ = (dst >= 0x80000000) ^ (src.low16 >= 0x8000) and shift the quotient in.
+            return 2, ("{ int32_t v_; if (AQ) v_=(int32_t)((uint32_t)R[%d]+((uint32_t)R[%d]<<16)); "
+                       "else v_=(int32_t)((uint32_t)R[%d]-((uint32_t)R[%d]<<16)); "
+                       "AQ = (((uint32_t)v_ >= 0x80000000u) ^ (((uint32_t)R[%d] & 0xFFFFu) >= 0x8000u)) ? 1 : 0; "
+                       "R[%d] = (int32_t)(((uint32_t)v_ << 1) | (AQ ? 0u : 1u)); } pc = %du; break;"
+                       % (dst, src, dst, src, src, dst, eaddr + 2))
+        if opc == 9:                                              # DIVS: division initialise
+            return 2, ("{ AQ = (((uint32_t)R[%d] >= 0x80000000u) ^ (((uint32_t)R[%d] & 0xFFFFu) >= 0x8000u)) ? 1 : 0; "
+                       "R[%d] = (int32_t)(((uint32_t)R[%d] << 1) | (AQ ? 1u : 0u)); } pc = %du; break;"
+                       % (dst, src, dst, dst, eaddr + 2))
         raise Unsupported(f"ALU2op opc={opc:#x} at 0x{eaddr:08x}")
     if (h & 0xFE00) == 0x4400:                                    # Ptr2op
         opc, src, dst = (h >> 6) & 7, (h >> 3) & 7, h & 7
@@ -435,6 +457,9 @@ PRELUDE = r"""
 typedef struct { uint8_t *mem; int64_t base; int64_t size; } Arena;
 static Arena A;
 static int32_t R[8], I[4];
+/* leading sign-redundant bits, matching opzsim's _sgncount: lzcount(v)-1 for v>=0, lzcount(~v)-1 for v<0 */
+static int SGNB(int32_t v){ uint32_t u = (v < 0) ? ~(uint32_t)v : (uint32_t)v; int n = 0;
+    while (n < 32 && (((u >> (31 - n)) & 1u) == 0)) n++; return n - 1; }
 static uint32_t P[8];
 static int CC = 0;
 static inline int32_t SAT(int64_t v) {
@@ -503,6 +528,7 @@ def emit(raw):
            "      for (int i=n_stack-1;i>=0;i--){ P[6]-=4; WR(P[6],(uint32_t)st[i]); } }",
 
            "    int32_t LC[2]={0,0}; uint32_t LB[2]={0,0}, LE[2]={0,0}; int HAVE[2]={0,0};",
+           "    int AQ=0;   /* ASTAT bit 6, the divide quotient bit */",
            "    uint32_t rets = 0x%08uu;   /* RETS: set by every call form, restored by UNLINK */" % SENTINEL,
            "    uint32_t pc = entry;",
            "    for (;;) {",
