@@ -1615,3 +1615,17 @@ constant in `opzsim.py`) does not let any of them finish either.
 
 So the requirement is not "answer the call" but "answer it with the value the engine is waiting for" - a real
 OS service, not a stub.
+
+### A real decoder gap found by following the OS call: ProgCtrl STI
+
+Logging the out-of-window calls showed `organ` repeatedly calling the OS routine at **`0x800314c0`** (host
+table slot 7). Running that routine with the OS image mapped failed on `ProgCtrl opc=0xe`. The ProgCtrl table is
+`0xC` IDLE, **`0xD` CLI**, **`0xE` STI**; `opzsim` handled only `0xC`, so real OS code enabling interrupts
+stopped the run. With `0xD`/`0xE` handled as no-ops the routine executes and **returns in 38 steps with R0 = 0**.
+
+That fix does not unlock the engines, and the reason is instructive: `organ` then proceeds to `0x80000003` and
+executes garbage (`0x7980`) - a call through OS data that is zero in an unbooted image. `analoga`, `saw013a` and
+`ministringshort` still raise "call did not return".
+
+So the engines are waiting on OS *state*, not merely OS code: the routines exist and can be executed, but the
+data they consult is uninitialised without a real boot.

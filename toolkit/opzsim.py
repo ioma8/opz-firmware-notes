@@ -878,7 +878,9 @@ class Machine:
             if opc in (1, 2):                              # RTS handled elsewhere; SSYNC/NOP-like
                 self.pc = nxt
                 return True
-            if opc in (3, 4, 0xC):                         # CLI / STI / STI IDLE: no interrupts here
+            if opc in (3, 4, 0xC, 0xD, 0xE):               # IDLE / CLI / STI: no interrupts here
+                # The ProgCtrl table is 0xC IDLE, 0xD CLI, 0xE STI; only 0xC used to be handled, so real
+                # OS code enabling interrupts raised "ProgCtrl opc=0xe" and stopped the run.
                 self.pc = nxt
                 return True
             if opc in (9, 0xA):                            # RAISE / EXCPT (instr16/01-ProgCtrl.sinc)
