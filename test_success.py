@@ -10,15 +10,15 @@ presence of OPZ_DECODE_REPORT.txt keeps meaning "the real decode finished".
 import contextlib, importlib.util, io, json, struct, sys, zlib
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location("F", "/tmp/opzfarm.py")
+spec = importlib.util.spec_from_file_location("F", "/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzfarm.py")
 F = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(F)
 # self-check only: never write into the farm's real evidence log, or a synthetic
 # 'report written' line becomes indistinguishable from the real finish (see 62).
 F.log = lambda m: None
 
-MAP, STATE = Path('/tmp/opzfarm_map.json'), Path('/tmp/opzfarm_state.json')
-REPORTS = [Path('/tmp/OPZ_DECODE_REPORT.txt'),
+MAP, STATE = Path('/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzfarm_map.json'), Path('/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzfarm_state.json')
+REPORTS = [Path('/Users/jakubkolcar/projects/customs/opz-firmware-notes/OPZ_DECODE_REPORT.txt'),
            Path.home() / '.opz-decode' / 'OPZ_DECODE_REPORT.txt']
 _saved = {p: (p.read_bytes() if p.exists() else None) for p in (MAP, STATE)}
 

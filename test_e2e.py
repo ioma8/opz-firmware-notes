@@ -9,10 +9,10 @@ does -- and drives the farm's own parser + worklist until coverage completes.
 Finally it assembles, walks the zip and resolves the fault address.
 """
 import importlib.util, io, struct, zipfile, sys
-sys.path.insert(0, '/tmp')
-spec=importlib.util.spec_from_file_location("opzfarm","/tmp/opzfarm.py")
+sys.path.insert(0, '/Users/jakubkolcar/projects/customs/opz-firmware-notes')
+spec=importlib.util.spec_from_file_location("opzfarm","/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzfarm.py")
 F=importlib.util.module_from_spec(spec); spec.loader.exec_module(F)
-spec2=importlib.util.spec_from_file_location("opzanalyze","/tmp/opzanalyze.py")
+spec2=importlib.util.spec_from_file_location("opzanalyze","/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzanalyze.py")
 A=importlib.util.module_from_spec(spec2); spec2.loader.exec_module(A)
 import opzsim
 

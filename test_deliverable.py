@@ -3,9 +3,9 @@
 completion, then run the real write_report() and check the report it produces.
 This exercises every finish-line path exactly as the medium-present run will."""
 import importlib.util, io, json, struct, zipfile, random, sys
-sys.path.insert(0, '/tmp')
+sys.path.insert(0, '/Users/jakubkolcar/projects/customs/opz-firmware-notes')
 from pathlib import Path
-spec=importlib.util.spec_from_file_location("F","/tmp/opzfarm.py")
+spec=importlib.util.spec_from_file_location("F","/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzfarm.py")
 F=importlib.util.module_from_spec(spec); spec.loader.exec_module(F)
 import opzsim
 
@@ -40,9 +40,9 @@ cov=len(st["bytes"])
 print(f"coverage: {cov}/{len(payload)} ({100*cov/len(payload):.2f}%) in {st['cycles']} cycles")
 # point the tools at this synthetic payload by writing the real state files
 import shutil
-backup={p:Path(p).read_bytes() for p in ('/tmp/opzfarm_map.json','/tmp/opzfarm_state.json') if Path(p).exists()}
-Path('/tmp/opzfarm_map.json').write_text(json.dumps(st["bytes"]))
-Path('/tmp/opzfarm_state.json').write_text(json.dumps(st))
+backup={p:Path(p).read_bytes() for p in ('/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzfarm_map.json','/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzfarm_state.json') if Path(p).exists()}
+Path('/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzfarm_map.json').write_text(json.dumps(st["bytes"]))
+Path('/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzfarm_state.json').write_text(json.dumps(st))
 # keep the farm's own log clean: route the function's logging into a temp file instead
 _loglines=[]
 _real_log=F.log
@@ -51,7 +51,7 @@ print("calling the real write_report()...")
 F.write_report(st)
 F.log = _real_log
 print(f"  (write_report logged {len(_loglines)} line(s) to a scratch buffer, not the farm log)")
-rep=Path('/tmp/OPZ_DECODE_REPORT.txt')
+rep=Path('/Users/jakubkolcar/projects/customs/opz-firmware-notes/OPZ_DECODE_REPORT.txt')
 print(f"report exists: {rep.exists()} ({rep.stat().st_size if rep.exists() else 0} B)")
 if rep.exists():
     txt=rep.read_text()

@@ -6,7 +6,7 @@ a GROUND_TRUTH set that itself contained misaligned garbage, and the mask is wha
 makes a NUL inside the first block printable at all)."""
 import importlib.util, sys
 from pathlib import Path
-spec=importlib.util.spec_from_file_location("F","/tmp/opzfarm.py")
+spec=importlib.util.spec_from_file_location("F","/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzfarm.py")
 F=importlib.util.module_from_spec(spec); spec.loader.exec_module(F)
 # self-check only: never write into the farm's real evidence log (see FIRMWARE_ANALYSIS 54.3)
 F.log=lambda m: None

@@ -9,7 +9,7 @@ PortNotOpenError, the loop spun at full speed for the whole window (7,298 log li
 was lost entirely.
 """
 import contextlib, importlib.util, io, sys, time
-spec = importlib.util.spec_from_file_location("F", "/tmp/opzfarm.py")
+spec = importlib.util.spec_from_file_location("F", "/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzfarm.py")
 F = importlib.util.module_from_spec(spec); spec.loader.exec_module(F)
 _sink = io.StringIO()
 F.log = lambda m: _sink.write(m + "\n")     # keep the farm's real evidence log clean

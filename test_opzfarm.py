@@ -10,8 +10,8 @@ Covers the fixes recorded in FIRMWARE_ANALYSIS.md 66.2/66.3/66.5:
   * a probe that produced nothing KEEPS its interval instead of advancing by one.
 """
 import importlib.util, sys
-sys.path.insert(0, '/tmp')
-spec = importlib.util.spec_from_file_location("opzfarm", "/tmp/opzfarm.py")
+sys.path.insert(0, '/Users/jakubkolcar/projects/customs/opz-firmware-notes')
+spec = importlib.util.spec_from_file_location("opzfarm", "/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzfarm.py")
 F = importlib.util.module_from_spec(spec); spec.loader.exec_module(F)
 import opzsim
 
@@ -84,7 +84,7 @@ st3 = {"pending": [], "bytes": {}, "cycles": 7, "miss": 0}
 F.record_read(st3, targets[:1], {0}, True)
 r = st3["reads"][0]
 chk(r["cycle"] == 7 and r["masked"] is True and r["targets"] == [[0, 5000]], f"provenance {r}")
-chk(r["capture"] == "/tmp/opzcap_cycle0007.bin", f"provenance capture {r['capture']}")
+chk(r["capture"] == "/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzcap_cycle0007.bin", f"provenance capture {r['capture']}")
 
 # 7. migration drops what came from unaligned reads and re-queues it aligned
 st4 = {"pending": [], "bytes": {str(i): 1 for i in range(0, 20)}, "cycles": 0, "miss": 0}

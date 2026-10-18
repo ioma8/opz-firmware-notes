@@ -4,7 +4,7 @@ its entries carry names (the pre-review validator rejected ANY name as 'archive 
 nameless', i.e. it asserted the conclusion it was meant to test -- 66.4), recover the
 entry names, and report the exact offset where a corrupted one stops chaining."""
 import contextlib, importlib.util, io, struct, sys, zlib
-spec = importlib.util.spec_from_file_location("A", "/tmp/opzassemble.py")
+spec = importlib.util.spec_from_file_location("A", "/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzassemble.py")
 A = importlib.util.module_from_spec(spec)
 _sink = io.StringIO()
 with contextlib.redirect_stdout(_sink):    # importing runs main(); keep its output out of the way

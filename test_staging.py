@@ -3,7 +3,7 @@
 plus the invariant that craft() is always well-formed, including at payload-end offsets."""
 import importlib.util, json, shutil, sys, tempfile, time
 from pathlib import Path
-spec=importlib.util.spec_from_file_location("F","/tmp/opzfarm.py")
+spec=importlib.util.spec_from_file_location("F","/Users/jakubkolcar/projects/customs/opz-firmware-notes/opzfarm.py")
 F=importlib.util.module_from_spec(spec); spec.loader.exec_module(F)
 # self-check only: never write into the farm's real evidence log (see FIRMWARE_ANALYSIS 54.3)
 F.log=lambda m: None
