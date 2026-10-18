@@ -1393,3 +1393,21 @@ address from an older note:
   110/220/440 Hz. The ratios are inconsistent, so this is not a note at the requested pitch. Autocorrelation
   cannot judge chord at all - it is a multi-oscillator engine, so its waveform is deliberately non-periodic
   and only a spectrum is meaningful.
+
+### A control probe settles whether the engines track pitch
+
+Measuring energy at the requested fundamental is not enough on its own: if the output is broadband, some of
+it always lands on f0 and looks like tracking. The control is to request frequencies that are not octaves of
+each other and see whether the peak moves with the request.
+
+| request | chord peaks at | digital peaks at |
+|---|---|---|
+| 220 Hz | 220 Hz | 220 Hz |
+| 300 Hz | **220 Hz** | **440 Hz** |
+| 600 Hz | **300 Hz** | **220 Hz** |
+
+Neither engine's peak follows the request, so the factory engines are not playing the requested note. The
+readable part of chord's render explains why the earlier "1.5x and 3x" readings looked musical: its phase
+increment is computed from the pitch argument through a divider against a band base, with `params[5]` as an
+offset, so pitch does reach an increment - but the resulting oscillator does not land on the requested
+frequency in this harness.
