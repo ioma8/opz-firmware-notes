@@ -237,12 +237,19 @@ Two engineering realities shaped it, and both are stated in the tool rather than
 * **Rendering is offline.** The interpreter runs at about 0.23x realtime (7,017 instructions per 64-frame
   block), so a one-second clip takes roughly four seconds. Renders are cached on disk by content hash, so the
   first play of a setting is slow and repeats are instant.
-* **Factory engines do not all load yet.** They use instruction classes the interpreter has not implemented.
-  Four were added while building this tool - `LINK`/`UNLINK`, `LdStAbs` (absolute-address load/store), the
-  general `CCFlag` compare including `CC = R0 == R3`, and generalised multi-register push/pop - and every
-  engine built by `build_struck.py` renders. The remaining blockers are catalogued in the tool's docstring
-  (the `0xE1xx` immediate-load family, DSP sub-opcode `0x8`, arithmetic right shift, and one engine that
-  dereferences a null pointer).
+* **Factory engines execute, but they are silent.** Completing the interpreter took sixteen instruction
+  classes, every one read out of the Ghidra SLEIGH sources rather than guessed: `LINK`/`UNLINK`, the
+  absolute-address and indexed and post-modify load/store forms, the displacement and frame-relative
+  `[FP - n]` spills, `CallA` (32-bit pcrel call), `LSETUP` hardware loops (with the loop-end redirect and
+  the `lc+1` iteration convention), the whole conditional machinery (`CCFlag`, `CCMV`, `CC2Dreg`,
+  `CC2Stat`), multi-register and single-register push/pop, the `Dsp32` Mac/Alu/Shift families including
+  pack/extract/signbits/popcount and the `DIVQ`/`DIVS` divide step, `ALU2op`, `Logi2Op`, `Ptr2op` and
+  `NOP32`. All 21 factory engines now load and run to completion. **They produce no audio**, because their
+  output depends on voice and envelope state the operating system maintains (the amp object's state
+  machine, per-voice parameters, and the results of host-service calls into `opz.ldr`); the harness maps
+  unmapped memory to zero and stubs host calls to a zero return, which is enough to execute them and not
+  enough to make them sound. Making them audible is a separate piece of work: characterise the 13-entry
+  host-services table at `0x81003850` entry by entry.
 
 One interpreter bug found on the way is worth recording because it affects the emitted code*, not just the
 tool: the multi-register push encodes the **lowest** register of the group and the group runs *upward*

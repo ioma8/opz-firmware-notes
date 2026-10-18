@@ -14,18 +14,26 @@ Usage:
     python3 toolkit/opzenginetool.py --port 8800
     python3 toolkit/opzenginetool.py --selfcheck     # render one clip and print stats, no browser
 
-The honest constraints, stated in the page too:
-  * rendering is OFFLINE - the interpreter runs at about 0.23x realtime (7,017 instructions per 64-frame
-    block), so a one-second clip takes roughly four seconds. Renders are cached on disk by content hash, so
-    the first play of a setting is slow and every repeat is instant;
-  * engines built by toolkit/build_struck.py always render; some factory engines still stop on an
-    instruction class opzsim has not implemented. The message names the class - that is a gap in the
-    interpreter, not a broken engine file. The remaining classes are the 0xE1xx immediate-load family, DSP
-    sub-opcode 0x8, arithmetic right shift (sop=3), and one engine that dereferences a null pointer. Add one
-    by reading the matching file under Ghidra/Extensions/Ghidra-BlackFinPlus/data/languages/includes, never
-    by guessing the fields.
+What works, measured rather than assumed:
+
+  * every one of the 21 factory engines now LOADS AND EXECUTES with no interpreter error - the opcodes
+    they use were all recovered from the Ghidra SLEIGH sources (LINK/UNLINK, LdStAbs, LdStIdxI, LdStPmod,
+    the displacement and frame-relative load/store forms, CallA, LSETUP hardware loops, the CCFlag/CCMV/
+    CC2Dreg/CC2Stat conditional machinery, PushPopMult and single-register push/pop, the Dsp32 Mac/Alu/
+    Shift families including pack/extract/signbits/popcount/divide-step, ALU2op, Logi2Op, Ptr2op, NOP32);
+  * modules built by toolkit/build_struck.py render audio through this harness, and are the intended use:
+    a change to the engine is audible in seconds instead of a flash cycle;
+  * factory engines are SILENT here. They run to completion but write nothing to the output buffer,
+    because they read voice and envelope state that the operating system maintains - the amp object's
+    state machine, per-voice parameters, and results of host-service calls into opz.ldr. This harness maps
+    unmapped memory to zero and stubs host calls to a zero return, which is enough to execute them but not
+    enough to give them a signal to shape. Making them audible needs the host-services table at 0x81003850
+    characterised entry by entry, which is a separate piece of reverse engineering.
+
+Rendering is OFFLINE: the interpreter runs at about 0.2x realtime, so a one-second clip takes a few seconds.
+Renders are cached on disk by content hash, so the first play of a setting is slow and repeats are instant.
 """
-import hashlib, json, os, pathlib, sys, threading, urllib.parse, wave, webbrowser
+import hashlib, json, math, os, pathlib, sys, threading, urllib.parse, wave, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
@@ -78,7 +86,13 @@ def describe(path):
 
 def render_clip(info, note, seconds, params):
     m = Z.Machine.for_module(info["raw"])
+    # a factory engine touches OS memory this harness does not map (the host table, its own globals);
+    # auditioning reads zeros there instead of failing, while the validation gates stay strict
+    m.allow_external = True
     ex = info["exports"]
+    fx = "render" not in ex and "renderFX" in ex
+    if "render" not in ex and not fx:
+        raise RuntimeError("this module exports neither render nor renderFX")
     ctx, prm = m.mem_base + Z.Machine.SCRATCH_OFF, m.mem_base + Z.Machine.PARAM_OFF
     out = m.mem_base + Z.Machine.OUT_OFF
     for i, v in enumerate(params[:8]):
@@ -91,10 +105,22 @@ def render_clip(info, note, seconds, params):
         Z.call(m, ex["onNoteOn"], [0, note, ctx])
     freq_q16 = int(440.0 * 2 ** ((note - 69) / 12.0) * 65536) & 0xFFFFFFFF
     samples, envelope = [], []
+    # an effect has nothing to process without an input: feed it a short burst of a decaying sine at the
+    # note's frequency, so the effect's own character comes through instead of silence
+    inp = m.mem_base + Z.Machine.PARAM_OFF + 0x10000
+    state = m.mem_base + Z.Machine.SCRATCH_OFF + 0x800
+    for i in range(2 * BLOCK * 2):
+        t = i // 2
+        env = max(0.0, 1.0 - t / (FS * 0.25))
+        v = int(0.5 * env * math.sin(2 * math.pi * 440.0 * t / FS) * 2 ** 31)
+        m.st32(inp + 4 * i, v)
     for _ in range(int(seconds * FS / BLOCK)):
         for j in range(2 * BLOCK):
             m.st32(out + 4 * j, 0)
-        Z.call(m, ex["render"], [out, freq_q16, 0], stack=(ctx, prm, 0))
+        if fx:
+            Z.call(m, ex["renderFX"], [ctx, freq_q16, state, inp, out])
+        else:
+            Z.call(m, ex["render"], [out, freq_q16, 0], stack=(ctx, prm, 0))
         blk = [m.ld32(out + 4 * j) for j in range(2 * BLOCK)]
         samples.extend(blk)
         envelope.append(max((abs(v) for v in blk), default=0) / 2 ** 31)
