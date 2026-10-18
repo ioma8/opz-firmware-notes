@@ -672,6 +672,16 @@ their DSP, and then damage themselves with pointers derived from a state block t
 `digital` (peak 0.007) and `electric` (peak 0.986) write signal, `cluster` reaches 0.016, and none of them yet
 holds a pitch - every one of those numbers is a transient rather than a tone.
 
+### Who zeroes chord's frame, and where
+
+The frame damage is chord's own doing, and it is two instructions: at `0x81be2752` and `0x81be2758` it stores
+`[P0 + 0x8] = R3` and `[P0 + 0x4] = R5`, where `P0` was loaded from its own stack local `[SP + 0x38]` at
+`0x81be26ec`. In the harness that local holds `0x81c22ecc`, so the two stores land exactly on the caller's saved
+`RETS` and `FP` - `0x81c22ed4` and `0x81c22ed0` - zeroing both, which is why the `RTS` at `0x81be2934` jumps to
+address 0. The store pattern (`P0+4` and `P0+8`, two words past some base) reads like writing a pair of results
+immediately after a structure, so the local is almost certainly meant to hold a pointer derived from engine state
+rather than a stack address.
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.
