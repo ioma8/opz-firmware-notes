@@ -1287,3 +1287,21 @@ One trap worth recording: the two module-data words (write index, LFO phase) are
 pointer, so the first load must post-increment (`aop=0`). Using `aop=2` for both read word 0 twice, which
 made the phase equal the write index and produced no echo at all - the effect looked broken when it was
 only reading the wrong word.
+
+`reverb` and `fdnreverb` feed the taps back into the buffer, so energy recirculates and each pass decays
+by the feedback gain. Measured with an impulse:
+
+| engine | taps | response |
+|---|---|---|
+| `reverb` | one, 512 samples | echoes at 512/1024/1536/2048/2560 with amplitudes 0.25, 0.062, 0.016, 0.004, 0.001 - exactly 0.25 per pass |
+| `fdnreverb` | two, 256 and 768 samples | 15 nonzero frames, denser and audibly longer (0.25, 0.062, 0.266, 0.129 ... down to 0.005 at frame 3584) |
+
+`chorus2` is the same modulated delay with a deeper, slower sweep (depth 0x7ff, step 3). Measured against
+`chorus` with impulses at frames 0/100/200: `chorus` returns them at 512, 644, 776 while `chorus2` returns
+a different, denser set (718, 768, 1692, 1742, 1792), so the two are distinguishable by measurement rather
+than by name.
+
+**All eight effect slots now carry effects that do what their names say**: `dist`, `crush`, `delay`,
+`tapetwo`, `chorus`, `chorus2`, `reverb`, `fdnreverb`. Together with the thirteen instrument voices, the
+app has a working engine for **every one of the twenty-one factory slots** - built by us, not the OP-Z
+binaries, which still need state only the sequencer can supply.

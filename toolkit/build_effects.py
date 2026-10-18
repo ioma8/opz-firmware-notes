@@ -249,7 +249,7 @@ CHORUS_DEPTH = 0x3FF      # phase range -> 0..4092 bytes of modulation
 CHORUS_STEP = 8           # phase advance per frame
 
 
-def build_chorus():
+def build_chorus(depth=CHORUS_DEPTH, step=CHORUS_STEP):
     """Modulated delay: the tap position moves with a sawtooth LFO held in module data word 1, so the
     delay time sweeps between CHORUS_BASE and CHORUS_BASE + CHORUS_DEPTH bytes."""
     c = B.Code(CODE_BASE)
@@ -280,7 +280,7 @@ def build_chorus():
     c.emit(A.addsub32("R3", "R3", "R5", "+"))
     c.emit(A.regmv("P4", "R3"))
     c.emit(A.ldst("P4", "R0", store=True, aop=2))       # buf[idx] = in
-    c.emit(A.ldimm32("R1", CHORUS_DEPTH))
+    c.emit(A.ldimm32("R1", depth))
     c.emit(A.logic32("R3", "R4", "R1", "&"))            # phase within depth
     c.emit(A.shl("R3", "R3", 2))                        # -> bytes
     c.emit(A.ldimm32("R1", CHORUS_BASE))
@@ -297,9 +297,9 @@ def build_chorus():
     c.emit(A.addsub32("R5", "R5", "R6", "+"))           # idx += 4
     c.emit(A.ldimm32("R1", BUF_MASK))
     c.emit(A.logic32("R5", "R5", "R1", "&"))
-    c.emit(A.ldimm32("R1", CHORUS_STEP))                # phase += step
+    c.emit(A.ldimm32("R1", step))                       # phase += step
     c.emit(A.addsub32("R4", "R4", "R1", "+"))
-    c.emit(A.ldimm32("R1", CHORUS_DEPTH))
+    c.emit(A.ldimm32("R1", depth))
     c.emit(A.logic32("R4", "R4", "R1", "&"))
     c.emit(A.addsub32("R7", "R7", "R6", "-"))
     c.emit(A.cmp_eq0("R7"))
@@ -312,6 +312,81 @@ def build_chorus():
     c.emit(A.unlink())
     c.emit(A.rts())
     return _pack(c, "renderFX", data_bytes=D_BUF_OFF + BUF_BYTES)
+
+
+REVERB_BYTES = 2048       # 512 samples
+REVERB_GAIN = 0x40000000  # 0.25 in the Q32 sense the multiply uses
+FDN_TAP1 = 1024
+FDN_TAP2 = 3072
+
+
+def _feedback_engine(taps, gain, name):
+    """Feedback delay network: what goes INTO the buffer is `in + gain * sum(taps)`, so energy recirculates
+    and each pass decays by `gain`. One tap is a comb (reverb); two taps make it an FDN."""
+    c = B.Code(CODE_BASE)
+    for nm in ("initModule", "init", "onNoteOn", "onNoteOff"):
+        c.label(nm)
+        c.emit(A.ldimm7("R0", 0))
+        c.emit(A.rts())
+    c.label("renderFX")
+    c.emit(A.link(0))
+    c.emit(A.regmv("P0", "SP"))
+    for _ in range(2):
+        c.emit(A.ldst("P0", "R0"))
+    c.emit(A.ldst("P0", "R1"))
+    c.emit(A.ldst("P0", "R2"))
+    c.emit(A.regmv("P1", "R1"))
+    c.emit(A.regmv("P2", "R2"))
+    c.emit(A.push_r7_p5())
+    c.emit(A.ldimm32("R7", 256))
+    c.emit(A.ldimm7("R6", 4))
+    c.emit(A.ldimm32("P0", DATA_BASE))
+    c.emit(A.ldst("P0", "R5", aop=2))
+
+    c.label("loop")
+    c.emit(A.ldst("P1", "R0"))                          # R0 = in
+    for tap in taps:
+        c.emit(A.ldimm32("R3", tap))
+        c.emit(A.addsub32("R3", "R5", "R3", "-"))
+        c.emit(A.ldimm32("R1", BUF_MASK))
+        c.emit(A.logic32("R3", "R3", "R1", "&"))
+        c.emit(A.ldimm32("R1", DATA_BASE + D_BUF_OFF))
+        c.emit(A.addsub32("R3", "R1", "R3", "+"))
+        c.emit(A.regmv("P4", "R3"))
+        c.emit(A.ldst("P4", "R1", aop=2))               # R1 = tap
+        c.emit(A.ldimm32("R2", gain))
+        c.emit(A.mul32("R1", "R1", "R2"))               # scaled, and it keeps the sum under unity
+        c.emit(A.addsub32("R0", "R0", "R1", "+"))
+    c.emit(A.ldimm32("R3", DATA_BASE + D_BUF_OFF))
+    c.emit(A.addsub32("R3", "R3", "R5", "+"))
+    c.emit(A.regmv("P4", "R3"))
+    c.emit(A.ldst("P4", "R0", store=True, aop=2))       # feedback into the buffer
+    c.emit(A.ldst("P2", "R0", store=True))              # and to the output
+    c.emit(A.addsub32("R5", "R5", "R6", "+"))
+    c.emit(A.ldimm32("R1", BUF_MASK))
+    c.emit(A.logic32("R5", "R5", "R1", "&"))
+    c.emit(A.addsub32("R7", "R7", "R6", "-"))
+    c.emit(A.cmp_eq0("R7"))
+    c.branch("loop", cond=False)
+    c.emit(A.ldimm32("P0", DATA_BASE))
+    c.emit(A.ldst("P0", "R5", store=True, aop=2))
+    c.emit(A.pop_r7_p5())
+    c.emit(A.unlink())
+    c.emit(A.rts())
+    return _pack(c, "renderFX", data_bytes=D_BUF_OFF + BUF_BYTES)
+
+
+def build_reverb():
+    return _feedback_engine((REVERB_BYTES,), REVERB_GAIN, "reverb")
+
+
+def build_fdnreverb():
+    return _feedback_engine((FDN_TAP1, FDN_TAP2), REVERB_GAIN, "fdnreverb")
+
+
+def build_chorus2():
+    """A second chorus: a slower, deeper sweep than `chorus`."""
+    return build_chorus(depth=0x7FF, step=3)
 
 
 def _pack(c, render_name, data_bytes=0x40):
@@ -342,7 +417,10 @@ def _pack(c, render_name, data_bytes=0x40):
 def main(argv):
     outdir = pathlib.Path(argv[1] if len(argv) > 1 else "engines-effects")
     outdir.mkdir(parents=True, exist_ok=True)
-    for name, builder in (("dist", build_dist), ("crush", build_crush), ("delay", build_delay), ("tapetwo", build_tapetwo), ("chorus", build_chorus)):
+    for name, builder in (("dist", build_dist), ("crush", build_crush), ("delay", build_delay),
+                           ("tapetwo", build_tapetwo), ("chorus", build_chorus),
+                           ("chorus2", build_chorus2), ("reverb", build_reverb),
+                           ("fdnreverb", build_fdnreverb)):
         raw = builder()
         p = outdir / f"{name}.engine"
         p.write_bytes(raw)
