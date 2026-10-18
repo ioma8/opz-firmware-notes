@@ -1543,3 +1543,13 @@ Two measurement traps had to be fixed to see this, and both had produced false f
   while the direct harness had it passing.
 - **single-channel engines** - `ep` writes the right channel and nothing on the left, so any left-only reader
   (including this project's earlier sweeps) reports it as silent.
+
+### The silent engines fail an early gate, and the gate is not the whole story
+
+`organ` exits after 19 steps and `cluster` after 21, and in both cases the only state read before the exit is
+**`state+0x10 == 0`** - so that read is what stops them. But it is necessary, not sufficient: seeding
+`state+0x10` with 1, 2, 3, 4, 5, 6, 0xff or 0x100 changes nothing measurable. `organ` stays at peak 0.0000 and
+`cluster` emits a constant 2e-4 with no response to the seed, so a second condition downstream is also unmet.
+
+`electric` is different: it runs 15,430 steps, reads `amp+0x10`, `state+0x2c`, `params[0]`, `params[5]` and
+`params[+0x14]`, and still writes zeros.
