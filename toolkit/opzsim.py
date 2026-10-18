@@ -872,7 +872,10 @@ class Machine:
             soff = h & 0xF
             h2 = int.from_bytes(m[o + 2:o + 4], "little")
             reg, lop, eoff = (h2 >> 12) & 7, (h2 >> 10) & 3, h2 & 0x3FF
-            start = (self.pc + soff * 2) & 0xFFFFFFFF
+            # the immediate form always starts at the following instruction (the SLEIGH's LT0 = inst_next);
+            # only the register forms take their start from the soff field. Using soff for the immediate
+            # form makes start == the LSETUP itself whenever soff is 0, which loops forever.
+            start = (self.pc + 4) & 0xFFFFFFFF if rop == 2 else (self.pc + soff * 2) & 0xFFFFFFFF
             end = (self.pc + eoff * 2) & 0xFFFFFFFF
             if rop == 2:
                 count = ((h & 0xF) << 6) | ((h2 >> 10) & 0x3F)
@@ -1142,6 +1145,10 @@ def call(m, entry, args, stack=(), limit=20_000_000):
         m.pc &= 0xFFFFFFFF                     # registers hold signed 32-bit values; addresses are not
         if m.pc == 0xDEAD0000:                 # RTS brought us back to the harness
             return m.r[0]
+        if m.pc == 0:
+            # A call through a zero pointer: the engine loaded a callback out of state the OS normally
+            # fills in, and the harness has supplied nothing there. Naming it beats spinning to the limit.
+            raise RuntimeError("engine called a null function pointer: it wants OS-populated state")
         o = m._off(m.pc, 2)
         if o is None:
             # Outside the window is a call into the OS. It returns the way any callee does now: through

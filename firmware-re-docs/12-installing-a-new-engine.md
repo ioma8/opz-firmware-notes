@@ -436,6 +436,43 @@ host-services table by value (the address is computed), and the render dispatch 
 plug object in RAM, so it has to be found by reading the sequencer's voice code rather than by xref. The
 `Synth.cpp` strings resolve to `FUN_80117b3c`/`FUN_80118204`, which are not the dispatch.
 
+### Measuring "audible", and the two bugs that hid behind a peak check
+
+Two factory engines looked audible and were not, which is why an audibility claim now has to pass three
+tests rather than one:
+
+* `ministringshort` reached **peak 0.986** - a two-sample start-up spike, then silence.
+* `volt` reached **peak 1.000** and a tail RMS of 0.95 - a full-scale **DC** offset, with zero crossings of
+  zero, i.e. no pitch at all.
+
+So `toolkit/opzenginesweep.py` judges an engine only when tail RMS (energy *after* the first block) exceeds
+0.002, the signal holds more than a dozen distinct values (so DC cannot pass), and zero crossings land within
+8% of the requested note. Its current verdicts over the 21 official engines:
+
+| verdict | count | meaning |
+|---|---|---|
+| `silent` | 10 | returns normally, writes nothing |
+| `needs-state` | 5 | calls a null function pointer, or leaves its module and never comes back |
+| `loops` | 5 | never returns within the step budget |
+| `flat` | 1 | `volt`: full-scale DC |
+| `AUDIO` | **0** | none |
+
+Two real defects were fixed while getting there:
+
+**The immediate `LSETUP` form starts at the *following* instruction, not at the start-offset field.** The
+SLEIGH's immediate form sets `LT0 = inst_next`; only the register forms take their start from `soff`. Using
+`soff` for the immediate form makes the loop start at the `LSETUP` itself whenever `soff` is 0 - an infinite
+loop that looks like "this engine hangs". `crush`'s `LSETUP (0x81bfb5ce) LC0 = 0x3f` is exactly that shape, and
+fixing it let three effects (`crush`, `chorus2`, `dist`) complete a render for the first time.
+
+**Effects take a different stack shape from instruments.** `renderFX(ctx, freq, state, in, out)` puts `in` and
+`out` at `[FP+0x14]` and `[FP+0x18]` - the two *deepest* stack words, verified in `crush`'s prologue, not the
+two shallowest ones the instrument layout would suggest.
+
+And `opzsim.call` now names the null-pointer case instead of spinning: an engine that calls through a zero
+pointer raises `engine called a null function pointer: it wants OS-populated state`, which is what turns a hang
+into a diagnosis in the table above.
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.
