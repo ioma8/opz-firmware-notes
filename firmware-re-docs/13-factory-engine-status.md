@@ -159,6 +159,22 @@ Worth knowing before trusting any number here:
 - **Counting windows.** An earlier claim that the sine lookup "stops in later blocks" was an artefact of a window
   ending at `0x0800d400`; the table pointer walks past it.
 
+## What the OS actually passes to an effect (read from the firmware)
+
+Decompiling the FX manager settles the effect ABI, which had only been inferred before. The `FxManager.cpp` string at
+`0x8156f22c` is referenced by `FUN_8012ced0`, whose body contains:
+
+```
+(*pcVar5)(puVar4 + 4, param_2, 0, &DAT_8112b21c + table[param_2-8], &DAT_8156f2b8);   /* init: FIVE args */
+...
+(*(code *)puVar4[2])(param_4, param_5, puVar4 + 4, param_6);                          /* renderFX: FOUR args */
+```
+
+So `init` takes five arguments - the fourth being a **params pointer** computed from the table at `0x8156f21c` - and
+`renderFX` takes **four**: `(param_4, param_5, state, param_6)`, where `param_4`/`param_5` arrive from the voice
+dispatcher `FUN_80117f4c`. Testing that form, `chorus2` responds to `(out, in, state, X)` with peak 0.785 while the
+other seven effects stay silent. The five-word stack used until now is **not** what the firmware does.
+
 ## The output is dominated by a block-rate artefact
 
 Worth stating once, because it explains most of the difficulty: at **every** pitch argument the dominant spectral peak in
