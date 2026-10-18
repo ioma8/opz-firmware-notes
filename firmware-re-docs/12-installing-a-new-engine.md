@@ -813,3 +813,38 @@ now narrowed to two specific dwords (`amp+0x4` gain, and whatever feeds `R2`).
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.
+
+## What the amp object actually carries, and two engines that now sound
+
+The amp object is render's sixth argument (`record+0x30`, a 24-byte slice of the instrument record) and
+**the OS fills it, not the engine**: `FUN_8012e0a4` writes `record+0x40` (`amp+0x10`) = 5,
+`record+0x38` (`amp+0x08`) = `0x7f000000`, and `record+0x3c` (`amp+0x0c`) =
+`-(record[0x34] * [0x815c8088])` — a **negative** scaling. chord loads `amp+0x04` as its voice gain at
+`0x81be278c`.
+
+Leaving those fields zero is why every previous sweep reported the factory engines as silent. Supplying
+`amp+0x04 = 0x7fffffff`, `amp+0x08 = 0x7f000000` and `amp+0x0c = -0x40000000` moves two engines out of
+silence on the same decoder that was already passing every other gate:
+
+| engine | before | after |
+|---|---|---|
+| chord | silent, peak 0.000 | detuned, peak 0.060, tail-rms 0.0164, 79 distinct values |
+| digital | silent, peak 0.000 | detuned, peak 0.121, tail-rms 0.0725, 107 distinct values |
+| crush | detuned (unchanged) | detuned, peak 0.014 |
+
+Sweep now reads **3 detuned, 5 loops, 3 needs-state, 10 silent** of the 21 official engines.
+
+Two further facts measured on `digital`, which is the closest to playing:
+
+- its pitch comes from **render's second argument**, not from the note passed to `onNoteOn`. Holding the
+  pitch argument at 440 Hz and sweeping the note over 45/57/69/81 gives an identical 750 Hz every time,
+  while holding the note at 69 and sweeping the pitch argument moves it (220 Hz → 375 Hz, 440 Hz → 750 Hz).
+  This is the same conclusion doc 11 reached about the ABI, now confirmed by measurement on a factory
+  engine rather than inferred from the code.
+- its output carries a large DC offset (mean ≈ +0.095), so zero-crossing pitch measurement reports
+  nonsense; autocorrelation and DFT are the tools that give usable numbers on these waveforms.
+
+Also corrected: `AC0` is ASTAT **bit 12**, not bit 4 (`instr16/05-CC2Stat.sinc`'s `ccsCBIT` name table:
+AZ=0, AN=1, ACOCOPY=2, VCOPY=3, CC=5, AQ=6, AC0=12, AC1=13, AV0=16, ...). chord and digital read
+`CC = AC0` 57 times per render block, so the flag had been returning the always-zero path. Fixing its
+position is correct but does **not** change any engine's verdict on its own.

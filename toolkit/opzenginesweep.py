@@ -44,7 +44,14 @@ def play(mod_path, note=NOTE, freq=FREQ, blocks=BLOCKS):
     fx_in, fx_state = prm + 0x8000, prm + 0x9000
     for i in range(8):
         m.st32(prm + 4 * i, int(0.5 * (1 << 28)))
+    # the amp object's fields are filled by the OS before every tick, not by the engine: FUN_8012e0a4
+    # writes record+0x40 (amp+0x10) = 5, record+0x38 (amp+0x08) = 0x7f000000 and record+0x3c
+    # (amp+0x0c) = -(record[0x34] * [0x815c8088]), a negative scaling. amp+0x04 is the per-voice gain
+    # chord loads at 0x81be278c. Leaving them zero is why engines read as silent here.
     m.st32(amp + 0x10, 2)
+    m.st32(amp + 0x04, 0x7fffffff)
+    m.st32(amp + 0x08, 0x7f000000)
+    m.st32(amp + 0x0c, -0x40000000 & 0xFFFFFFFF)
     Z.call(m, ex["initModule"], [0, table, ctx], limit=60000)
     Z.call(m, ex["init"], [ctx, 0], limit=60000)
     if "onNoteOn" in ex:

@@ -65,7 +65,11 @@ class Machine:
         self.cc = False
         self.i = [0, 0, 0, 0]        # I0-I3 index registers (B/L/loop regs stay 0)
         self.mreg = [0, 0, 0, 0]     # M0-M3 modifier registers (circular addressing not modelled)
-        self.astat = 0                 # only what CC2Stat moves write; arithmetic flags are not maintained
+        # ASTAT flag positions, per instr16/05-CC2Stat.sinc's ccsCBIT name table: AZ=0, AN=1, AC0COPY=2,
+        # VCOPY=3, CC=5, AQ=6, AC0=12, AC1=13, AV0=16, AV0S=17, AV1=18, AV1S=19, V=24, VS=25. AC0 living at
+        # bit 12 rather than bit 4 matters: chord and digital read "CC = AC0" 57 times per render block, so an
+        # AC0 in the wrong bit means every one of those branches takes the always-zero path.
+        self.astat = 0
         self.rets = 0                  # RETS: the return-address register, set by every call
         self.a = [0, 0]                # A0/A1: 40-bit accumulators, signed
         self.av = [0, 0]               # AV0/AV1 overflow latches
@@ -390,7 +394,7 @@ class Machine:
                 else s32((cur & 0xFFFF0000) | (v & 0xFFFF))
             return
         if aopc == 0x19:                                     # AddSubAC0: +/- with the carry flag added
-            ac0 = (self.astat >> 4) & 1                      # ASTAT bit AC0 (never set by ops here)
+            ac0 = (self.astat >> 12) & 1                     # ASTAT AC0
             if aop == 0:
                 v = self.r[src0] + self.r[src1] + ac0
             elif aop == 1:
@@ -400,10 +404,10 @@ class Machine:
             u = v & 0xFFFFFFFF
             carry = ((self.r[src0] & 0xFFFFFFFF) + (-(self.r[src1] & 0xFFFFFFFF) if aop else
                      (self.r[src1] & 0xFFFFFFFF)) + ac0) >> 32
-            self.astat = (self.astat & ~(1 << 4)) | ((carry & 1) << 4)      # AC0
+            self.astat = (self.astat & ~(1 << 12)) | ((carry & 1) << 12)    # AC0
             if (self.r[src0] >= 0) == (self.r[src1] >= 0 if not aop else self.r[src1] < 0) \
                     and (s32(u) >= 0) != (self.r[src0] >= 0):
-                self.astat |= (1 << 2)                                       # AV0 overflow
+                self.astat |= (1 << 16)                                      # AV0 overflow
             self.r[dst0] = sat32(v) if sat else s32(v)
             return
         if aopc == 0x07:                                     # Max/Min/Abs/Neg 32
