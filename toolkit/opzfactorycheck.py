@@ -13,6 +13,12 @@ Two measurement traps are handled here, both of which produced false failures be
   channels      some engines write one channel only - `ep` writes the right channel and nothing on the left -
                 so a left-only reader calls them silent.
 
+Two notes is enough to reject a fixed spectrum (an engine whose peak never moves passes one note by luck,
+as `electric` does at 330 and 660 Hz) but it OVERSTATES interval engines: `chord` legitimately puts energy a
+fifth above the root, so its 0.75x and 1.5x neighbours are its own intervals and the test fails on correct
+behaviour. Measured across six pitches, only `digital` is robust (5 of 6); `chord` and `ep` pass 2 of 6.
+Read a PASS here as "this engine reaches the requested note at these two notes", not as "it tracks pitch".
+
 Usage:
     python3 toolkit/opzfactorycheck.py            # every instrument module in engines-official
 """
