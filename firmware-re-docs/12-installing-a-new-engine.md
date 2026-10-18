@@ -208,3 +208,39 @@ a free slot inside a verified bank (doc `11` §11.15) and build the module for t
 pick a plug id above the factory range and below the large user id; keep `tracks` to the tracks the plug
 should appear on. Everything else — the firmware tree in the payload, the staging procedure, the marker check
 — is identical, which is what makes this a procedure rather than a one-off.
+
+## 12.8 Auditioning a module before flashing it
+
+Flashing to try a change costs a reboot cycle per iteration, which is a bad way to tune an instrument. The
+harness for that is `toolkit/opzenginetool.py`, a desktop window that loads a `.engine` file and runs **the
+real module bytes** in the same interpreter the validation suite uses, so what comes out of the speakers is
+what the device will compute rather than a model of it.
+
+```bash
+python3 toolkit/opzenginetool.py              # pick a module, set a note, move the knobs, Render & play
+python3 toolkit/opzenginetool.py --selfcheck  # render one clip and print stats, no window
+```
+
+The window shows the module's size, load base and export addresses, a note, a clip length, and eight
+`params[]` sliders - the same array the OS passes to `render()`, so a slider is a knob. It plots the envelope
+and reports the peak level, which is how a saturation or a runaway shows up before it reaches the unit.
+
+Two engineering realities shaped it, and both are stated in the tool rather than hidden:
+
+* **Rendering is offline.** The interpreter runs at about 0.23x realtime (7,017 instructions per 64-frame
+  block), so a one-second clip takes roughly four seconds. Renders are cached on disk by content hash, so the
+  first play of a setting is slow and repeats are instant.
+* **Factory engines do not all load yet.** They use instruction classes the interpreter has not implemented.
+  Four were added while building this tool - `LINK`/`UNLINK`, `LdStAbs` (absolute-address load/store), the
+  general `CCFlag` compare including `CC = R0 == R3`, and generalised multi-register push/pop - and every
+  engine built by `build_struck.py` renders. The remaining blockers are catalogued in the tool's docstring
+  (the `0xE1xx` immediate-load family, DSP sub-opcode `0x8`, arithmetic right shift, and one engine that
+  dereferences a null pointer).
+
+One interpreter bug found on the way is worth recording because it affects the emitted code*, not just the
+tool: the multi-register push encodes the **lowest** register of the group and the group runs *upward*
+(`(R7:4)` encodes as 4), and the pointer group tops out at **P5**, not P7. Emulating it with a downward range
+pushed five pointer registers instead of three, which shifted the entire argument frame by two words and made
+`render` read a garbage `params` pointer. The engine's own argument walk is order-independent (it counts
+words), so the fix was invisible to `struck` - and would have been invisible to any engine that only ever
+reads its arguments by counting.

@@ -114,25 +114,99 @@ class Machine:
         m = self.mem
         nxt = self.pc + 2
 
+        if h == 0x0000:                                    # NOP (factory code is full of them)
+            self.pc = nxt
+            return True
+
         # push / pop (R7:4, P5:3) - the only push/pop form emitted
-        if h == 0x05E3:
-            for reg in ("P5", "P4", "P3"):
-                self.p[6] -= 4
-                self.st32(self.p[6], self.p[REGS_P.index(reg)])
-            for reg in ("R7", "R6", "R5", "R4"):
-                self.p[6] -= 4
-                self.st32(self.p[6], self.r[REGS_D.index(reg)])
+        # PushPopMult (instr16/06-PushPopMult.sinc): 7-bit signature 0b0000010 at bits 9-15, d/p flags at
+        # bits 8/7 (data / pointer registers present), w at bit 6 (1 = push, 0 = pop), the top data
+        # register at bits 3-5 and the top pointer register at bits 0-2. Hardware order matters: the
+        # push stores data registers high-to-low then pointer registers high-to-low, so the LAST value
+        # written sits at SP - which is why a push (R7:4, P5:3) leaves P3 at [SP].
+        if (h & 0xFE00) == 0x0400:                         # signature 0b0000010 in bits 9-15
+            d, pflag, w = (h >> 8) & 1, (h >> 7) & 1, (h >> 6) & 1
+            dr, pr = (h >> 3) & 7, h & 7
+            # the field names the LOWEST register of the group, so (R7:4) encodes as dr=4 and the group
+            # runs upward to R7 - pushing 4..0 here instead of 4..7 corrupts the frame silently
+            if w:                                          # push: high register to the high address
+                for i in range(7, dr - 1, -1):
+                    if d:
+                        self.p[6] -= 4
+                        self.st32(self.p[6], self.r[i])
+                for i in range(5, pr - 1, -1):        # the pointer group tops out at P5 (P5:3)
+                    if pflag:
+                        self.p[6] -= 4
+                        self.st32(self.p[6], self.p[i])
+            else:                                          # pop, exactly the reverse
+                for i in range(pr, 6):
+                    if pflag:
+                        self.p[i] = self.ld32(self.p[6])
+                        self.p[6] += 4
+                for i in range(dr, 8):
+                    if d:
+                        self.r[i] = self.ld32(self.p[6])
+                        self.p[6] += 4
             self.pc = nxt
             return True
-        if h == 0x05A3:
-            for reg in ("R4", "R5", "R6", "R7"):
-                self.r[REGS_D.index(reg)] = self.ld32(self.p[6])
-                self.p[6] += 4
-            for reg in ("P3", "P4", "P5"):
-                self.p[REGS_P.index(reg)] = self.ld32(self.p[6])
-                self.p[6] += 4
+
+        # LdStAbs (instr64/37-LdStAbs.sinc): 8 bytes - 0xD800, immH, immL, then a control halfword with
+        # sz at bits 10-11, w (store) at bit 9, z at bit 6 and the register at 0-2. An absolute 32-bit
+        # address is how a module reaches its own globals, which is what a factory engine does first.
+        if h == 0xD800:
+            imm = s32((int.from_bytes(m[o + 2:o + 4], "little") << 16) |
+                      int.from_bytes(m[o + 4:o + 6], "little"))
+            ctrl = int.from_bytes(m[o + 6:o + 8], "little")
+            sz, w, z, reg = (ctrl >> 10) & 3, (ctrl >> 9) & 1, (ctrl >> 6) & 1, ctrl & 7
+            if sz == 0 and not w:
+                val = self.ld32(imm)
+                if z:
+                    self.p[reg] = val
+                else:
+                    self.r[reg] = val
+            elif sz == 0 and w:
+                self.st32(imm, self.p[reg] if z else self.r[reg])
+            elif sz == 1 and not w:                        # 16-bit load, z selects sign extension
+                word = (self.ld32(imm & ~3) >> (16 if imm & 2 else 0)) & 0xFFFF
+                self.r[reg] = s32(word - 0x10000) if (z and word & 0x8000) else word
+            elif sz == 2 and not w:                        # 8-bit load
+                byte = (self.ld32(imm & ~3) >> (8 * (imm & 3))) & 0xFF
+                self.r[reg] = s32(byte - 0x100) if (z and byte & 0x80) else byte
+            elif sz == 2 and w:                            # 8-bit store
+                if z:
+                    self.st32(imm, self.p[reg])
+                else:
+                    addr, shift = imm & ~3, 8 * (imm & 3)
+                    word = self.ld32(addr)
+                    self.st32(addr, (word & ~(0xFF << shift)) | ((self.r[reg] & 0xFF) << shift))
+            else:
+                raise RuntimeError(f"unsupported LdStAbs form sz={sz} w={w} at 0x{self.pc:08x}")
+            self.pc = self.pc + 8
+            return True
+
+        # LINK / UNLINK (instr32/35-Linkage.sinc): LINK pushes RETS and FP, sets FP = SP and then
+        # allocates frame*4 bytes; UNLINK restores it. Every factory engine opens with LINK, so without
+        # this the interpreter stops on a shipped engine's very first instruction.
+        if h == 0xE800:
+            fr = int.from_bytes(m[o + 2:o + 4], "little") * 4
+            rets = self.ld32(self.p[6])                    # CALL pushed it; RETS holds the same value
+            self.p[6] -= 4
+            self.st32(self.p[6], rets)
+            self.p[6] -= 4
+            self.st32(self.p[6], self.p[7])
+            self.p[7] = self.p[6]
+            self.p[6] -= fr
+            self.pc = self.pc + 4
+            return True
+        if h == 0xE801:                                    # UNLINK
+            self.p[6] = self.p[7]
+            self.p[7] = self.ld32(self.p[6])
+            self.p[6] += 4
+            self.ld32(self.p[6])                           # pop RETS (discarded; RTS pops the real one)
+            self.p[6] += 4
             self.pc = nxt
             return True
+
         if h == 0x0010:                                    # RTS
             self.pc = self.ld32(self.p[6])
             self.p[6] += 4
@@ -234,12 +308,12 @@ class Machine:
             val = self.r[src] if gs == 0 else (self.p[src] if gs == 1 else None)
             if val is None:
                 raise RuntimeError("regmv: unsupported source class")
-            if gd == 1:
+            if gd == 0:
+                self.r[dst] = val
+            elif gd == 1:
                 self.p[dst] = val
-            elif gd == 2:
+            else:                                          # gd = 2 is the I (index) file
                 raise RuntimeError("regmv: I registers not implemented")
-            else:
-                raise RuntimeError("regmv: unsupported destination class")
             self.pc = nxt
             return True
         if sig == 0x6:                                     # cmp_eq0 / ldimm7
@@ -253,12 +327,42 @@ class Machine:
                     self.p[h & 7] = imm
                 else:
                     self.r[h & 7] = imm
-            else:
-                raise RuntimeError("CompI2op opc=1 not implemented")
+            else:                                          # AddImm: Rd += imm, signed 7-bit
+                imm = (h >> 3) & 0x7F
+                if imm & 0x40:
+                    imm -= 0x80
+                if r_is_p:
+                    self.p[h & 7] = s32(self.p[h & 7] + imm)
+                else:
+                    self.r[h & 7] = s32(self.r[h & 7] + imm)
             self.pc = nxt
             return True
-        if sig == 0x0 and (h & 0x0F00) == 0x0C00:          # cmp_eq0
-            self.cc = (self.r[h & 7] == 0)
+        # CCFlag (instr16/08-CCFlag.sinc): bits 11-15 = 0b00001, i at bit 10 (0 = register y, 1 = 5-bit
+        # immediate), opc at 7-9 (0 ==, 1 s<, 2 s<=, 3 u<, 4 u<=), g at 6 (0 = R, 1 = P), y at 3-5, x at 0-2.
+        # Factory engines compare two registers ("CC = R0 == R3") within their first few instructions,
+        # which is why covering only the "== 0" form left every one of them unusable.
+        if (h & 0xF800) == 0x0800:
+            i_bit, opc, g = (h >> 10) & 1, (h >> 7) & 7, (h >> 6) & 1
+            x, y = h & 7, (h >> 3) & 7
+            xv = self.p[x] if g else self.r[x]
+            if i_bit:
+                yv = y - 0x20 if opc <= 2 and y & 0x10 else y     # signed form sign-extends 5 bits
+            else:
+                yv = self.p[y] if g else self.r[y]
+            if opc == 0:
+                self.cc = xv == yv
+            elif opc == 1:
+                self.cc = xv < yv
+            elif opc == 2:
+                self.cc = xv <= yv
+            elif opc == 3:
+                self.cc = (xv & 0xFFFFFFFF) < (yv & 0xFFFFFFFF)
+            elif opc == 4:
+                self.cc = (xv & 0xFFFFFFFF) <= (yv & 0xFFFFFFFF)
+            else:
+                raise RuntimeError(f"unsupported CCFlag opc={opc} at 0x{self.pc:08x}")
+            self.pc = nxt
+            return True
             self.pc = nxt
             return True
         raise RuntimeError(f"unsupported instruction 0x{h:04x} at 0x{self.pc:08x}")
