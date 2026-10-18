@@ -998,3 +998,26 @@ replaced by a real one, built the way the plug manager builds it (`FUN_800fc104`
 that `FUN_8012d278` copies the engine pointers out of, and `FUN_800fc160` returns the registry value passed
 to `init`). Driving `FUN_8012d278` itself - the real note-on - instead of hand-filling a record is the next
 step, and the OS-emulation harness is now good enough to attempt it.
+
+### The real note-on needs the plug registry, which only exists after boot
+
+Attempting `FUN_8012d278` (the OS's real note-on) instead of hand-filling a record:
+
+- it **runs** - 1,941 steps, returns cleanly - but the plug registry pointer at `0x81059280` is **0**,
+  because that global is BSS in the image (it holds `00000000` followed by the string bytes `rb`) and is
+  reached through a computed pointer: a literal search of the whole image for `0x81059280` finds **zero**
+  references. So the note-on writes an engine id (`0x41`) into the record and leaves the resolved entry
+  points null.
+- `FUN_8012e0a4` (note start) fills `amp+0x08 = 0x7fffffff` and `amp+0x10 = 1` on its own, but leaves
+  `amp+0x04` and `amp+0x0c` at 0 - and `amp+0x0c` is `-(record+0x34 * 0x007fffff)`, so with
+  `record+0x34` at 0 it stays 0 and the engine's gain path is dead. The OS-driven render therefore
+  produces **two nonzero frames then 62 zeros**, unchanged by moving the record or by presetting the
+  envelope fields `record+0x160`/`0x164`.
+
+Also learned the hard way: a scratch record parked at `0x81f00000` gets written through by unrelated OS
+code whose pointer aliases it (`B[P5+0x211]`), which mimics "the firmware cleared my field". `opzos.py` now
+places its record at `0x81600000`, above the image and clear of the stack.
+
+**Conclusion:** every remaining field is computed by the plug manager, and the plug manager's registry is
+built during boot from the settings on the filesystem. Driving the engines through the real sequencer
+therefore requires booting the firmware (flash/NAND plus the file layer), not another harness input.

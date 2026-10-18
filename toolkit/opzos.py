@@ -20,7 +20,11 @@ import opzengine as E                                   # noqa: E402
 import opzsim as Z                                      # noqa: E402
 
 BASE, SIZE = 0x80000000, 0x02000000
-RECORD, OUT, PRM = 0x81F00000, 0x81F10000, 0x81F20000
+# Free space above the OS image (which ends at 0x815caea0). Keep this well clear of the stack and of
+# anything the firmware addresses itself: a scratch record placed at 0x81f00000 was written through by
+# unrelated OS code whose pointer aliased it (B[P5+0x211]), which looked exactly like the firmware
+# clearing record+0x34.
+RECORD, OUT, PRM = 0x81600000, 0x81610000, 0x81620000
 
 
 def find_image(explicit=None):
