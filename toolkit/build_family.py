@@ -30,6 +30,27 @@ PRESETS = {
 }
 
 
+# One preset per factory *instrument* slot, so the app has a working engine wherever a factory one is
+# named. These are our modal-synth voices, not the factory binaries: the ratios/damping/strike below
+# give each name a deliberately different character (harmonic vs inharmonic, long vs plucked).
+FACTORY_SLOTS = {
+    "analoga":   ((1.0, 2.0, 3.0, 4.0, 5.0, 6.0),      (0.0, 3.00, 2.00, 1.50, 1.10, 0.80), 0.50),
+    "chord":     ((1.0, 1.5, 2.0, 2.5, 3.0, 4.0),      (0.0, 4.00, 3.00, 2.20, 1.60, 1.20), 0.45),
+    "cluster":   ((1.0, 1.06, 2.0, 2.12, 3.0, 3.18),    (0.0, 3.50, 2.60, 1.90, 1.40, 1.00), 0.50),
+    "digital":   ((1.0, 2.0, 4.0, 8.0, 16.0, 22.0),     (0.0, 2.00, 1.20, 0.70, 0.40, 0.25), 0.50),
+    "electric":  ((1.0, 2.0, 3.0, 4.0, 6.0, 8.0),       (0.0, 3.20, 2.40, 1.80, 1.20, 0.90), 0.30),
+    "ep":        ((1.0, 2.0, 3.0, 5.0, 7.0, 9.0),       (0.0, 2.60, 1.90, 1.20, 0.80, 0.55), 0.25),
+    "fm003b":    ((1.0, 3.0, 5.0, 7.0, 11.0, 13.0),     (0.0, 1.80, 1.20, 0.85, 0.55, 0.35), 0.40),
+    "ministringshort": ((1.0, 2.0, 3.0, 4.0, 5.0, 7.0), (0.0, 1.40, 1.00, 0.75, 0.55, 0.40), 0.18),
+    "organ":     ((1.0, 2.0, 4.0, 8.0, 3.0, 6.0),       (0.0, 8.00, 6.00, 5.00, 4.00, 3.50), 0.50),
+    "sampleplayergain": ((1.0, 2.0, 3.0, 4.0, 5.0, 6.0), (0.0, 1.00, 0.70, 0.50, 0.35, 0.25), 0.10),
+    "saw013a":   ((1.0, 2.0, 3.0, 4.0, 5.0, 7.0),       (0.0, 5.00, 4.00, 3.00, 2.20, 1.60), 0.50),
+    "synthsampler": ((1.0, 2.0, 3.0, 4.0, 5.0, 7.0),    (0.0, 1.20, 0.85, 0.60, 0.45, 0.30), 0.15),
+    "volt":      ((1.0, 2.0, 3.0, 4.0, 5.0, 6.0),       (0.0, 4.50, 3.40, 2.60, 1.90, 1.40), 0.50),
+}
+PRESETS.update(FACTORY_SLOTS)
+
+
 def build_one(ratios, t60s, strike):
     S.MARIMBA, S.MARIMBA_T60, B.STRIKE_POS = ratios, t60s, strike
     return B.build()[0]

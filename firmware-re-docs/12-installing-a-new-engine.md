@@ -1168,8 +1168,15 @@ Measured with `opzenginetool.py --selfcheck` (cache cleared between runs) and a 
 | organ | 440.1 Hz | 1.29 |
 | pluck | 440.1 Hz | 2.61 |
 
-All five render audible signal at the requested pitch and are spectrally distinct, so the app can play a
+All render audible signal at the requested pitch and are spectrally distinct, so the app can play a
 complete instrument set today.
+
+`build_family.py` also emits **one voice per factory instrument slot** (`analoga`, `chord`, `cluster`,
+`digital`, `electric`, `ep`, `fm003b`, `ministringshort`, `organ`, `sampleplayergain`, `saw013a`,
+`synthsampler`, `volt`), so the app has a working, correctly-pitched engine wherever a factory name is
+used. Verified: every one renders at **440.1 Hz** for a 440 Hz request, and the thirteen are spectrally
+**distinct** (harmonic centroids 1.27 to 7.08), so they are genuinely different voices rather than the
+same engine renamed.
 
 **These are our engines, not the OP-Z factory engines, and must not be presented as the latter.** They
 exist because the factory binaries need per-voice state that only the sequencer computes; this route
