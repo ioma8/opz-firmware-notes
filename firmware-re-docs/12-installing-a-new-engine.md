@@ -390,6 +390,17 @@ supplies it - the `PluginManager`/`Voice` side has to be reverse engineered to k
 The sweep therefore stands at **21/21 executing, 0/21 audible**, and the next unit of work is the voice
 state contract rather than the instruction set.
 
+**Where chord's samples actually go, and why the harness cannot supply it.** chord never stores through
+argument 1. Its 64-frame loop emits each sample through `I1` (`StDregToM32bit [I1++]`-style stores at
+`0x81be282e` onward), and inside the same loop it performs four loads per sample through pointers that are
+zero - addresses `0x0` and `0x4` - which are the phases/coefficients it expects from the OS-populated voice
+state. Setting `I1` to the output buffer and sweeping both stack layouts was tried: every combination of
+`I0`/`I1` = output and *with/without* the extra padding word renders exactly `0.0000`. The argument layout
+itself is now confirmed independently, since the disassembly reads the context at `[FP + 0x14]`, the
+parameters at `[FP + 0x18]` and the amp object at `[FP + 0x1c]`, which is exactly what the harness's
+five-word stack produces (and one word *more* padding than that reads the wrong slots and silences the
+engine while still "completing" - a trap worth remembering).
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.
