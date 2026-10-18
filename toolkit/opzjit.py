@@ -547,15 +547,26 @@ def emit(raw):
            "    int AQ=0;   /* ASTAT bit 6, the divide quotient bit */",
            "    int AC0=0;  /* ASTAT bit 12, the AC0 carry; read by AddSubAC0, set elsewhere */",
            "    uint32_t rets = 0x%08uu;   /* RETS: set by every call form, restored by UNLINK */" % SENTINEL,
-           "    uint32_t pc = entry;",
+           "    uint32_t pc = entry, prev = 0;",
            "    long _steps = 0;",
            "    for (;;) {",
            "        if (++_steps > 4000000L) { OPZ_STUCK = pc; return -2; }",
            "        if (OPZ_TRACING && OPZ_TRACE_N < OPZ_TRACING) OPZ_TRACE[OPZ_TRACE_N++] = pc;",
+           # The loop back-edge belongs here, between instructions: after the instruction at a loop's end
+           # retires, the counter either jumps back to the start or the loop finishes. Doing it here rather
+           # than inside each case keeps it correct for the whole instruction (including a taken branch) and
+           # avoids the undefined behaviour of jumping into a case's scope.
+           "        if (prev) {",
+           "            for (int _s = 0; _s < 2; _s++)",
+           "                if (HAVE[_s] && LE[_s] == prev) {",
+           "                    if (LC[_s]) { LC[_s]--; pc = LB[_s]; } else HAVE[_s] = 0;",
+           "                }",
+           "        }",
+           "        prev = pc;",
            "        switch (pc) {"]
     for a in sorted(seen):
         ln, code = seen[a]
-        ends = LOOP_ENDS.get(a)
+        ends = None
         if ends:
             # A registered loop whose END is this address either jumps back to its start or finishes - and
             # it does so AFTER the instruction at `end` retires (opzsim's _loop_end runs post-step). Putting
