@@ -710,11 +710,17 @@ With the arguments finally correct, chord's failure has one cause and it is full
 * `RETS` therefore becomes `0x81bd2048`, the engine's own state pointer, and the final `RTS` at `0x81be2934`
   jumps into the state block, where it executes zeros as NOPs until it hits `0x01b8` and stops.
 
-`P0` is loaded from chord's own stack local `[SP + 0x38]`, which chord fills at `0x81be25f6` with a pointer it
-computes from `FP` (`P1 = FP` at `0x81be2856`, then `P1 += -0x40` at `0x81be2874`, then `P1 += -0x10`). On
-silicon those writes must land inside the frame, so one of the pointer arithmetic steps is landing roughly
-`0x40` high in emulation - that is the concrete thing to check next, and it is a small, well-bounded
-arithmetic question rather than another state-hunting expedition.
+`P0` is loaded from chord's own stack local `[SP + 0x38]` at `0x81be26ec`. Chord fills that local at
+`0x81be25f6`, and the arithmetic around it decodes as `MvRegToReg P1 = FP` (`0x81be2856`), `AddImm P1 += -0x20`
+(`0x81be2874`) and `AddImm P1 += -0x10` (`0x81be25f0`) - the `-0x20` runs *after* the store on the first pass,
+so the stored base is `FP - 0x10`, and `P0` then advances eight bytes before the two stores, putting them at
+`FP - 0x04` and `FP + 0x04`.
+
+Checked against Ghidra, those three instructions are decoded correctly, so this is not a decoding error in the
+emulator. What it means is that chord's stack usage needs the frame to extend about `0x14` bytes further than
+the `LINK` allocates, or that one of the pointer values feeding `P0` differs from silicon. Both readings point
+at the same narrow check - the value of `P0`'s base against a disassembly of `0x81be2620..0x81be2760` - rather
+than at engine state.
 
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
