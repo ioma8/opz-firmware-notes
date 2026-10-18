@@ -44,6 +44,7 @@ keyboard   1.2.26  from 4ec16d959751740e9a088c2e9e51d2f35d5e50aa
 | `10-architecture-diagrams.md` | the whole system as three Mermaid diagrams — the three processors and the two Blackfin images, the runtime sound/note/light flows, and the content-and-update path — plus an explicit list of what the diagrams do not claim |
 | `11-engine-module-abi.md` | the `.engine` module format and ABI — the segment container with its `0xAD` magic and XOR checksum, the 56-byte header with its two magics and five named exports, the `initModule`/`init`/`render`/`renderFX` signatures, the OS-side record and plug array, and an explicit list of what is still missing before a new engine can be built |
 | `12-installing-a-new-engine.md` | **how a from-scratch engine gets onto a real unit**: what "installed" means (module file, registry entry, and the device's own `~<id>.engine` assignment markers), the three attempts with the control experiment that proved the content-disk check is a registry lookup rather than a file check, the working full-firmware-tree recipe, the three traps that cost attempts, and how to verify an install from logs rather than ears |
+| `13-factory-engine-status.md` | **what plays and what does not**: the 3 of 13 factory instruments that play the requested note with the measured recipe (pitch factor 32768/48000, six stack arguments, amp object and host memory), the root cause of each of the other ten, the emulator fixes made chasing them, the four measurement traps that produced false results, and what would unblock the rest |
 
 ## Headline findings
 
