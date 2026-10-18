@@ -1377,3 +1377,19 @@ Two limits found while checking whether this closes the gap:
   values are consumed but do not carry the voice coefficient that is keeping these engines silent.
 
 So the factory patch data was genuinely missing and is now available; it is simply not the missing piece.
+
+### chord's oscillator works; its tuning does not
+
+Two corrections worth keeping, both found by tracing stores into the output buffer rather than trusting an
+address from an older note:
+
+- The real output stores are at `0x81be28ba` and `0x81be28ce`, and the multiply feeding them
+  (`0x81be2858`) **does** run every sample: `R1` carries real sine samples (`0xff294b95`, `0x0207e398`)
+  and `R2` a gain (`0xe0000000`). chord's oscillator path terminates correctly, so "the multiply is never
+  reached" was wrong. The mistake was arithmetic: `Machine.mem_base` is `0x81ba2000`, not the module base
+  `0x81be2400`, so offsetting from the module base produced addresses in the stack region.
+- chord still does not play the requested note. Rendering 48 blocks at notes 45/57/69 and taking spectral
+  peaks from 30 to 3000 Hz gives 329.4 Hz (2.99x), 164.7 Hz (0.75x) and 1317.5 Hz (2.99x) for requests of
+  110/220/440 Hz. The ratios are inconsistent, so this is not a note at the requested pitch. Autocorrelation
+  cannot judge chord at all - it is a multi-oscillator engine, so its waveform is deliberately non-periodic
+  and only a spectrum is meaningful.
