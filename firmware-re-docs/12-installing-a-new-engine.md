@@ -880,3 +880,28 @@ That is the concrete, still-open shape of the remaining factory-engine problem: 
 voice's running phase to be maintained **outside** the engine, in the instrument record that
 `FUN_8012e2c0` owns, and no harness field tried so far (`amp+0x04/0x08/0x0c/0x10`, `record+0x160`,
 `+0x164`, `+0x168`, `+0x16c`, the whole 0x134-byte state block, params, note) supplies it.
+
+### How the OS actually drives an engine's pitch each tick
+
+`FUN_8012e2c0` recomputes the pitch on **every** tick rather than letting the engine advance it:
+
+```
+0x8012e368  R1 = [P5+0x170] ; R1 = R1 * 0xc8 (T)     ; slow glide rate
+0x8012e374  R7 = [P5+0x174]                          ; the pitch target
+0x8012e378  CALL 0x8011aa1c                          ; note -> pitch conversion
+0x8012e380  R1 = R7 * 0x190 (T) ; CALL 0x8011aa1c    ; fast glide rate
+0x8012e390  R1 = [P5+0x168]                          ; last tick's pitch
+0x8012e39a  R0 = R0 - R1 ; R2 = R0 >>> 6             ; render's bend argument
+0x8012e3b0  CALL (P1)                                ; render(out, pitch, bend, state, params, amp)
+0x8012e3b2  [P4+0x168] = R7                          ; pitch <- converted target
+```
+
+So the six arguments are `(out, record+0x168, (converted_target − record+0x168) >> 6, record+0x48,
+params, record+0x30)`, and `record+0x174` is the **pitch target** while `record+0x168` is the value the
+engine sees. The two conversions at `0xc8` and `0x190` are a portamento glide: the difference between the
+slow and fast conversions is handed to the engine as `bend`.
+
+This settles the pitch question — the harness was already passing the right argument — but it does **not**
+explain digital's silence, because digital has no oscillation *within* a block either: autocorrelation
+restricted to lags below 64 returns a 2-sample lag at 110, 220, 440 and 880 Hz alike. Its output is a slow
+ramp, and the earlier 750 Hz reading was only the 64-sample block repeat.
