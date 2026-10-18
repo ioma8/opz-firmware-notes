@@ -553,6 +553,25 @@ Source paths located for the next step: `InstrumentManager.cpp` at `0x815c7b30` 
 `FUN_8012d638`, `FUN_8012d524`, `FUN_8012d278`), `FxManager.cpp` at `0x8156f22c`, and `Voice.cpp` at
 `0x815c828b` - the last has no cross-references in the image, so it is reached through a pointer.
 
+### A tooling trap that cost a whole round: listing-based scans under-count
+
+The first version of `ghidra-scripts/FindIndirectCalls.java` walked the program listing and reported **662**
+indirect call/jump sites. That number was wrong: large parts of `opz.ldr` have no instructions in the listing
+until something asks for them, so a listing walk silently skips whole regions. The engine's own `init` call
+site - `0x8012d41a`, `Call CALL (P0)`, the very call whose arguments this doc documents - was one of the
+missed ones, which is why "there are no indirect calls in the plugin-manager region" looked true and was not.
+
+The script now scans the bytes of every executable block for the Blackfin `ProgCtrl` indirect encodings
+(bits 8-15 zero, `opc` 5-8), disassembles each candidate on demand, and keeps the ones that come back as an
+indirect `Call`/`Jump`. That reports **1020** sites and finds `0x8012d41a`. The same trap applies to any
+listing-based search over this image, including `CallersOf.java`: absence of a hit means absence *in the
+listing*, not absence in the image.
+
+What is still missing is the `render` call site: the record's `+0x4` slot is never loaded near an indirect
+call in the synth region (201 sites scanned), so it is reached through a register computed further away, and
+the remaining candidates are the `+4`/`+8`-loading sites in `FUN_8010fd48` (`0x80110032`, loads `[P1+0x8]`)
+and `FUN_801149e4`/`FUN_80115fb4` (`0x80114a26`, `0x8011601a`, load `[P1+0x4]` with `R2 = FP`).
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.
