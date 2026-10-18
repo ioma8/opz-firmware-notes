@@ -401,6 +401,41 @@ parameters at `[FP + 0x18]` and the amp object at `[FP + 0x1c]`, which is exactl
 five-word stack produces (and one word *more* padding than that reads the wrong slots and silences the
 engine while still "completing" - a trap worth remembering).
 
+### The OS side: what the plug object looks like
+
+The engine-facing half of the contract is now read out of the OS rather than inferred, which is what any
+future voice-state work needs as a starting point.
+
+`FUN_8002b02c` is the symbol resolver the loader runs over a freshly loaded module, and it writes the resolved
+entry points into a **plug object** at fixed offsets:
+
+| offset | symbol | notes |
+|---|---|---|
+| `+0x00` | `init` | `FUN_8002abe4(s_8100381c, ...)` |
+| `+0x04` | `renderFX` | only resolved (and only required) when `render` is absent |
+| `+0x08` | `render` | instruments |
+| `+0x0c` | `onNoteOn` | |
+| `+0x10` | `onNoteOff` | |
+| `+0x14` | `initModule` | filled by `FUN_8002ae50`, which also loads the file |
+
+It returns 1 only when `init`, `onNoteOn`, `onNoteOff` **and** exactly one of `render`/`renderFX` are non-null,
+which is the same five-symbol rule doc 11 states from the module side - the two views agree.
+`FUN_800fff1c` is the caller that loads a module from a path (`/yaffs2/user/...`), resolves its symbols, and
+copies the plug object onward; `FUN_80038174` is the reject path for an invalid engine.
+
+**A durable tooling note:** the Ghidra project for `opz.ldr` was imported with analysis disabled, so every
+script run with `-noanalysis` reports *zero* cross-references - which reads exactly like "nothing references
+this address". Running the project once **without** `-noanalysis` (a full analysis of the OS image takes about
+90 seconds) populates the reference database, after which `ghidra-scripts/CallersOf.java` answers properly.
+That is how the plug object above was found: references to the export-name strings at `0x810037f8`
+(`initModule`), `0x8100383c` (`render`) and `0x81003a9c` (`Could not lookup symbols for engine`) lead straight
+to the resolver. `FindDword.java` also had to skip uninitialised memory blocks, which it previously crashed on.
+
+What is still missing is the same thing as before, only better located: nothing in the OS image references the
+host-services table by value (the address is computed), and the render dispatch itself is reached through a
+plug object in RAM, so it has to be found by reading the sequencer's voice code rather than by xref. The
+`Synth.cpp` strings resolve to `FUN_80117b3c`/`FUN_80118204`, which are not the dispatch.
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.

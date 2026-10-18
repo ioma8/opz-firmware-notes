@@ -11,6 +11,7 @@ public class FindDword extends GhidraScript {
         int n=0;
         for(MemoryBlock b: currentProgram.getMemory().getBlocks()){
             try{
+                if(!b.isInitialized()) continue;      // uninitialized blocks have no bytes to search
                 long size=b.getSize();
                 if(size<=0||size>8*1024*1024) continue;
                 byte[] data=new byte[(int)size];
