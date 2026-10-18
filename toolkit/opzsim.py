@@ -1032,11 +1032,17 @@ class Machine:
             gs = (h >> 6) & 7
             dst = (h >> 3) & 7
             src = h & 7
+            h2 = int.from_bytes(m[o + 2:o + 4], "little")
+            # the class-2 'h' selectors live in the SECOND halfword (srcH at bit 2, dstH at bit 5), not
+            # in the first - reading them from the first halfword made every I-register access look like
+            # an M-register access, which organ hit as "unsupported source class gs=2".
+            src_is_m = (h2 >> 2) & 1
+            dst_is_m = (h2 >> 5) & 1
             if gs == 0:
                 val = self.r[src]
             elif gs == 1:
                 val = self.p[src]
-            elif gs == 2 and not ((h >> 5) & 1):           # gs=2, srcH=0 -> I registers
+            elif gs == 2 and not src_is_m:                 # gs=2, srcH=0 -> I registers
                 val = self.i[src & 3]
             elif gs == 3:                                  # B/L circular-buffer registers: not modelled
                 val = 0
@@ -1058,7 +1064,7 @@ class Machine:
                 self.r[dst] = val
             elif gd == 1:
                 self.p[dst] = val
-            elif gd == 2 and not ((h >> 5) & 1):
+            elif gd == 2 and not dst_is_m:
                 self.i[dst & 3] = val
             elif gd == 4 and dst == 7:                      # RETS
                 self.rets = val & 0xFFFFFFFF               # unsigned: it is a return address

@@ -451,11 +451,24 @@ So `toolkit/opzenginesweep.py` judges an engine only when tail RMS (energy *afte
 
 | verdict | count | meaning |
 |---|---|---|
-| `silent` | 10 | returns normally, writes nothing |
-| `needs-state` | 4 | calls a null function pointer with no usable return address, or leaves its module |
-| `loops` | 5 | never returns within the step budget |
-| `flat` | 2 | `volt` is full-scale DC; `ministringshort` emits a saturated start-up blip then silence |
+| `silent` | 14 | executes and returns normally, writes nothing |
+| `loops` | 4 | never returns within the step budget |
+| `needs-state` | 2 | calls a null function pointer with no usable return address, or leaves its module |
+| `detuned` | 1 | `volt`: full-scale DC, no pitch |
 | `AUDIO` | **0** | none |
+
+Those numbers only became trustworthy after two harness fixes, and the earlier table they replace was
+**confounded by a wrong call layout**: the sweep was passing five stack words (`0, 0, ctx, prm, amp`) while the
+harness that actually plays an engine (`opzenginetool.render_clip`, verified on `struck`) passes three,
+`(ctx, prm, amp)`, and calls `onNoteOn(0, note, ctx)` rather than `onNoteOn(ctx, note, velocity)`. With the
+padded layout several engines errored or ran off the rails, and I read that as missing OS state. With the
+correct layout all thirteen instruments execute and return cleanly and simply write zeros - which is much
+better evidence for the same conclusion, because nothing is crashing any more.
+
+A decoder bug fell out of the same pass: `RegMv`'s class-2 `h` selectors live in the **second** halfword
+(`rmvSrcH` at bit 2, `rmvDstH` at bit 5), and reading them from the first halfword turned every I-register
+access into an M-register access - `organ` reported exactly that as `regmv: unsupported source class gs=2`.
+
 
 A null callback whose return address *is* valid is now emulated the way an in-window host call is: the
 service answers 0 and the engine continues. That is what `ministringshort` does - it calls null from

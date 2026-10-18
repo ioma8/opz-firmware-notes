@@ -48,19 +48,23 @@ def play(mod_path, note=NOTE, freq=FREQ, blocks=BLOCKS):
     Z.call(m, ex["initModule"], [0, table, ctx], limit=60000)
     Z.call(m, ex["init"], [ctx, 0], limit=60000)
     if "onNoteOn" in ex:
-        Z.call(m, ex["onNoteOn"], [ctx, note, 100], limit=60000)
+        # the convention that actually plays an engine (the same one opzenginetool uses for struck):
+        # note and context, with the first word unused
+        Z.call(m, ex["onNoteOn"], [0, note, ctx], limit=60000)
     left, first_block = [], None
     for blk in range(blocks):
         for j in range(2 * S.BLOCK):
             m.st32(out + 4 * j, 0)
         if kind == "render":
-            Z.call(m, ex["render"], [out, int(freq) << 16, 0], stack=(0, 0, ctx, prm, amp), limit=150000)
+            # three stack words, no padding: context, parameters, amp - padding shifts every slot and
+            # turns a working engine silent, which is exactly what an earlier sweep mistook for missing OS state
+            Z.call(m, ex["render"], [out, int(freq) << 16, 0], stack=(ctx, prm, amp), limit=150000)
         else:
             for j in range(S.BLOCK):
                 v = 0.5 * math.sin(2 * math.pi * freq * (blk * S.BLOCK + j) / 48000)
                 m.st32(fx_in + 4 * j, int(v * (1 << 31)) & 0xFFFFFFFF)
             # renderFX(ctx, freq, state, in, out): in/out are the deepest two stack words
-            Z.call(m, ex["renderFX"], [ctx, int(freq) << 16, fx_state], stack=(out, fx_in, 0, 0), limit=150000)
+            Z.call(m, ex["renderFX"], [ctx, int(freq) << 16, fx_state, fx_in, out], limit=150000)
         blk_samples = [m.ld32(out + 8 * j) / 2**31 for j in range(S.BLOCK)]
         if blk == 0:
             first_block = blk_samples
