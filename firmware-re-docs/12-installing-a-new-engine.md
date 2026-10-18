@@ -1122,3 +1122,22 @@ Two further checks pin that conclusion down:
 
 The boot therefore stops for lack of an image, not for lack of emulation. What would restart it: a memory
 dump covering `0x04xxxxxx`, the OP-Z/BF703 memory map for that region, or a firmware image that loads there.
+
+### Sample engines: where the sample comes from
+
+`sampleplayergain` reaches its sample through the engine state, not through the host:
+
+```
+0x81b694e8  R2 = [amp + 0x10]     ; must be non-zero or render exits
+0x81b694f0  R0 = B[state + 0x31]  ; must be <= 0
+0x81b69504  R0 = [state + 0xc]    ; must be non-zero  <- the sample pointer
+```
+
+`onNoteOn` leaves `state+0x14 = 0x81b59048`, and render reads `0x81b59040`, `0x81b59054`, `0x81b59078`.
+Setting `state+0xc` to a PCM buffer makes render **loop forever** unless `state+0x8` is also given a
+plausible length; with both set it returns, but still outputs silence.
+
+So the two fields are now identified - `state+0xc` is the sample pointer and `state+0x8` its length - and
+the remaining unknown is the sample *header* the engine expects around that pointer. That is a much
+smaller question than the sequencer, and it does not depend on the missing `0x04xxxxxx` firmware region,
+which makes the two sample engines the most tractable remaining route to audible factory output.
