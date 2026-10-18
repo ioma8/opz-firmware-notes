@@ -164,6 +164,11 @@ def decode(img, addr, eaddr):
         if v & 0x80000000:
             v -= 0x100000000
         return 8, f"R[{reg}]={v}; pc = {eaddr + 8}u; break;"
+    if (h & 0xF000) == 0xC000:
+        # NOP32 first: 0xC803 followed by 0x1800 is four bytes of padding, and without this test it
+        # decodes as a DSP multiply-accumulate - the same fault the interpreter had.
+        if h == 0xC803 and (img[o + 2] | (img[o + 3] << 8)) == 0x1800:
+            return 4, f"pc = {eaddr + 4}u; break;"
     if (h & 0xF000) == 0xC000:                                    # 32-bit DSP
         sig2, sigd = (h >> 9) & 3, (h >> 7) & 0xF
         e4 = eaddr + 4
@@ -185,6 +190,23 @@ def decode(img, addr, eaddr):
             else:
                 raise Unsupported(f"shift sop={sop} at 0x{eaddr:08x}")
             return 4, f"{st} pc = {e4}u; break;"
+        if sigd == 0xC:                                           # Dsp32Shf: shift by a register
+            sopc, sop = h & 0x1F, (h2 >> 14) & 3
+            dst, s0, s1 = (h2 >> 9) & 7, (h2 >> 3) & 7, h2 & 7
+            if sopc == 0x02:
+                # the count is the low 6 bits sign-extended: positive shifts right, negative left
+                cnt = (f"int _c=(int)((uint32_t)R[{s0}] & 0x3Fu); if(_c&0x20)_c-=0x40; "
+                       f"_c=_c>63?63:(_c<-63?-63:_c);")
+                right = (f"R[{dst}]=" + ("SAT((int64_t)R[%d] >> _c);" if sop in (0, 1)
+                         else "(int32_t)((uint32_t)R[%d] >> _c);") % s1)
+                left = (f"R[{dst}]=" + ("SAT((int64_t)R[%d] << (-_c));" if sop in (0, 1)
+                        else "(int32_t)((uint32_t)R[%d] << (-_c));") % s1)
+                return 4, (f"{{ {cnt} if(_c>0){{ {right} }} else if(_c<0){{ {left} }} "
+                           f"else R[{dst}]=R[{s1}]; }} pc = {e4}u; break;")
+            if sopc == 0x04:                                      # Pack16Vec: PACK(Rs0.L, Rs1.L)
+                return 4, (f"R[{dst}]=(int32_t)(((uint32_t)R[{s0}] & 0xFFFFu) << 16 | "
+                           f"((uint32_t)R[{s1}] & 0xFFFFu)); pc = {e4}u; break;")
+            raise Unsupported(f"Dsp32Shf sopc={sopc:#x} at 0x{eaddr:08x}")
         if sig2 == 1:                                             # Dsp32Mult (T): >> 32
             dst, s0, s1 = (h2 >> 6) & 7, (h2 >> 3) & 7, h2 & 7
             return 4, f"R[{dst}]=SAT(((int64_t)R[{s0}] * R[{s1}]) >> 32); pc = {e4}u; break;"
