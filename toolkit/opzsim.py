@@ -860,6 +860,12 @@ class Machine:
             if opc in (3, 4, 0xC):                         # CLI / STI / STI IDLE: no interrupts here
                 self.pc = nxt
                 return True
+            if opc in (9, 0xA):                            # RAISE / EXCPT (instr16/01-ProgCtrl.sinc)
+                # A deliberate trap: RAISE n and EXCPT n vector through the exception table into OS
+                # handlers this harness does not run. The firmware's startup issues one, so treating it
+                # as a no-op is what lets a functional (not fault-accurate) boot continue.
+                self.pc = nxt
+                return True
             if opc == 7 or opc == 8:                       # CALL/JUMP (PC + Preg)
                 target = (self.pc + self.p[reg]) & 0xFFFFFFFF
                 if opc == 7:
@@ -929,6 +935,14 @@ class Machine:
             reg = h & 7
             word = int.from_bytes(m[o + 2:o + 4], "little")
             sval = word - 0x10000 if word & 0x8000 else word
+            # lihGrp is bit 3, exactly as for the 32-bit LdImm form: group 0 is a data register and
+            # group 1 a pointer register (0xe128 = "P0 = 0x4000"). Writing the data file always left
+            # every "Preg = imm16" inert, which here supplied a garbage loop count to
+            # LSETUP ... LC0 = P0 and turned a 16K-word L1 copy into an endless loop.
+            if h & 0x8:
+                self.p[reg] = sval if sb else word
+                self.pc = self.pc + 4
+                return True
             if z == 0 and hb == 1 and sb == 0:               # Rd.H = imm
                 self.r[reg] = s32((self.r[reg] & 0xFFFF) | (word << 16))
             elif z == 0 and hb == 0 and sb == 1:             # Rd = sext(imm)

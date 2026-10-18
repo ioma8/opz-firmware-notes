@@ -1045,3 +1045,28 @@ Boot status: `0x80000000` is a vector *dispatcher*, not reset (it takes the vect
 vector 0), and `0x11900000` is the real startup entry. It now runs until it reaches bytes
 `00ec 00ed 00ee` at `0x119027dc` — three consecutive values, i.e. a data table, so something upstream
 still diverges. Ghidra cannot help there directly: the L1 segments are not imported into its project.
+
+### The same pointer-group bug in the 16-bit `LdImmHalf` form, and how far the firmware boots now
+
+`LdImmHalf` (`instr32/32-LdImmHalf.sinc`) has the identical `lihGrp` bit at bit 3 — `0xe128` is
+`P0 = 0x4000`, `0xe120` would be `R0`. opzsim wrote the data file unconditionally there too, so every
+`Preg = imm16` was inert. It mattered the moment the firmware ran: the startup's 16K-word L1 copy is
+
+```
+0x11a036a6  P0 = 0x4000          ; halfword 0xe128
+0x11a036b2  LSETUP(0x11a036b6,0x11a036ca) LC0 = P0
+```
+
+so with P0 never set the loop count was garbage and the copy spun forever. After the fix the firmware
+boots from its real entry `0x11a00000` (CSYNC, SYSCFG setup, `SP = 0x11801ffc`, `USP = SP`, FP, loop
+registers) for **182,450 steps**, enters the main image, and stops at its first deliberate trap:
+`0x11a000bc  RAISE 0xf`.
+
+Sweep after both pointer-group fixes: **2 detuned, 3 flat, 3 loops, 5 needs-state, 8 silent**
+(chorus2 now flat at 0.0244 tail-rms; ministringshort, saw013a and reverb now classified needs-state;
+dist, cluster and organ still silent).
+
+Next blockers on the boot path, in order: `RAISE`/`EXCPT` need to vector through the event table rather
+than being treated as no-ops (the code after the RAISE at `0x11a000bc` is the handler's own
+`RETI = ...; RTI` return path), and `Push [--SP] = RETI` needs the special-register group that
+`PushPopReg` does not model yet.
