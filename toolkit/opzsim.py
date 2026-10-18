@@ -59,6 +59,10 @@ class SparseMem:
 
     def __init__(self):
         self.pages = {}
+        # When set, reading a page that was never loaded raises instead of returning zeros. Running
+        # the firmware wants this: a jump into an address no LDR segment covers otherwise executes an
+        # endless field of NOPs, which looks like a slow boot rather than the wrong turn it is.
+        self.strict_missing = False
 
     def __len__(self):
         return self.SPACE
@@ -69,6 +73,11 @@ class SparseMem:
             pg = bytearray(self.PAGE)
             self.pages[index] = pg
         return pg
+
+    def mapped(self, addr, n=1):
+        first = addr // self.PAGE
+        last = (addr + n - 1) // self.PAGE
+        return all(i in self.pages for i in range(first, last + 1))
 
     def __getitem__(self, key):
         if isinstance(key, slice):

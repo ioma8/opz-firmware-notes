@@ -42,6 +42,7 @@ def machine_with(image):
     (0x80...) at once, which a single flat bytearray cannot span."""
     m = Z.Machine(0, 1 << 16)
     m.mem = Z.SparseMem()
+    m.mem.strict_missing = False
     m.mem_base = 0
     m.p[6] = 0x81FF0000                     # stack, below the engine windows
     m.allow_external = True
@@ -58,6 +59,13 @@ def map_segments(m, raw):
             m.mem[off:off + len(payload)] = payload
         n += 1
     return n
+
+
+def check_pc(m, pc):
+    """Fetch is only meaningful where a segment was loaded. Everywhere else is zeros, and executing
+    them looks like a long boot instead of the wrong turn it is."""
+    if not m.mem.mapped(pc & 0xFFFFFFFF, 2):
+        raise RuntimeError(f"execution at 0x{pc & 0xFFFFFFFF:08x}, which no LDR segment covers")
 
 
 def build(image, engine_path, note=69):
@@ -77,6 +85,34 @@ def build(image, engine_path, note=69):
     return m, ex, os_segs, eng_segs
 
 
+def boot(m, start=0x11A00000, limit=3_000_000):
+    """Run the firmware from `start`, stopping at the first jump outside every loaded segment.
+
+    `SparseMem` returns zeros for unloaded pages, so a wrong turn looks like a long boot executing NOPs;
+    `check_pc` turns that into a reported stop instead. `run(limit=...)` is a TOTAL step budget, so each
+    call passes `m.steps + chunk` rather than a per-call count.
+    """
+    m.pc = start
+    stopped = None
+    while m.steps < limit:
+        try:
+            check_pc(m, m.pc)
+        except RuntimeError as e:
+            stopped = str(e)
+            break
+        try:
+            m.run(limit=m.steps + 20000)
+        except RuntimeError as e:
+            if "step limit" in str(e):
+                continue
+            stopped = f"{type(e).__name__}: {e}"
+            break
+        if (m.pc & 0xFFFFFFFF) in (0, 0xDEAD0000):
+            stopped = f"returned to {m.pc & 0xFFFFFFFF:#x}"
+            break
+    return m.steps, m.pc & 0xFFFFFFFF, stopped
+
+
 def main(argv):
     if len(argv) < 2:
         raise SystemExit(__doc__)
@@ -87,6 +123,9 @@ def main(argv):
         image = argv[argv.index("--image") + 1]
     m, ex, n_os, n_eng = build(find_image(image), engine_path, note)
     print(f"mapped {n_os} OS segments and {n_eng} engine segments")
+    steps, pc, why = boot(m)
+    print(f"firmware boot: {steps} steps, stopped at {pc:#x}: {why}")
+    return
     state = RECORD + 0x48
     Z.call(m, ex["initModule"], [0, 0x81003850, state], limit=200000)
     Z.call(m, ex["init"], [state, 0], limit=200000)
