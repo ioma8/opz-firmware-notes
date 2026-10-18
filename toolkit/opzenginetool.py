@@ -95,17 +95,35 @@ def render_clip(info, note, seconds, params):
     fx = "render" not in ex and "renderFX" in ex
     if "render" not in ex and not fx:
         raise RuntimeError("this module exports neither render nor renderFX")
+    # A factory engine's pitch argument is not Q16 Hz: it is a byte stride into the shared 8191-word
+    # quarter-sine table at 0x0800bb48, so it produces 48000/32768 * arg Hz. Measured, not assumed:
+    # passing 300 gives a 440 Hz tone, and 110/220/330/550/660/880 all land on their own frequency.
+    factory = "engines-official" in info["path"]
     ctx, prm = m.mem_base + Z.Machine.SCRATCH_OFF, m.mem_base + Z.Machine.PARAM_OFF
     out = m.mem_base + Z.Machine.OUT_OFF
     for i, v in enumerate(params[:8]):
         m.st32(prm + 4 * i, int(v) & 0xFFFFFFFF)
+    table = 0x81003850
+    if factory:
+        # a factory engine renders through the OS's shared sine table and host-services table; without
+        # them every read comes back zero and the engine writes silence
+        import opzhost as H
+        table = H.apply_to_interpreter(m, table_slot=m.mem_base + Z.Machine.SCRATCH_OFF - 0x200)
     if "initModule" in ex:
-        Z.call(m, ex["initModule"], [0, 0x81003850, ctx])
+        Z.call(m, ex["initModule"], [0, table, ctx])
     if "init" in ex:
         Z.call(m, ex["init"], [ctx, 0])
     if "onNoteOn" in ex:
         Z.call(m, ex["onNoteOn"], [0, note, ctx])
-    freq_q16 = int(440.0 * 2 ** ((note - 69) / 12.0) * 65536) & 0xFFFFFFFF
+    amp = ctx + 0x1000
+    if factory:
+        # the OS fills this object before every tick; leaving it zero is why factory engines read as silent
+        m.st32(amp + 0x04, 0x40000000)
+        m.st32(amp + 0x08, 0x7F000000)
+        m.st32(amp + 0x0C, -0x40000000 & 0xFFFFFFFF)
+        m.st32(amp + 0x10, 2)
+    hz = 440.0 * 2 ** ((note - 69) / 12.0)
+    freq_q16 = int((hz * (32768.0 / 48000.0) if factory else hz) * 65536) & 0xFFFFFFFF
     samples, envelope = [], []
     # an effect has nothing to process without an input: feed it a short burst of a decaying sine at the
     # note's frequency, so the effect's own character comes through instead of silence
@@ -129,7 +147,12 @@ def render_clip(info, note, seconds, params):
             # and pushes `stack=` - so no effect ever received its input buffer through this tool.
             Z.call(m, ex["renderFX"], [ctx, freq_q16, state], stack=(inp, out))
         else:
-            Z.call(m, ex["render"], [out, freq_q16, 0], stack=(ctx, prm, 0))
+            if factory:
+                # factory engines read their context, params and amp object from the stack, all six words
+                Z.call(m, ex["render"], [out, freq_q16, 0],
+                       stack=(out, freq_q16, 0, ctx, prm, amp))
+            else:
+                Z.call(m, ex["render"], [out, freq_q16, 0], stack=(ctx, prm, 0))
         blk = [m.ld32(out + 4 * j) for j in range(2 * BLOCK)]
         samples.extend(blk)
         envelope.append(max((abs(v) for v in blk), default=0) / 2 ** 31)

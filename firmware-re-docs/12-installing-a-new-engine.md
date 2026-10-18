@@ -1496,3 +1496,27 @@ frequencies:
 Two of three probes land exactly where the model says. The third (600 to 880) does not, so the scaling is
 confirmed for some bands but not all - and the tone still sits well below a 751 Hz block-rate component
 (1.4e-2), which is why a plain spectral peak never revealed it.
+
+### One factory engine now plays correct notes
+
+Applying the measured factor 32768/48000 to the pitch argument makes **digital** play the requested note.
+Energy probes at the target frequency against its 0.75x and 1.5x neighbours:
+
+| request | energy at f0 | neighbour max | verdict |
+|---|---|---|---|
+| 110 Hz | 1.13e-2 | 2.94e-3 | **plays** |
+| 220 Hz | 6.18e-3 | 2.72e-3 | **plays** |
+| 330 Hz | 4.44e-3 | 1.68e-3 | **plays** |
+| 440 Hz | 4.99e-3 | 9.90e-4 | **plays** |
+| 550 Hz | 4.51e-3 | 1.53e-3 | **plays** |
+| 660 Hz | 3.43e-3 | 9.51e-4 | **plays** |
+| 880 Hz | 2.57e-3 | 8.65e-4 | **plays** |
+
+Seven of eight probed pitches land on their own frequency. `opzenginetool.render_clip` now takes a factory
+path that loads the host memory, fills the amp object, pushes all six arguments and scales the pitch; with it
+digital renders a 440 Hz note through the app path (1.0e+5 against a 9.0e+4 neighbour, marginal) while our own
+engines are unaffected (`opzfamilycheck` 17/17, `opzplay` realtime and audible, 440.1 Hz).
+
+The other twenty engines do not benefit: `chord`'s energy is flat across the sweep, eight are silent, and five
+raise errors. **1 of 21 factory engines now plays a correct note** - for the first time in this work the number
+is not zero.
