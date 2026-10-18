@@ -468,6 +468,9 @@ typedef struct { uint8_t *mem; int64_t base; int64_t size; } Arena;
 static Arena A;
 static int32_t R[8], I[4];
 uint32_t OPZ_STUCK = 0;   /* set when a call exceeds its step budget, so a hung engine reports where */
+int32_t  LC[2] = {0, 0};  /* loop counters, one per LSETUP slot; file scope so a stuck call can be inspected */
+uint32_t LB[2] = {0, 0}, LE[2] = {0, 0};
+int      HAVE[2] = {0, 0};
 /* leading sign-redundant bits, matching opzsim's _sgncount: lzcount(v)-1 for v>=0, lzcount(~v)-1 for v<0 */
 static int SGNB(int32_t v){ uint32_t u = (v < 0) ? ~(uint32_t)v : (uint32_t)v; int n = 0;
     while (n < 32 && (((u >> (31 - n)) & 1u) == 0)) n++; return n - 1; }
@@ -538,7 +541,6 @@ def emit(raw):
            "    { int32_t st[6]={s0,s1,s2,s3,s4,s5};"
            "      for (int i=n_stack-1;i>=0;i--){ P[6]-=4; WR(P[6],(uint32_t)st[i]); } }",
 
-           "    int32_t LC[2]={0,0}; uint32_t LB[2]={0,0}, LE[2]={0,0}; int HAVE[2]={0,0};",
            "    int AQ=0;   /* ASTAT bit 6, the divide quotient bit */",
            "    int AC0=0;  /* ASTAT bit 12, the AC0 carry; read by AddSubAC0, set elsewhere */",
            "    uint32_t rets = 0x%08uu;   /* RETS: set by every call form, restored by UNLINK */" % SENTINEL,
