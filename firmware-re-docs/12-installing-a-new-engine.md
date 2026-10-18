@@ -1276,3 +1276,14 @@ register allocation at eight without spilling.
 Effect status: `dist`, `crush`, `delay`, `tapetwo` built and measured. `chorus`, `chorus2`, `reverb` and
 `fdnreverb` remain - they need an LFO and a feedback network respectively, both of which build on this
 same buffer.
+
+`chorus` modulates the same buffer with a sawtooth LFO held in module data word 1: the tap delay is
+`CHORUS_BASE + (phase & 0x3ff) * 4` bytes, so the delay time sweeps between 512 and 1535 samples.
+Verified with impulses at frames 0, 100 and 200: they return at frames **512, 644 and 776**, i.e. delays
+of 512, 544 and 576 samples. A fixed delay would have returned them 100 frames apart; the swept tap moves
+them 132 frames apart, which is what makes it a chorus rather than a delay.
+
+One trap worth recording: the two module-data words (write index, LFO phase) are loaded through the same
+pointer, so the first load must post-increment (`aop=0`). Using `aop=2` for both read word 0 twice, which
+made the phase equal the write index and produced no echo at all - the effect looked broken when it was
+only reading the wrong word.
