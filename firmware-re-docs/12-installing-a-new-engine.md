@@ -905,3 +905,21 @@ This settles the pitch question — the harness was already passing the right ar
 explain digital's silence, because digital has no oscillation *within* a block either: autocorrelation
 restricted to lags below 64 returns a 2-sample lag at 110, 220, 440 and 880 Hz alike. Its output is a slow
 ramp, and the earlier 750 Hz reading was only the 64-sample block repeat.
+
+### digital's band table is intact, and in Q16 Hz
+
+Dumping the two tables digital indexes (from the module image, not through Ghidra) settles the
+byte-order and stride questions:
+
+```
+0x81be69f0  twelve band edges, Q16 Hz, spaced by octaves:
+            12.15  24.30  48.60  97.20  194.40  388.80
+           777.59 1555.18 3110.37 6220.73 12441.46 24882.93
+0x81be69d4  twelve 16-bit per-band steps: 19661 26214 26214 26214 26214 26214
+                                          22938 19661 16384 13107 8192 0
+```
+
+The render pitch argument is Q16 Hz (`440 << 16`), so a 440 Hz request falls in the 388.80–777.59 band,
+which is what the comparison chain selects. The emulator reads both tables back byte-for-byte identical
+to the file, so no decoder or loader fault is involved. Whatever keeps digital from oscillating is in its
+own arithmetic over these values, not in the data it reads.
