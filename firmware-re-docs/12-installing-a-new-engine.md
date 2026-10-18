@@ -657,6 +657,21 @@ Two decoder gaps surfaced in the same pass and are now implemented: `Dsp32Shf` `
 normalising helper: the sign-bit count of `src0` - or of one half, or the worse of both - clamped by `src1`),
 and `RegMv`'s M-register forms (source index in bits 0-1, destination in bits 3-4).
 
+### What the corrected ABI changed, engine by engine
+
+With all six arguments on the stack, `chord` stops returning early and **reaches its 64-frame sample loop**
+(`0x81be2794`) for the first time, writing real samples into the output buffer - peak 0.037 with `amp+0x10 = 1`.
+It then corrupts its own caller's frame: at the `UNLINK` at `0x81be2930` the saved words at `FP` and `FP+4`
+read `0` instead of `(entry FP, 0xDEAD0000)`, so `UNLINK` restores `RETS = 0` and the `RTS` at `0x81be2934`
+jumps to address 0. The stack pointer itself balances exactly (entry `0x81c22ed8`, exit `0x81c22ed8`), so this
+is not a push/pop fault in the interpreter: the engine wrote over the frame because a pointer it computed from
+its empty state block points at the wrong place.
+
+That is the shape of the remaining work in one sentence: engines now receive their arguments correctly, run
+their DSP, and then damage themselves with pointers derived from a state block that `init` leaves empty.
+`digital` (peak 0.007) and `electric` (peak 0.986) write signal, `cluster` reaches 0.016, and none of them yet
+holds a pitch - every one of those numbers is a transient rather than a tone.
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.
