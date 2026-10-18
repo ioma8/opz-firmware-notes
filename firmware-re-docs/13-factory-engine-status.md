@@ -101,5 +101,8 @@ In order of usefulness:
 2. The `.zfw` AES key (the updater containers are AES-CBC with a per-file IV and no key is present).
 3. Emulating the OS host services these engines consult - weeks of work, and it would also need the state above.
 
+The device project files are not a substitute for it either: each `.opz` is 342,848 bytes of pattern and sample
+data in which only 48 dwords look like OS addresses, with no plug configuration anywhere.
+
 Alternatively, 21 substitute engines (`engines-family`, `engines-effects`) already cover every factory slot and
 play correctly; they are ours, not Teenage Engineering's, and should never be presented as the factory binaries.
