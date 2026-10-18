@@ -1430,3 +1430,22 @@ larger than the last, which is an envelope with a zero oscillator term rather th
 chord's band table was also located while checking the octave logic - `0x81be2de0` holds a twelve-entry
 octave ladder in Q16 Hz (12.1, 24.3, 48.6, 97.2, ... 24,882.9), doubling each entry, and the render indexes
 it by comparing the pitch argument against those edges.
+
+### The oscillator does track pitch; its output does not reach the buffer
+
+Reading the table-read addresses inside digital's render settles a question that black-box measurement could
+not. The stride between successive sine-table reads **is the requested frequency in bytes per sample**:
+
+| request | read offsets (first samples) | per-sample stride |
+|---|---|---|
+| 110 Hz | 0, 0, 108, 108, 220, 220, 328, 328, 440, 440 | 108 / 112 alternating |
+| 440 Hz | 0, 0, 440, 440, 880, 880, 1320, 1320 | 440 |
+
+So the oscillator's phase index advances proportionally to the pitch argument - the engines are not ignoring
+pitch after all, and the two read sites (`0x81be641e`, `0x81be6434`, two interpolating taps) fire once per
+sample. Whatever is wrong, it is not the pitch input.
+
+What is wrong is downstream. Energy at the frequency that stride implies (f x 48000 / 0x8000) is only 0.02 to
+0.33 of the peak, because every render is dominated by a 753 Hz staircase (64-sample blocks, 48 kHz / 64).
+In the steady-state tail - the last 1280 samples of a 200-block render - digital peaks at 53.5 Hz whatever the
+pitch, so the oscillator's contribution never surfaces at audible level.
