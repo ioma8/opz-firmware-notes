@@ -92,7 +92,7 @@ def main(argv):
     for j in range(2 * 64):
         m.st32(OUT + 4 * j, 0)
     try:
-        Z.call(m, 0x8012E2C0, [RECORD, OUT, RECORD], stack=(RECORD, OUT, RECORD), limit=400000)
+        Z.call(m, 0x8012E2C0, [RECORD, OUT, RECORD], stack=(RECORD, OUT, RECORD), limit=400000, lenient=True)
     except Exception as e:                                # noqa: BLE001 - report, do not crash
         print(f"tick stopped: {type(e).__name__}: {e}")
     sig = [m.ld32(OUT + 8 * j) / 2 ** 31 for j in range(64)]

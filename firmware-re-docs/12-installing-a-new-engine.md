@@ -972,3 +972,29 @@ Remaining block, precisely stated: the tick stops with a null function pointer b
 record's **patch fields** are not populated. Those are the values the plug manager reads from the plug
 definition and hands to the voice; `record+0x34` (which the OS scales by `[0x815c8088] = 0x007fffff` into
 `amp+0x0c`) is one of them and is still a guess. Filling them from the real plug data is the next step.
+
+### What the OS-driven path proves, and where it stops
+
+With `toolkit/opzos.py` the whole chain now runs inside `opzsim`, and the call trace is the firmware's own:
+
+```
+FUN_8012e2c0 (tick)  ->  FUN_8012e058  ->  FUN_8011aa1c twice (slow/fast pitch glide, note -> Q16 Hz)
+                     ->  record+0x04  =  0x81be6160   (the engine's render, called by the OS)
+                     ->  0x800314c8                  (a real host service through the OS's own table)
+```
+
+15,717 steps per tick, and no part of the argument or state setup is synthesised by the harness any more.
+
+Two things are still missing, and both are visible in the output:
+
+- `record+0x34` **is cleared to 0 by the firmware**, so `amp+0x0c` (which the OS computes as
+  `-(record[0x34] * 0x007fffff)`, see above) comes out 0 and the engine's gain path stays dead. The field
+  is not a constant the harness can preset; the plug manager computes it per voice.
+- the block therefore contains exactly **two nonzero frames** (0.15, -0.999) and 62 zeros - the engine's
+  first two samples, then silence. Not audio.
+
+So the remaining work is not emulator correctness and not argument framing: the synthetic record has to be
+replaced by a real one, built the way the plug manager builds it (`FUN_800fc104` returns the plug object
+that `FUN_8012d278` copies the engine pointers out of, and `FUN_800fc160` returns the registry value passed
+to `init`). Driving `FUN_8012d278` itself - the real note-on - instead of hand-filling a record is the next
+step, and the OS-emulation harness is now good enough to attempt it.

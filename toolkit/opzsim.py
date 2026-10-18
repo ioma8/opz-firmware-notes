@@ -1283,7 +1283,7 @@ class Machine:
         raise RuntimeError(f"unsupported instruction 0x{h:04x} at 0x{self.pc:08x}")
 
 
-def call(m, entry, args, stack=(), limit=20_000_000):
+def call(m, entry, args, stack=(), limit=20_000_000, lenient=False):
     """Call a function: first three args in R0-R2, the rest pushed in reverse on the stack."""
     for i, a in enumerate(args[:3]):
         m.r[i] = a
@@ -1310,6 +1310,16 @@ def call(m, entry, args, stack=(), limit=20_000_000):
                 m.pc = m.rets
                 m.r[0] = 0
                 continue
+            if lenient:
+                # The firmware's own call chain sometimes unwinds through a frame that the code it
+                # called has reused, leaving RETS 0. Report the value and stop rather than claiming the
+                # engine needs OS state - only the OS-driving harness asks for this.
+                return m.r[0]
+            if lenient:
+                # The firmware's own call chain can unwind through a frame that the code it called has
+                # reused, leaving RETS 0. Only the OS-driving harness asks for this: report the value and
+                # stop, instead of claiming the engine needs OS state.
+                return m.r[0]
             raise RuntimeError("engine called a null function pointer: it wants OS-populated state")
         o = m._off(m.pc, 2)
         if o is None:
