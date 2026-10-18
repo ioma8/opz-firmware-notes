@@ -121,5 +121,11 @@ In order of usefulness:
 The device project files are not a substitute for it either: each `.opz` is 342,848 bytes of pattern and sample
 data in which only 48 dwords look like OS addresses, with no plug configuration anywhere.
 
-Alternatively, 21 substitute engines (`engines-family`, `engines-effects`) already cover every factory slot and
-play correctly; they are ours, not Teenage Engineering's, and should never be presented as the factory binaries.
+Alternatively, the substitute engines already cover every factory slot and play correctly; they are ours, not
+Teenage Engineering's, and should never be presented as the factory binaries.
+
+That coverage was checked rather than assumed: all **21 of 21** factory slots have a substitute with a matching
+name, and every one of those name-matched substitutes is the **same kind** as the factory module it stands in for
+- 17 instruments in `engines-family` and 8 effects in `engines-effects`, with no instrument standing in for an
+effect or vice versa. The four extra modules (`bar`, `bell`, `glass`, `pluck`) are descriptive presets rather than
+slot stand-ins.
