@@ -1166,9 +1166,10 @@ def call(m, entry, args, stack=(), limit=20_000_000):
     for a in reversed(stack):
         m.p[6] -= 4
         m.st32(m.p[6], a)
-    m.p[6] -= 4
-    m.st32(m.p[6], 0xDEAD0000)             # the OS's frame word above the arguments
-    m.rets = 0xDEAD0000                    # RETS carries the return; nothing more is pushed
+    # Only the arguments go on the stack. An extra "frame word" ahead of them shifts every [FP+n] the
+    # callee reads by one word: chord reads its state at [FP+0x14] and got the third stack argument
+    # instead, which is why engines behaved as if they had been handed no state.
+    m.rets = 0xDEAD0000                    # RETS carries the return address
     m.pc = entry
     depth = m.steps
     hosts = 0

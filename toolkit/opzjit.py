@@ -343,23 +343,22 @@ def decode(img, addr, eaddr):
         delta = (_s8(h & 0xFF) << 16) | h2
         tgt = (eaddr + delta * 2) & 0xFFFFFFFF
         if (h >> 8) & 1:
-            return 4, f"P[6]-=4; WR(P[6], {eaddr + 4}u); pc = {tgt}u; break;"
+            return 4, f"rets = {eaddr + 4}u; pc = {tgt}u; break;"
         return 4, f"pc = {tgt}u; break;"
     if h == 0xE800:                                               # LINK
         fr = h2 * 4
-        return 4, (f"{{ uint32_t _r = RD(P[6]); P[6]-=4; WR(P[6], _r); P[6]-=4; WR(P[6], P[7]);"
+        return 4, (f"{{ P[6]-=4; WR(P[6], rets); P[6]-=4; WR(P[6], P[7]);"
                    f" P[7]=P[6]; P[6]=W32((int64_t)P[6]-{fr}); }} pc = {eaddr + 4}u; break;")
     if h == 0xE801:                                               # UNLINK
-        return 2, fin("{ P[6]=P[7]; P[7]=RD(P[6]); P[6]+=4; P[6]+=4; }")
+        return 2, fin("{ P[6]=P[7]; P[7]=RD(P[6]); P[6]+=4; rets=RD(P[6]); P[6]+=4; }")
     if h == 0x0010:                                               # RTS
-        return 2, ("{ uint32_t _r = RD(P[6]); P[6]+=4; if (_r == 0x%08xu) return R[0];"
-                   " pc = _r; break; }" % SENTINEL)
+        return 2, ("if (rets == 0x%08xu) return R[0]; pc = rets; break;" % SENTINEL)
     if (h & 0xFF00) == 0x0000:                                    # ProgCtrl
         opc, reg = (h >> 4) & 0xF, h & 7
         if opc == 5:
             return 2, "pc = P[%d]; break;" % reg
         if opc == 6:
-            return 2, f"P[6]-=4; WR(P[6], {nxt}u); pc = P[{reg}]; break;"
+            return 2, f"rets = {nxt}u; pc = P[{reg}]; break;"
         if opc in (1, 2, 3, 4, 0xC):
             return 2, fin()
         raise Unsupported(f"ProgCtrl opc={opc:#x} at 0x{eaddr:08x}")
@@ -433,7 +432,8 @@ def emit(raw):
            # arguments go on in REVERSE so the first stack argument ends up at the lowest address,
            # which is what the Python reference does and what the engines' [FP+..] reads assume
            "    for (int i=n_stack-1;i>=0;i--){ int32_t v = (i==0)?s0:((i==1)?s1:s2); P[6]-=4; WR(P[6],(uint32_t)v); }",
-           "    P[6]-=4; WR(P[6], 0x%08xu);" % SENTINEL,
+
+           "    uint32_t rets = 0x%08uu;   /* RETS: set by every call form, restored by UNLINK */" % SENTINEL,
            "    uint32_t pc = entry;",
            "    for (;;) {",
            "        switch (pc) {"]

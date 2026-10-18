@@ -682,6 +682,24 @@ address 0. The store pattern (`P0+4` and `P0+8`, two words past some base) reads
 immediately after a structure, so the local is almost certainly meant to hold a pointer derived from engine state
 rather than a stack address.
 
+### The one-word stack error, and how it was caught
+
+The harness used to push a spare word ahead of the arguments - a stand-in for a saved return address - and only
+the arguments belong there. The consequence was systematic: every `[FP+n]` a callee read was one word off, so
+`chord`'s `P1 = [FP + 0x14]` (its state) received the third stack argument instead, and its parameters and amp
+slots were wrong in the same way. The engines did not "lack state"; they were reading the wrong slots.
+
+It was caught by asking the engine rather than the emulator: after each change, print `[FP+0x14]`,
+`[FP+0x18]` and `[FP+0x1c]` at `chord`'s prologue and compare against the pointers the harness passed. Before
+the fix those read `0`, `0`, `0`; after it they read `0x81bd2048`, `0x81bc2000`, `0x81bd2030` - exactly the
+context, parameters and amp. That check is cheap, unambiguous, and worth repeating for any engine.
+
+Fixing it meant retuning `struck`, whose own argument walk was written against the wrong layout (eight
+discarded post-increment loads became seven: seven saved registers are 28 bytes, so seven discards land on the
+first stack argument). The JIT needed the same treatment - it now carries a `rets` variable and sets it in
+every call form instead of pushing a return address - and after both changes interpreter and JIT are
+bit-identical again over 384 samples with `struck` measuring 440.1 Hz.
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.

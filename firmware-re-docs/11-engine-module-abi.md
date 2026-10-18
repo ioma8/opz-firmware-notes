@@ -278,6 +278,13 @@ is where `onNoteOn` is stored. The export is resolved and its address is kept, s
 the sequencer. Pitch therefore comes from `render`'s argument 2 (Q16), not from `onNoteOn`'s `R1`, which
 answers the question left open below in favour of `render` while leaving `onNoteOn`'s own arguments unverified.
 
+**No extra frame word is pushed.** The stack holds the arguments and nothing else - the return address
+travels in `RETS`. Pushing a spare word ahead of the arguments (a plausible-looking stand-in for a saved
+return address) shifts every `[FP+n]` the callee reads by one word, so `chord` picking its state out of
+`[FP+0x14]` actually receives the third stack argument. That single extra word was the difference between
+"engines read zeros for their context, parameters and amp" and "engines read the values the harness passed":
+with it removed, `[FP+0x14]`, `[FP+0x18]` and `[FP+0x1c]` hold exactly the context, parameters and amp.
+
 **Chord's render prologue, instruction by instruction** - this is the ground truth for the argument order
 and for what an engine does with its state:
 

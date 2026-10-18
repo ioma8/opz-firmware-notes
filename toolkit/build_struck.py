@@ -187,11 +187,11 @@ def build():
     c.emit(A.push_r7_p5())
     c.emit(A.regmv("P5", "R0"))              # out: interleaved stereo, 64 frames
 
-    # Arguments 4 and 5 are stack arguments. The push above moved SP by seven words, so arg4 sits at
-    # SP+32 and arg5 at SP+36; eight discarded post-increment loads then two reads collect both,
-    # because the encoder still has no displacement load (doc 11 section 11.12).
+    # Arguments 4 and 5 are stack arguments and only the arguments are on the stack - the OS pushes no
+    # extra frame word, so arg4 sits exactly where the callee's SP starts. The seven saved registers above
+    # are 28 bytes, so seven discarded post-increment loads land on arg4 and the next read takes arg5.
     c.emit(A.regmv("P0", "SP"))
-    for _ in range(8):
+    for _ in range(7):
         c.emit(A.ldst("P0", "R0"))
     c.emit(A.ldst("P0", "R2"))               # R2 = ctx
     c.emit(A.ldst("P0", "R1"))               # R1 = params
