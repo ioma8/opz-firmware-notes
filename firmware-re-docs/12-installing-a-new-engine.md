@@ -1411,3 +1411,22 @@ readable part of chord's render explains why the earlier "1.5x and 3x" readings 
 increment is computed from the pitch argument through a divider against a band base, with `params[5]` as an
 offset, so pitch does reach an increment - but the resulting oscillator does not land on the requested
 frequency in this harness.
+
+### The engines read real sine data, and still emit a ramp
+
+Two harness-level faults were fixed before ruling this out, so the conclusion is not an artefact:
+
+- **The note was hardcoded to 69.** The render helper called `onNoteOn(0, 69, ctx)` while varying only the
+  pitch argument, and chord selects its octave band from the note, using the argument only for the in-band
+  offset. Passing the real note changes nothing measurable: digital still peaks at 753.1/745.7/753.1/753.1 Hz
+  for requests of 110/220/440/880 Hz, i.e. a fixed 48 kHz / 64 = 750 Hz block rate.
+- **The sine table is present and read.** With host memory loaded, 107 of 328 external reads return real
+  sine data (`0x0096ca93`, `0x012d9456`, ... from `0x0800bb5c`). The number of table reads varies with pitch
+  (98 at 110 Hz, 50 at 220, 26 at 440 and 880), so pitch does reach the engine's control flow.
+
+What the engine writes is nevertheless a monotone ramp: 49 to 61 distinct sample values per block, each
+larger than the last, which is an envelope with a zero oscillator term rather than a waveform.
+
+chord's band table was also located while checking the octave logic - `0x81be2de0` holds a twelve-entry
+octave ladder in Q16 Hz (12.1, 24.3, 48.6, 97.2, ... 24,882.9), doubling each entry, and the render indexes
+it by comparing the pitch argument against those edges.
