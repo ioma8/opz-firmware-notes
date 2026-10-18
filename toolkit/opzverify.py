@@ -85,6 +85,19 @@ def main(argv):
     check("no clipping anywhere", peak_max < 1.0, f"loudest peak {peak_max:.3f} full scale")
     check("audible everywhere", peak_min > 0.001, f"quietest peak {peak_min:.4f}")
 
+    # ---- is it a marimba? The tuned 4x partial has to be there and the free-free bar's 2.756x must not
+    m, ex, ctx, prm, out = setup(raw, note=69)
+    buf = capture(m, ex, ctx, prm, out, 120)
+    f0 = 440.0
+    e4 = S.energy_at(buf, f0 * 3.93, window=4096)
+    e_bar = S.energy_at(buf, f0 * 2.756, window=4096)
+    check("tuned 4x overtone dominates the free-free one", e4 > 100 * e_bar,
+          f"{10*__import__('math').log10(e4/e_bar):.1f} dB above the 2.756x partial")
+    early = S.energy_at(buf, f0 * 9.24, skip=0, window=2048)
+    late = S.energy_at(buf, f0 * 9.24, skip=int(0.15 * S.FS), window=2048)
+    drop = 10 * __import__('math').log10(max(early, 1e-30) / max(late, 1e-30))
+    check("upper modes die first", drop > 20, f"9.24x overtone falls {drop:.1f} dB in 150 ms")
+
     # ---- decay macro extremes and the null-params guard
     for bucket, want in ((0, 0.1), (7, 8.0)):
         m, ex, ctx, prm, out = setup(raw, bucket=bucket, note=69)

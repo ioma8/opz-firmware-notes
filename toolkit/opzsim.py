@@ -359,14 +359,18 @@ def selftest():
     check("state advances", first != second, "")
     # energy, not peak: a single 64-frame block is 1.3 ms, so the waveform's phase moves the peak
     # around more than the envelope does. Over 16 blocks (~21 ms) a 1.2 s T60 gives ~11% of decay.
+    # Compare the mean over the first third with the mean over the last third of a long run, not two
+    # adjacent windows: the output is a SUM of six decaying modes whose phases realign as they decay,
+    # so the instantaneous energy of that sum can rise while every single mode is falling.
     energies = []
-    for _ in range(16):
+    for _ in range(72):
         for j in range(2 * S.BLOCK):
             m.st32(out + 4 * j, 0)
         call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, 0))
         energies.append(sum(m.ld32(out + 4 * j) ** 2 for j in range(2 * S.BLOCK)))
-    check("energy decays over 16 blocks", energies[-1] < energies[0],
-          f"{energies[0]:.3e} -> {energies[-1]:.3e}")
+    head = sum(energies[:24]) / 24
+    tail = sum(energies[-24:]) / 24
+    check("energy decays over 72 blocks", tail < head * 0.95, f"{head:.3e} -> {tail:.3e}")
 
     # gate off -> next render must be silent
     call(m, exports["onNoteOff"], [0, scratch])

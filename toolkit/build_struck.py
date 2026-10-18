@@ -29,7 +29,7 @@ Known limitations, stated rather than hidden:
     encoder has no displacement load) and the mapping is accurate - buckets land within 1% of their
     target T60 - but which entry of params[] the OS binds to the decay knob is an assumption. If it is
     wrong, the knob that moves the tail will be a different one;
-  - the strike position is fixed at 0.3 (baked into the seed table), not a live macro;
+  - the strike position is fixed at 0.22 (baked into the seed table), not a live macro;
   - `mul32` emits the (T) extraction, and that extraction is `>> 32` rather than the `>> 31` of a Q31
     fractional multiply (SLEIGH's `rounding(..., 4)` clears four bytes). Every multiply therefore
     returns half scale and each mode output is doubled with one add, mirroring `frac_q31()` in
@@ -66,6 +66,7 @@ T60_LONG = 8.0                      # the table's own damping; the macro shorten
 PARAM_DECAY = 2                     # which entry of params[] carries the decay macro (assumption)
 N_MODES = 6
 T60     = 1.2
+STRIKE_POS = 0.22                   # a marimba bar is struck near one end, not at 0.3
 
 
 class Code:
@@ -112,13 +113,17 @@ def coefficient_table():
     for note in range(128):
         f0 = 440.0 * 2 ** ((note - 69) / 12.0)
         for m in range(N_MODES):
-            ratio = S.HARMONIC[m] + (S.BAR[m] - S.HARMONIC[m]) * 0.75
-            f = f0 * ratio
+            f = f0 * S.MARIMBA[m]
             if f > FS * 0.45:
                 rows.append((0, 0))
                 continue
             w = 2.0 * math.pi * f / FS
-            r = 1.0            # no damping here: the per-block gain below owns the whole tail
+            # Mode 0's radius stays 1.0 so the per-block gain owns the whole tail and the decay
+            # buckets stay exact. Every upper mode carries its OWN radius, because a wooden bar's
+            # overtones die in a fraction of a second whatever the knob is doing - that quick,
+            # independent decay is what separates a knock from a bell.
+            t60 = S.MARIMBA_T60[m]
+            r = 1.0 if t60 == 0.0 else math.exp(-math.log(1000.0) / (t60 * FS))
             rows.append((S.to_q31(r * math.cos(w)), S.to_q31(r * math.sin(w))))
     return rows
 
@@ -311,8 +316,8 @@ def build():
 
     data = bytearray(0x60)
     for m in range(N_MODES):
-        gain = 0.55 ** m
-        seed = S.to_q31(0.125 * math.cos(math.pi * (m + 1) * 0.3) * gain)
+        gain = 0.42 ** m            # a marimba's fundamental dominates; 0.55^m was too bright
+        seed = S.to_q31(0.125 * math.cos(math.pi * (m + 1) * STRIKE_POS) * gain)
         data[0x10 + 4 * m:0x14 + 4 * m] = (seed & 0xFFFFFFFF).to_bytes(4, "little")
     for cc, ss in coefficient_table():
         data += (cc & 0xFFFFFFFF).to_bytes(4, "little")

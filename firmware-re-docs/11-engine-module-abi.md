@@ -642,3 +642,70 @@ Two traps found along the way, both about *where* rather than *what*:
   volume shows `systeminfo/`, which is update mode;
 * macOS leaves an AppleDouble `._<name>` alongside every file it writes to a FAT volume. Those must be removed
   from an update payload and from staged content, since they are unexpected entries in both paths.
+
+## 11.18 What makes it sound like wood rather than like glass
+
+The engine worked on the first hardware install but did not sound like the thing it models, and the listening
+verdict ("sounds good but not like a wooden marimba") pointed at a modelling error rather than a bug. Two
+choices were wrong, and both came from the same shortcut.
+
+### Wrong choice 1: a free-free bar is not a marimba
+
+The mode ratios were a blend of a harmonic series toward the classic free-free beam ratios
+`1, 2.756, 5.404, 8.933, 13.34, 18.64`. Those are the partials of an *untuned* bar - what a glockenspiel or a
+plain metal bar does. A marimba bar is deliberately **undercut** on its underside so that the first overtone
+is tuned to **two octaves above the fundamental, at exactly 4x**, with the next two near 9.2x and 16x. The ear
+identifies that tuned 4x partial as wood; the 2.756x partial is what a bell or a glass bar gives.
+
+The engine now uses `MARIMBA = (1.0, 3.93, 9.24, 16.0, 24.0, 34.0)`.
+
+### Wrong choice 2: every mode decayed at the same rate
+
+This was the more audible mistake. The coefficient table was built with `r = 1.0` for every mode - perfectly
+norm-preserving - on the reasoning that the per-block decay gain should own "the whole tail". That reasoning
+is correct for the *fundamental* and wrong for the rest: a wooden bar's overtones die in tens or hundreds of
+milliseconds regardless of how long the note is held, because that damping is a property of the bar, not of
+the note. With one shared radius the six modes ring out together and the result is a chord that sounds
+metallic, no matter how correct each individual mode is.
+
+The table now carries a **per-mode radius** for every mode above the first:
+
+```python
+MARIMBA_T60 = (0.0, 0.45, 0.25, 0.15, 0.10, 0.07)   # seconds; mode 0 is 0 because the macro owns it
+r = 1.0 if t60 == 0.0 else exp(-ln(1000) / (t60 * FS))
+```
+
+Mode 0 keeps `r = 1.0` so the decay macro still owns the whole fundamental tail and the bucket targets stay
+exact - the decay bucket checks still measure 0.10 / 1.59 / 2.99 s against 0.1 / 1.6 / 3.0 targets.
+
+Two smaller changes follow from the same model: the strike position moved from 0.3 to **0.22** of the bar's
+length (a marimba is struck nearer one end), and the per-mode excitation taper steepened from `0.55^m` to
+`0.42^m` so the fundamental dominates instead of the strike sounding bright.
+
+### The measurements, not the adjectives
+
+Rendered at note 69 (A4, 440 Hz) and analysed with a Goertzel-style single-bin DFT:
+
+| partial | level | what it means |
+|---|---|---|
+| 1x - 440 Hz | **44.4 dB** | fundamental dominates |
+| 2.756x - 1213 Hz | **-12.6 dB** | free-free bar partial is absent, 32 dB under the 4x partial |
+| 3.93x - 1729 Hz | **19.9 dB** | the tuned two-octave overtone, i.e. the wood |
+| 9.24x - 4066 Hz | 17.5 dB | third partial |
+| 16x - 7040 Hz | 12.1 dB | fourth partial |
+
+and the decay behaviour that makes a knock rather than a bell:
+
+```
+9.24x overtone   0-43 ms  15.6 dB   ->  150-193 ms  -23.1 dB     (-38.7 dB in 150 ms)
+fundamental      0-43 ms  39.1 dB   ->  150-193 ms   21.3 dB
+```
+
+Both facts are now gates rather than comments: `toolkit/opzverify.py` asserts that the tuned 4x overtone
+stands at least 20 dB above the free-free 2.756x one, and that the 9.24x overtone falls more than 20 dB in
+150 ms. The first would fail on the old ratios, the second on the old single-radius table.
+
+One test needed repairing at the same time: `opzstruck`'s "inharmonicity changes the spectrum but not the
+pitch" check compared two renders and passed **vacuously**, because woody tuning ignores `inharmonicity`
+altogether - both renders were identical. It now asks for `woody=False` explicitly and additionally asserts
+that the woody and free-free tunings differ, so the marimba ratios cannot silently stop being used.
