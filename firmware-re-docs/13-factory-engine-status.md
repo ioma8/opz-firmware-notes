@@ -85,6 +85,14 @@ Worth knowing before trusting any number here:
 - **Counting windows.** An earlier claim that the sine lookup "stops in later blocks" was an artefact of a window
   ending at `0x0800d400`; the table pointer walks past it.
 
+## Measurement is now the limiting factor
+
+Peak-based analysis cannot settle whether `chord` and `ep` track. A band-limited rFFT after a 64-sample
+moving-average high-pass reads chord at a clean 2.03/2.04/2.04 octave ratio for 330/440/659 Hz but 6.29 at
+110 Hz; first-difference high-passing just pushes the peaks to Nyquist; and the engines carry non-musical energy
+that survives every simple filter tried. The honest statement is that the six-pitch energy test is the only
+measure here that resists the artefacts, and by it only `digital` passes robustly.
+
 ## What would unblock the rest
 
 In order of usefulness:
