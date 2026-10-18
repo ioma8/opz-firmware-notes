@@ -133,6 +133,7 @@ class Machine:
         # AC0 in the wrong bit means every one of those branches takes the always-zero path.
         self.astat = 0
         self.rets = 0                  # RETS: the return-address register, set by every call
+        self.special = {}              # RETI/RETX/RETN/RETE/EMUDAT, saved and restored by exception code
         self.a = [0, 0]                # A0/A1: 40-bit accumulators, signed
         self.av = [0, 0]               # AV0/AV1 overflow latches
         self.loops = {}                 # LC0/LC1 frames: {'start', 'end', 'lc'}
@@ -558,6 +559,17 @@ class Machine:
                     self.st32(self.p[6], self.rets)
                 else:
                     self.rets = self.ld32(self.p[6])
+                    self.p[6] += 4
+            elif grp == 7:
+                # Special registers (RETI/RETX/RETN/RETE/EMUDAT, instr16/11-RegMv.sinc's group 7).
+                # Interrupt handlers save and restore these with a plain push/pop, which is how the
+                # firmware's own exception path opens ("Push [--SP] = RETI" at 0x11a000ca), so they
+                # need storage of their own rather than being rejected.
+                if w:
+                    self.p[6] -= 4
+                    self.st32(self.p[6], self.special.get(reg, 0))
+                else:
+                    self.special[reg] = self.ld32(self.p[6])
                     self.p[6] += 4
             else:
                 raise RuntimeError(f"push/pop of register group {grp} at 0x{self.pc:08x}")

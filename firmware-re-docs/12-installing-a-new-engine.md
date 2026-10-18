@@ -1070,3 +1070,24 @@ Next blockers on the boot path, in order: `RAISE`/`EXCPT` need to vector through
 than being treated as no-ops (the code after the RAISE at `0x11a000bc` is the handler's own
 `RETI = ...; RTI` return path), and `Push [--SP] = RETI` needs the special-register group that
 `PushPopReg` does not model yet.
+
+### Boot status after the special-register group
+
+`PushPopReg` group 7 (the special registers RETI/RETX/RETN/RETE/EMUDAT) now has storage, so the
+firmware's exception prologue `Push [--SP] = RETI` at `0x11a000ca` executes instead of stopping the run.
+
+The boot then leaves the image entirely and executes **816,548 steps in the `0x04000000` region**, which
+holds none of the LDR's 164 segments - i.e. it is running zeros. So the remaining gap is not another
+missing instruction class but **exception semantics**: `RAISE 0xf` at `0x11a000bc` has to vector through
+the event table, and the `RETI = ...; RTI` sequence that follows it is the handler's return path. Treating
+`RAISE` as a no-op walks straight into that return path with a RETI the firmware never set, which is
+exactly the bogus jump to `0x04xxxxxx`.
+
+Concretely, running the sequencer now needs, in this order:
+
+1. an event-vector table (the startup writes `[0x20000020] = 0x11a00000`, which is the EVT base register)
+   plus `RAISE`/`EXCPT` vectoring and correct `RTI` (restore RETI and the flags),
+2. a minimal peripheral model for whatever the boot polls (`0x80142054` fills a 13-entry descriptor table
+   in L1 data and then writes `0x8030000` - a device register base),
+3. the flash/file layer, since the plug registry the sequencer needs is parsed from `settings/plugs.json`
+   at boot.
