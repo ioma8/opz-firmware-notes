@@ -982,12 +982,16 @@ class Machine:
             self.pc = self.pc + 4
             return True
         if h == 0xE801:                                    # UNLINK
+            # Linkage is a 32-bit class: lnkSig is bits 1-15 of the first halfword (0x7400), bit 0 is R
+            # (0 = LINK, 1 = UNLINK) and the SECOND halfword is the frame word. UNLINK ignores the frame
+            # word but still consumes it, so advancing 2 bytes made every UNLINK execute its own frame
+            # halfword as a spurious instruction.
             self.p[6] = self.p[7]
             self.p[7] = self.ld32(self.p[6])
             self.p[6] += 4
             self.rets = self.ld32(self.p[6])               # UNLINK restores RETS
             self.p[6] += 4
-            self.pc = nxt
+            self.pc = self.pc + 4
             return True
 
         if h == 0x0010:                                    # RTS: return [RETS]
