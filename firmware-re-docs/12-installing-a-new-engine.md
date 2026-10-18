@@ -1553,3 +1553,25 @@ Two measurement traps had to be fixed to see this, and both had produced false f
 
 `electric` is different: it runs 15,430 steps, reads `amp+0x10`, `state+0x2c`, `params[0]`, `params[5]` and
 `params[+0x14]`, and still writes zeros.
+
+### organ's early exit, read from its decompiled render
+
+`FUN_81b7d1a0` (organ's render) opens with two gates that explain the 19-step exit:
+
+```
+if (*(int *)(param_4 + 0x10) == 0) return;              // param_4 is the state block
+if (*(char *)(param_4 + 0x89) != 0) { --*(char*)(param_4 + 0x89); return; }
+```
+
+and later, guarded by `state+0x8c == 0`, it writes the pitch argument into four consecutive words:
+
+```
+*(uint *)(param_4 + 0x10) = param_2;
+*(uint *)(param_4 + 0x14) = param_2;   // and +0x18, +0x1c
+```
+
+So `state+0x10` is meant to hold the pitch argument and the engine only self-initialises it *after* the gate
+that reads it - which is why an unseeded harness gets a one-line return. Seeding it with the pitch argument
+does get past the gate, but is not enough: organ stays at peak 0.0000 and emits only 1e-12, cluster stays at a
+constant 2e-4, and electric becomes audible (peak 0.0315 with 0x40000000) without tracking pitch at 220 or
+440 Hz. A further condition downstream of the gate is still unmet in all three.
