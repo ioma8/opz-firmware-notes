@@ -86,13 +86,73 @@ def build_dist(gain_shift=2):
     return E.pack(segs)
 
 
+def build_crush(drop=20):
+    """Bit-crush: keep only the top (32 - drop) bits of each sample. That is quantisation, which is
+    what a bitcrusher is, so the name is accurate rather than borrowed."""
+    c = B.Code(CODE_BASE)
+    for nm in ("initModule", "init", "onNoteOn", "onNoteOff"):
+        c.label(nm)
+        c.emit(A.ldimm7("R0", 0))
+        c.emit(A.rts())
+    c.label("renderFX")
+    c.emit(A.link(0))
+    c.emit(A.regmv("P0", "SP"))
+    for _ in range(2):
+        c.emit(A.ldst("P0", "R0"))
+    c.emit(A.ldst("P0", "R1"))
+    c.emit(A.ldst("P0", "R2"))
+    c.emit(A.regmv("P1", "R1"))
+    c.emit(A.regmv("P2", "R2"))
+    c.emit(A.push_r7_p5())
+    c.emit(A.ldimm32("R7", 64))
+    c.emit(A.ldimm7("R6", 1))
+    c.label("loop")
+    c.emit(A.ldst("P1", "R0"))
+    c.emit(A.shr("R0", "R0", drop))
+    c.emit(A.shl("R0", "R0", drop))
+    c.emit(A.ldst("P2", "R0", store=True))
+    c.emit(A.addsub32("R7", "R7", "R6", "-"))
+    c.emit(A.cmp_eq0("R7"))
+    c.branch("loop", cond=False)
+    c.emit(A.pop_r7_p5())
+    c.emit(A.unlink())
+    c.emit(A.rts())
+    return _pack(c, "renderFX")
+
+
+def _pack(c, render_name):
+    names = {}
+    for nm in ("initModule", "init", render_name, "onNoteOn", "onNoteOff"):
+        names[nm] = c.pos()
+        c.emit(nm.encode() + b"\x00")
+    code = c.finish()
+    hdr = bytearray()
+    hdr += (0xFEED0AD1).to_bytes(4, "little")
+    hdr += (0xAD1FACEF).to_bytes(4, "little")
+    for nm in ("initModule", "init", render_name, "onNoteOn", "onNoteOff"):
+        hdr += names[nm].to_bytes(4, "little")
+        hdr += c.labels[nm].to_bytes(4, "little")
+    hdr += b"\x00" * 8
+    data = bytearray(0x40)
+    payload = len(hdr) + len(code) + len(data)
+    segs = [
+        (0x5000, 0x11A00000, 0, payload, b""),
+        (0x0000, MOD_BASE, len(hdr), 0, bytes(hdr)),
+        (0x0000, CODE_BASE, len(code), 0, code),
+        (0x0000, DATA_BASE, len(data), 0, bytes(data)),
+        (0x8000, 0x11A00000, 0, 0, b""),
+    ]
+    return E.pack(segs)
+
+
 def main(argv):
     outdir = pathlib.Path(argv[1] if len(argv) > 1 else "engines-effects")
     outdir.mkdir(parents=True, exist_ok=True)
-    raw = build_dist()
-    p = outdir / "dist.engine"
-    p.write_bytes(raw)
-    print(f"  wrote {p} ({len(raw)} B)")
+    for name, builder in (("dist", build_dist), ("crush", build_crush)):
+        raw = builder()
+        p = outdir / f"{name}.engine"
+        p.write_bytes(raw)
+        print(f"  wrote {p} ({len(raw)} B)")
 
 
 if __name__ == "__main__":

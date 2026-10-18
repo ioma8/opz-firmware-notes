@@ -1229,3 +1229,14 @@ Two more traps recorded from the same session, both of which produced false read
 - Argument reads must happen **before** borrowing registers: `LINK` leaves the first stack argument at
   `FP+8`, but pushing seven registers first shifts `SP`, so the loads after a borrow land on the saved
   registers instead of the arguments.
+
+Two effects are built and measured:
+
+| engine | rule | measured |
+|---|---|---|
+| `dist` | `out = in << 2`, left to wrap | in `0x005e501a` -> out `0x01794068` (exactly 4x), 63/64 frames |
+| `crush` | keep the top 12 bits (`>> 20` then `<< 20`) | in `0x005e501a` -> out `0x00500000`, 63/64 frames |
+
+Both names describe what the code does. The remaining six effect slots (`chorus`, `chorus2`, `delay`,
+`fdnreverb`, `reverb`, `tapetwo`) need delay lines and modulated feedback; they are **not** built, because
+shipping a gain stage under the name "reverb" would be false.
