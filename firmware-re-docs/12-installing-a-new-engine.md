@@ -221,9 +221,16 @@ python3 toolkit/opzenginetool.py              # pick a module, set a note, move 
 python3 toolkit/opzenginetool.py --selfcheck  # render one clip and print stats, no window
 ```
 
-The window shows the module's size, load base and export addresses, a note, a clip length, and eight
-`params[]` sliders - the same array the OS passes to `render()`, so a slider is a knob. It plots the envelope
-and reports the peak level, which is how a saturation or a runaway shows up before it reaches the unit.
+The page shows the module's size, load base and export addresses, a note, a clip length, and eight
+`params[]` sliders - the same array the OS passes to `render()`, so a slider is a knob. It plots the envelope,
+reports the peak level and offers the rendered WAV for download, which is how a saturation or a runaway shows
+up before it reaches the unit. Any `.engine` can be opened by dropping its path into the box above the list,
+so a module built anywhere - not just in the repo - can be auditioned.
+
+It is a local web page rather than a desktop toolkit window for a concrete reason: Apple's system Tk is
+version 8.5, which draws a **blank white window** on current macOS, so a Tk harness cannot be handed to
+anyone without first fixing their Python installation. `http.server` plus the browser's own audio path needs
+nothing installed beyond the standard library.
 
 Two engineering realities shaped it, and both are stated in the tool rather than hidden:
 
