@@ -49,8 +49,10 @@ def check(path):
     if info["kind"] != "instrument":
         return None, "effect module"
     peak, detail = 0.0, []
+    rendered = {}
     for note, target in NOTES:
         samples, _ = T.render_clip(info, note, 0.8, PARAMS)
+        rendered[note] = (samples, target)
         peak = max(peak, max((abs(v) for v in samples), default=0) / 2 ** 31)
         at = energy(samples, target)
         near = max(energy(samples, target * 0.75), energy(samples, target * 1.5))
@@ -59,6 +61,14 @@ def check(path):
         detail.append(f"{target:.0f} Hz ok ({at:.1e} vs {near:.1e})")
     if peak <= 1e-3:
         return False, "silent"
+    # Pitch dependence: a fixed-spectrum engine passes a two-note energy test by coincidence - `ep` does
+    # exactly that, producing the same contrast at every pitch argument. Require that the tone at note A's
+    # frequency is markedly stronger in note A's render than in note B's.
+    (a_samples, a_target), (b_samples, _) = (rendered[n] for n in sorted(rendered))
+    here, there = energy(a_samples, a_target), energy(b_samples, a_target)
+    if there and here < 1.5 * there:
+        return False, (f"does not depend on the note: {a_target:.0f} Hz energy is {here:.1e} when requested "
+                       f"and {there:.1e} when a different note is")
     return True, "; ".join(detail)
 
 
