@@ -27,6 +27,11 @@ is demonstrably correct - `chorus2` latches a constant value - so this shows the
 distinct outputs and `chorus2` 308, while `dist` and `chorus` produce exactly **one** under every state seed tried
 (0x7fffffff, 0x40000000, 0x01010101) - the seeding that helps instruments never reaches them.
 
+`dist`'s decompiled renderFX explains the shape of that: it indexes through the host table's third dword
+(`*(int *)(*(int *)(DAT_81bfa4f8 + 8) + uVar8 * 4)`, where `uVar8` comes from its own state) and writes through
+module globals `DAT_81bfa554`/`DAT_81bfa558`. Seeding those state words with in/out/length in every order, and
+mapping all 164 OS segments so `0x81128264` reads real data, both leave it at peak 0.0000 with one distinct value.
+
 `volt` produces full-scale DC. `electric` becomes audible (peak 0.0315) when `state+0x10` is seeded but does not
 track pitch. `cluster` emits a constant 2e-4. `organ`, `sampleplayergain`, `synthsampler` emit nothing.
 `analoga`, `fm003b`, `ministringshort`, `saw013a` raise errors.
