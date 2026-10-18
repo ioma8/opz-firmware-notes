@@ -700,6 +700,22 @@ first stack argument). The JIT needed the same treatment - it now carries a `ret
 every call form instead of pushing a return address - and after both changes interpreter and JIT are
 bit-identical again over 384 samples with `struck` measuring 440.1 Hz.
 
+### Chord's return-address damage, traced to the instruction
+
+With the arguments finally correct, chord's failure has one cause and it is fully traced:
+
+* its frame is at `FP = 0x81c22ee0`, with the saved `FP` at `[FP]` and the saved `RETS` at `[FP+4]`;
+* at `0x81be2752` it stores `[P0 + 0x8] = R3` and at `0x81be2758` `[P0 + 0x4] = R5`, with `P0 = 0x81c22edc`
+  - i.e. `FP - 4` - so the two stores land exactly on the saved `FP` and `RETS`;
+* `RETS` therefore becomes `0x81bd2048`, the engine's own state pointer, and the final `RTS` at `0x81be2934`
+  jumps into the state block, where it executes zeros as NOPs until it hits `0x01b8` and stops.
+
+`P0` is loaded from chord's own stack local `[SP + 0x38]`, which chord fills at `0x81be25f6` with a pointer it
+computes from `FP` (`P1 = FP` at `0x81be2856`, then `P1 += -0x40` at `0x81be2874`, then `P1 += -0x10`). On
+silicon those writes must land inside the frame, so one of the pointer arithmetic steps is landing roughly
+`0x40` high in emulation - that is the concrete thing to check next, and it is a small, well-bounded
+arithmetic question rather than another state-hunting expedition.
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.
