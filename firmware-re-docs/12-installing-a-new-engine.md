@@ -1141,3 +1141,10 @@ So the two fields are now identified - `state+0xc` is the sample pointer and `st
 the remaining unknown is the sample *header* the engine expects around that pointer. That is a much
 smaller question than the sequencer, and it does not depend on the missing `0x04xxxxxx` firmware region,
 which makes the two sample engines the most tractable remaining route to audible factory output.
+
+Measured and disproved: putting PCM at the pointer is **not** sufficient. Six byte gates on top of the
+pointer and length were tried - `state+0x5b`, `state+0x31`, `state+0x48`, `state+0x5a` - with both 16-bit
+and 32-bit sine buffers and the pointer in `state+0xc`, `state+0x14` and `state+0x10`. Every combination
+returns cleanly and outputs **zero**. The render also consults its own note-to-sample table at
+`0x81b6a454` / `0x81b6a570`, so the sample path has at least one further condition that pointing it at PCM
+does not satisfy.
