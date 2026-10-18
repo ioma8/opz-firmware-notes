@@ -1449,3 +1449,17 @@ What is wrong is downstream. Energy at the frequency that stride implies (f x 48
 0.33 of the peak, because every render is dominated by a 753 Hz staircase (64-sample blocks, 48 kHz / 64).
 In the steady-state tail - the last 1280 samples of a 200-block render - digital peaks at 53.5 Hz whatever the
 pitch, so the oscillator's contribution never surfaces at audible level.
+
+### Where the stored sample comes from, and why it is a ramp
+
+Watching both of digital's output stores (`0x81be64a2` left, `0x81be64b6` right) with the registers and the
+two most recent sine-table taps gives a precise picture:
+
+- the stored sample **is R4** on the left and **R6** on the right - nothing else is combined at the store;
+- **no sine-table read happens in that block at all.** The table reads observed earlier (the ones whose count
+  varies with pitch) all come from the early blocks;
+- R7 carries a large accumulator-like value (`0xe328dbba`, `0xc499b774`) that is never turned into a sample.
+
+So the oscillator phase is being advanced (its stride tracks pitch exactly) and then simply not converted: the
+sine lookup stops firing, and the buffer receives a ramp through R4/R6. That is the precise defect - not the
+pitch input, which demonstrably works.
