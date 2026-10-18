@@ -599,14 +599,16 @@ občas `libaiff: AIFF_ReadOpen failed`.
 
 ## STAV CÍLE: „aby hrály všechny tovární enginy správně“ (2026-10-19)
 
-**Cíl nesplněn.** Ověřeně hraje **1 z 13** továrních nástrojů; u efektů 2 z 8 jen běží, ale správnost nelze
-prokázat. Podrobnosti a tabulky: `firmware-re-docs/13-factory-engine-status.md`; všech 111 testů:
+**Cíl nesplněn.** Ověřeně hrají **2 z 13** továrních nástrojů — `digital` a `chord` — a to přes osm not
+(45–81) skrz HTTP API aplikace. Klíč: výška se předává jako bajtový krok do tabulky a **perioda je per engine**
+(`digital` 32768, `chord` 16384; lineární zákon `f_out = arg × 48000/perioda`). U efektů se ověřeně nepodařilo nic. Podrobnosti a tabulky: `firmware-re-docs/13-factory-engine-status.md`; všech 111 testů:
 `HYPOTHESES.csv`; měřítko: `toolkit/opzfactorycheck.py`.
 
 | engine | stav | důkaz |
 |---|---|---|
-| `digital` | **hraje správně** | 5 z 6 výšek (110/165/220/330/440 Hz), selhává jen 659 Hz |
-| `chord`, `ep` | projdou jen 2 ze 6 | 220 a 440 Hz; padají přesně na 0,75× a 1,5× (vlastní intervaly) |
+| `digital` | **hraje správně** | 8 z 8 not (45–81) přes API; perioda 32768 |
+| `chord` | **hraje správně** | 7 z 8 not (45–81) přes API; perioda 16384 |
+| `ep` | nehraje | nemění se s argumentem ani se stavem (fixní spektrum) |
 | `crush`, `chorus2` | běží, neověřeno | mění vstup, ale jsou stavové, převodní funkce neurčí správnost |
 | `volt`, `electric`, `cluster` | nehrají | DC / fixní spektrum / konstanta 2e-4 |
 | `organ`, `sampleplayergain`, `synthsampler` | ticho | `organ` po `state+0x10` bráně indexuje vlastní tabulku záporným indexem |
@@ -642,3 +644,10 @@ for t in test_*.py; do /tmp/opzvenv/bin/python "$t" >/dev/null && echo "PASS $t"
 Stav: **6 z 8 prochází.** `test_opzfarm.py` a `test_success.py` padají na vlastních očekáváních vůči současnému
 `opzassemble.py` (chybí `ZIPWALK` řádek v zachyceném výstupu) — to je starý nesoulad testů, ne regrese z práce na
 enginech.
+
+**Doplnění (2026-10-19, později):** ABI efektů bylo přečteno přímo z firmwaru — `FUN_8012ced0` volá
+`renderFX(param_4, param_5, state, param_6)` se **čtyřmi** argumenty a `init` s **pěti** (čtvrtý je ukazatel do
+tabulky na `0x8156f21c`). Ani přesná reprodukce tohoto volání efekty nerozjede: `chorus2` vydá jen 6 vzorků z 384.
+Tabulka i buffer (`0x8112b21c`) jsou BSS plněné až běžícím OS. Dále: výstup všech enginů dominuje artefakt na
+kmitočtu bloku (375–750 Hz) s kontrastem 500–1500×, hudební tón má 20–70×; žádná transformace na straně hostitele
+ho neodstraní. Celkem 152 zaznamenaných hypotéz.
