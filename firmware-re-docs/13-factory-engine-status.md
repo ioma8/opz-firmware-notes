@@ -175,6 +175,10 @@ So `init` takes five arguments - the fourth being a **params pointer** computed 
 dispatcher `FUN_80117f4c`. Testing that form, `chorus2` responds to `(out, in, state, X)` with peak 0.785 while the
 other seven effects stay silent. The five-word stack used until now is **not** what the firmware does.
 
+The params pointer itself cannot be recovered statically: `0x8156f21c` (the offset table) is absent from every segment
+payload and `0x8112b21c` (the buffer it indexes) reads as four zero bytes from a zerofill segment. Both are **BSS the FX
+manager fills at runtime**, so an effect's per-slot parameters exist only inside a running firmware.
+
 ## The output is dominated by a block-rate artefact
 
 Worth stating once, because it explains most of the difficulty: at **every** pitch argument the dominant spectral peak in
