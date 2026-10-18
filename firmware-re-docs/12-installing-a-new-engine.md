@@ -923,3 +923,25 @@ The render pitch argument is Q16 Hz (`440 << 16`), so a 440 Hz request falls in 
 which is what the comparison chain selects. The emulator reads both tables back byte-for-byte identical
 to the file, so no decoder or loader fault is involved. Whatever keeps digital from oscillating is in its
 own arithmetic over these values, not in the data it reads.
+
+### The OS's own tables next to the amp scaling constant
+
+Reading `0x815c8070`..`0x815c80a0` out of `opz.ldr` settles two conventions at once:
+
+```
+0x815c8070  68 84 12 81 8c 8d 12 81 b0 96 12 81 d4 9f 12 81   ; four pointers
+0x815c8080  f8 a8 12 81                                      ; 0x8112a8f8
+0x815c8084  01 00 00 00                                      ; 1
+0x815c8088  ff ff 7f 00                                      ; 0x007fffff  <- the amp scaling constant
+0x815c808c  5e 26 0c 00  51 df 0c 00  45 a3 0d 00  df 72 0e 00  d1 4e 0f 00
+```
+
+`FUN_8012e0a4` computes `record+0x3c` (`amp+0x0c`) as `-(record[0x34] * [0x815c8088])`, so with
+`[0x815c8088] = 0x007fffff` and `record+0x34` near full scale the result is about `-0x3fffff80` — within a
+rounding step of the `-0x40000000` the harness already supplies. So `amp+0x0c` is **not** what keeps the
+engines from oscillating.
+
+The dwords from `0x815c808c` onward are a semitone table in Q16 Hz — 12.157, 12.870, 13.635, 14.441,
+15.311, each `2^(1/12)` above the last — which is the table `FUN_8011aa1c` (called twice per tick from
+`FUN_8012e2c0` for the slow and fast glide conversions) walks. That independently confirms the pitch unit
+the engines receive is Q16 Hz, the same unit their own band tables use.
