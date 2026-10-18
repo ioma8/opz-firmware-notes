@@ -124,7 +124,10 @@ def render_clip(info, note, seconds, params):
         for j in range(2 * BLOCK):
             m.st32(out + 4 * j, 0)
         if fx:
-            Z.call(m, ex["renderFX"], [ctx, freq_q16, state, inp, out])
+            # renderFX takes FIVE arguments: three in registers and `in`/`out` on the stack. Passing a
+            # five-element list here silently dropped the last two, because Z.call only reads args[:3]
+            # and pushes `stack=` - so no effect ever received its input buffer through this tool.
+            Z.call(m, ex["renderFX"], [ctx, freq_q16, state], stack=(inp, out))
         else:
             Z.call(m, ex["render"], [out, freq_q16, 0], stack=(ctx, prm, 0))
         blk = [m.ld32(out + 4 * j) for j in range(2 * BLOCK)]
