@@ -467,6 +467,7 @@ PRELUDE = r"""
 typedef struct { uint8_t *mem; int64_t base; int64_t size; } Arena;
 static Arena A;
 static int32_t R[8], I[4];
+uint32_t OPZ_STUCK = 0;   /* set when a call exceeds its step budget, so a hung engine reports where */
 /* leading sign-redundant bits, matching opzsim's _sgncount: lzcount(v)-1 for v>=0, lzcount(~v)-1 for v<0 */
 static int SGNB(int32_t v){ uint32_t u = (v < 0) ? ~(uint32_t)v : (uint32_t)v; int n = 0;
     while (n < 32 && (((u >> (31 - n)) & 1u) == 0)) n++; return n - 1; }
@@ -542,7 +543,9 @@ def emit(raw):
            "    int AC0=0;  /* ASTAT bit 12, the AC0 carry; read by AddSubAC0, set elsewhere */",
            "    uint32_t rets = 0x%08uu;   /* RETS: set by every call form, restored by UNLINK */" % SENTINEL,
            "    uint32_t pc = entry;",
+           "    long _steps = 0;",
            "    for (;;) {",
+           "        if (++_steps > 4000000L) { OPZ_STUCK = pc; return -2; }",
            "        switch (pc) {"]
     for a in sorted(seen):
         ln, code = seen[a]
@@ -554,10 +557,12 @@ def emit(raw):
             chk = " ".join(
                 f"if (HAVE[{sl}] && LE[{sl}]==0x{a:08x}u) {{ if (LC[{sl}]) {{ LC[{sl}]--; "
                 f"pc = LB[{sl}]; break; }} HAVE[{sl}]=0; }}" for sl in sorted(ends))
-            body = code.rstrip()
-            if body.endswith("break;"):
-                body = body[: -len("break;")]
-            code = body + " " + chk + " break;"
+            # Route EVERY exit of this instruction through the loop check: if the end instruction is a
+            # taken branch its inner `break` would otherwise skip the check, LC would never decrement, and
+            # the loop would spin for ever.
+            lab = f"lc_end_{a:08x}"
+            body = code.replace("break;", f"goto {lab};")
+            code = body + f" {lab}: " + chk + " break;"
         out.append(f"    case 0x{a:08x}u: {{ {code} }}")
     out.append("    default: return R[0];")
     out.append("        }")
