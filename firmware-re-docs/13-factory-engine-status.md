@@ -111,7 +111,8 @@ Three things had to be right, and each was measured rather than assumed:
 **Verified end to end through the app itself**, not only in the harness: requesting `/api/render` from the running
 `opzenginetool` and decoding the served WAV gives `digital` a contrast of **179** at 220 Hz and **248.6** at 440 Hz
 (peak 0.124), and `chord` **23.8** and **28.2** (peak 0.068). Both therefore work as shipped - engine, app path and
-served audio - for those notes.
+served audio. Extending that to eight notes through the same interface: **digital passes 8 of 8** (notes 45-81,
+contrast 128-309 up to note 76 and 44.8 at 81) and **chord 7 of 8** (21.5-36.7 up to note 76, failing at 81).
 
 ## Why the other ten do not
 
