@@ -1520,3 +1520,26 @@ engines are unaffected (`opzfamilycheck` 17/17, `opzplay` realtime and audible, 
 The other twenty engines do not benefit: `chord`'s energy is flat across the sweep, eight are silent, and five
 raise errors. **1 of 21 factory engines now plays a correct note** - for the first time in this work the number
 is not zero.
+
+### Three factory engines play correct notes (verified through the app path)
+
+With the scaled pitch argument and the app's own render path, three factory instrument modules play the
+requested note at both 220 and 440 Hz. `toolkit/opzfactorycheck.py` is the reproducible check:
+
+| engine | 220 Hz | 440 Hz |
+|---|---|---|
+| chord | 2.6e5 vs 1.1e5 | 8.8e4 vs 5.2e4 |
+| digital | 5.0e5 vs 3.2e5 | 4.7e5 vs 1.8e5 |
+| ep | 3.6e6 vs 1.7e6 | 1.6e6 vs 9.1e5 |
+
+(each figure is energy at the requested frequency versus the stronger of its 0.75x and 1.5x neighbours)
+
+**3 of 13 instrument modules.** The remaining ten: `volt` is DC, six are silent, four raise errors.
+
+Two measurement traps had to be fixed to see this, and both had produced false failures:
+
+- **interleaving** - `render_clip` returns interleaved L,R, so a DFT at f over that array reads it as f/2.
+  Each channel must be measured separately. This is why an earlier audit reported digital failing at 440 Hz
+  while the direct harness had it passing.
+- **single-channel engines** - `ep` writes the right channel and nothing on the left, so any left-only reader
+  (including this project's earlier sweeps) reports it as silent.
