@@ -117,6 +117,12 @@ class Engine:
 
     # ---- one audio block, summed over voices
     def render_block(self):
+        if self.factory:
+            # The JIT now runs a factory engine's own code (LSETUP, the shift families, DIVQ/DIVS), but with
+            # the host-services table populated the engine calls an OS routine and never returns - the same
+            # wall that stops the interpreter. Refuse rather than hang the audio thread.
+            raise RuntimeError("factory engines need OS services the JIT cannot answer; "
+                               "audition them through opzenginetool")
         acc = self.acc
         for i in range(2 * BLOCK):
             acc[i] = 0

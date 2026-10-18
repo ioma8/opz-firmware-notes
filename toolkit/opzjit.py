@@ -259,6 +259,16 @@ def decode(img, addr, eaddr):
                     return 4, f"R[{d0}]=SAT(R[{s0}]<0?-(int64_t)R[{s0}]:R[{s0}]); pc = {e4}u; break;"
                 if aop == 3:
                     return 4, f"R[{d0}]=SAT(-(int64_t)R[{s0}]); pc = {e4}u; break;"
+            if aopc == 0x19:                                  # AddSubAC0: dst = src0 +/- src1 +/- AC0
+                # instr32/27-Dsp32Alu.sinc: aop 0 adds src1 + AC0, aop 1 subtracts src1 and adds AC0-1.
+                # These forms READ AC0 only; nothing in this JIT sets it, so it stays at its initial 0.
+                if aop in (0, 1):
+                    if aop == 0:
+                        expr = f"((int64_t)R[{s0}]+R[{s1}]+AC0)"
+                    else:
+                        expr = f"((int64_t)R[{s0}]-R[{s1}]+AC0-1)"
+                    st = (f"R[{d0}]=SAT({expr});" if sat else f"R[{d0}]=W32({expr});")
+                    return 4, f"{st} pc = {e4}u; break;"
             raise Unsupported(f"Dsp32Alu aopc={aopc:#x} aop={aop} at 0x{eaddr:08x}")
         raise Unsupported(f"DSP sig2={sig2} sigd={sigd:#x} at 0x{eaddr:08x}")
     if (h & 0xFF80) == 0xE080:                                    # LSETUP, both forms
@@ -529,6 +539,7 @@ def emit(raw):
 
            "    int32_t LC[2]={0,0}; uint32_t LB[2]={0,0}, LE[2]={0,0}; int HAVE[2]={0,0};",
            "    int AQ=0;   /* ASTAT bit 6, the divide quotient bit */",
+           "    int AC0=0;  /* ASTAT bit 12, the AC0 carry; read by AddSubAC0, set elsewhere */",
            "    uint32_t rets = 0x%08uu;   /* RETS: set by every call form, restored by UNLINK */" % SENTINEL,
            "    uint32_t pc = entry;",
            "    for (;;) {",
@@ -537,11 +548,16 @@ def emit(raw):
         ln, code = seen[a]
         ends = LOOP_ENDS.get(a)
         if ends:
-            # a registered loop whose END is this address either jumps back to its start or finishes
+            # A registered loop whose END is this address either jumps back to its start or finishes - and
+            # it does so AFTER the instruction at `end` retires (opzsim's _loop_end runs post-step). Putting
+            # the check first executed the body one iteration short and, with a zero counter, looped for ever.
             chk = " ".join(
                 f"if (HAVE[{sl}] && LE[{sl}]==0x{a:08x}u) {{ if (LC[{sl}]) {{ LC[{sl}]--; "
                 f"pc = LB[{sl}]; break; }} HAVE[{sl}]=0; }}" for sl in sorted(ends))
-            code = chk + " " + code
+            body = code.rstrip()
+            if body.endswith("break;"):
+                body = body[: -len("break;")]
+            code = body + " " + chk + " break;"
         out.append(f"    case 0x{a:08x}u: {{ {code} }}")
     out.append("    default: return R[0];")
     out.append("        }")
