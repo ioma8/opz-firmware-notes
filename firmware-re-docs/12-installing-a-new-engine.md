@@ -1109,3 +1109,16 @@ So the firmware executes from a memory region that neither image contains, and t
 it. Reaching the sequencer — and therefore pitched factory engines — needs either that region (a further
 image, or a memory dump from the device), or the device's memory map for it. That is a data problem, not
 an emulator problem, and it is where this line of work ends with the material available here.
+
+Two further checks pin that conclusion down:
+
+- **The `CALL.A` decode is right where Ghidra can see it.** `0x800002c0` decodes in Ghidra as
+  `Call CALL.A 0x040201c4`, identical to `opzsim`'s reading, and there are **979 such sites in the main
+  image alone**. So this is not an artefact of our decoder.
+- **No other payload on disk contains the region.** Every candidate was tried: `opz.ldr` (164 segs,
+  0x11/0x08/0x80/0x81), `bootloader.ldr` (58 segs, 0x11/0x82), and the install logs
+  `install_z_firmware_1_1_9`, `plugfix_*` (two), `ablate_*` and `console_upgrade_1_2_45` — the last five
+  are not dlm containers at all, and neither LDR has a single segment in `0x04xxxxxx`.
+
+The boot therefore stops for lack of an image, not for lack of emulation. What would restart it: a memory
+dump covering `0x04xxxxxx`, the OP-Z/BF703 memory map for that region, or a firmware image that loads there.
