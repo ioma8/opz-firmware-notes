@@ -166,6 +166,11 @@ while the musical tone measures only 20 to 70. Subtracting each block's least-sq
 (contrast stays 491-703), so it is not a per-block linear ramp. This is why plain peak-picking has misled so many
 measurements in this investigation, and why only a targeted contrast at a known frequency reads the note at all.
 
+Dumping sixteen consecutive blocks shows why: **each block is a monotone ramp that restarts at the block boundary**
+(block 0 runs -1,228,178 to 88,617,972; block 7 runs 141,060,485 to 113,265,362) and blocks 2 and 3 are nearly silent
+(mean 8,001 and 22,588). The engines are not writing a waveform; the musical information sits in each block's slope, and
+the 375 Hz component is the ramp restart. No host-side transform recovers a clean note from that.
+
 ## Measurement is now the limiting factor
 
 Peak-based analysis cannot settle whether `chord` and `ep` track. A band-limited rFFT after a 64-sample
