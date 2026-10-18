@@ -70,7 +70,7 @@ distinct outputs and `chorus2` 308, while `dist` and `chorus` produce exactly **
 module globals `DAT_81bfa554`/`DAT_81bfa558`. Seeding those state words with in/out/length in every order, and
 mapping all 164 OS segments so `0x81128264` reads real data, both leave it at peak 0.0000 with one distinct value.
 
-`volt` produces full-scale DC. `electric` becomes audible (peak 0.0315) when `state+0x10` is seeded but does not
+`volt` produces full-scale DC. `electric` is **silent through the app path** and only becomes audible (peak 0.0315) when `state+0x10` is seeded by hand, and even then does not
 track pitch. `cluster` emits a constant 2e-4. `organ`, `sampleplayergain`, `synthsampler` emit nothing.
 `analoga`, `fm003b`, `ministringshort`, `saw013a` raise errors.
 
