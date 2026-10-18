@@ -8,11 +8,16 @@ investigation. It exists so the next person does not re-walk 87 disproved hypoth
 **3 of 13 factory instrument modules play the requested note.** Verified with `toolkit/opzfactorycheck.py`
 through the app's own render path, at 220 Hz and 440 Hz, against both neighbouring frequencies:
 
-| engine | 220 Hz (at f0 vs neighbours) | 440 Hz | notes |
-|---|---|---|---|
-| chord | 2.6e5 vs 1.1e5 | 8.8e4 vs 5.2e4 | plays |
-| digital | 5.0e5 vs 3.2e5 | 4.7e5 vs 1.8e5 | plays |
-| ep | 3.6e6 vs 1.7e6 | 1.6e6 vs 9.1e5 | plays; writes the **right channel only** |
+| engine | 220 Hz (at f0 vs neighbours) | 440 Hz | across six pitches | notes |
+|---|---|---|---|---|
+| chord | 2.6e5 vs 1.1e5 | 8.8e4 vs 5.2e4 | **2 of 6** | fails at exactly 0.75x and 1.5x - its own interval components |
+| digital | 5.0e5 vs 3.2e5 | 4.7e5 vs 1.8e5 | **5 of 6** | robust; fails only at 659 Hz |
+| ep | 3.6e6 vs 1.7e6 | 1.6e6 vs 9.1e5 | **2 of 6** | writes the **right channel only** |
+
+The six-pitch column is the honest measure. `opzfactorycheck` tests two notes, which is enough to reject a fixed
+spectrum (see `electric` below) but **overstates** engines like `chord` whose output legitimately contains a
+fifth: at 165 and 659 Hz the target's neighbour is its own interval, so the test fails on correct behaviour.
+Taken across the range, only **digital** plays robustly; `chord` and `ep` pass at the two tested notes.
 
 `volt` produces full-scale DC. `electric` becomes audible (peak 0.0315) when `state+0x10` is seeded but does not
 track pitch. `cluster` emits a constant 2e-4. `organ`, `sampleplayergain`, `synthsampler` emit nothing.
