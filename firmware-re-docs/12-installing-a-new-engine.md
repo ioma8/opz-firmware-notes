@@ -1184,3 +1184,26 @@ delivers audible, correctly-pitched instruments without depending on the missing
 
 Usage: `python3 toolkit/build_family.py engines-family` (the `.engine` files are gitignored; the generator
 is the artifact).
+
+### Two call conventions live side by side, and the sweep only knows one
+
+The family is verified through the **app's own path**:
+
+```
+opzenginetool.py --selfcheck   ->  peak 0.112, measured pitch 440.1 Hz  (cache cleared per run)
+opzplay.py --engine ... --selftest -> realtime and audible, 62-69 us per 64-frame block
+```
+
+But `opzenginesweep.py`, the standing factory measurement, reports every family engine as **silent** -
+and it is right to, for the convention it uses. The two ABIs differ:
+
+| engine | `render` arguments |
+|---|---|
+| factory | `stack=(out, freq_q16, 0, ctx, params, amp)` - six words, ctx at `[FP+0x14]` |
+| ours (`build_struck.py`) | 7 saved-register words then `ctx`, `params` - i.e. `stack=(ctx, params)` |
+
+`build_struck.py`'s render walks its own saved registers (`for _ in range(7)`) before reading arg4, so the
+six-word factory layout puts `out` where it expects `ctx` and it renders zeros. Consequently **the sweep
+cannot judge our engines and opzenginetool cannot judge the factory ones** - each tool is correct for its
+own convention, and neither verdict should be quoted across the boundary. "Audible in the app" means the
+`opzplay` / `opzenginetool` path; the factory sweeps in this document use the factory convention.
