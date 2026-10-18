@@ -340,3 +340,56 @@ Three things, and they are now named rather than suspected, which is the useful 
 Beyond the arithmetic, the engines also expect the per-voice and envelope state the OS maintains around them,
 which is the same class of problem as the host table: the harness has to supply it, and what to supply is only
 knowable by reverse engineering `PluginManager`/`Voice` rather than by reading an engine.
+
+### The engine execution model, as measured on the factory engines
+
+Everything below came out of running the 21 official engines and watching where they stop. Each item was a
+wrong assumption in the emulator, and each is now either fixed or named as a gap.
+
+**`RETS` is a register, not a stack slot.** `RTS` is `return [RETS]`; every call form sets it; `LINK` pushes it
+and `UNLINK` restores it. Compiled engines also save and restore it by hand (`MvRegToReg P2 = RETS` at
+`0x81be2b78`, then `jump (P2)` at `0x81be2b74` to return). An emulator with `RETS` reading zero sends every
+such engine to address 0.
+
+**On silicon a call touches no memory.** chord's software divider at `0x81be2c32` is reached by `CALL` and its
+first two stores are `[SP] = R4` and `[SP + 0x4] = R5` - a callee may only use the stack pointer as scratch
+if the call did not push a return address. Ghidra's SLEIGH renders `call`/`return [RETS]` as push/pop because
+that is the decompiler's model, and it is not the hardware's. Engines still read their own arguments from the
+stack, so the OS dispatcher supplies one frame word above them; the interpreter keeps that frame word at the
+harness entry point and nothing else.
+
+**Addresses are unsigned, registers are signed.** A pointer register loaded with `LdM32bitToDreg` holds an
+`int`; jumping through it must mask to 32 bits or the program counter becomes negative. The symptom is
+`0xDEAD0000` arriving as `-559087616`, which then reads as neither the sentinel nor an outside address and
+spins. Mask at every dispatch point, and store `RETS` masked.
+
+**`LSETUP` has four forms, not one.** Signature `0x1C1` at bits 7-15 covers all of them: `rop` at bits 5-6
+selects *leave the counter alone* (0), *counter = Preg* (1), *counter = immediate* (2) or *counter = Preg>>1*
+(3); `lop` at second-half bits 10-11 selects plain `LSETUP` or `LSETUPZ`, which skips the body when the
+counter is zero. The loop start is `inst_start + soff*2` with `soff` from the first half - *not* the following
+instruction, which is only equivalent when `soff` happens to be 2 - and the end is `inst_start + eoff*2`.
+chord's divider uses `LSETUP(0x81be2c7c, 0x81be2c88) LC0 = P1`, so treating the count as immediate iterates a
+garbage number of times.
+
+**`TESTSET` is a lock, and it sits inside render loops.** `ProgCtrl` opcode `0xb` reads a byte through a
+pointer, sets `CC` when the byte was zero, and then sets the byte's top bit. chord executes one at
+`0x81be2796`, immediately inside its 64-frame sample loop at `0x81be2794`. Unmapped audition memory reads as
+zero, which is what makes the first acquisition succeed.
+
+**The accumulators are real state, and they are only partly modelled.** `A0`/`A1` are 40-bit; `RegMv` group 4
+exposes `A0.W`, `A1.W` (registers 1 and 3) and the extension bytes `A0.X`, `A1.X` (0 and 2). The emulator now
+holds them, plus `AV0`/`AV1`, and `AddSubAC0` updates `AC0` (ASTAT bit 4) from the carry out of bit 31. What
+is still missing is the `Dsp32Mac` multiply-accumulate family that produces the values these accumulators
+carry for the synthesis path.
+
+**What is left between a factory engine and audio is OS state, not arithmetic.** With all of the above fixed,
+chord reaches and executes its 64-frame render loop and then calls out of the module from inside it: the host
+service at `0x800314c0` (host-table entry 7) and, at `0x81be27ca`, a load through a pointer that is zero.
+That is a per-voice callback the OS installs; the engine calls it every sample. No amount of emulator work
+supplies it - the `PluginManager`/`Voice` side has to be reverse engineered to know what the OS puts there.
+The sweep therefore stands at **21/21 executing, 0/21 audible**, and the next unit of work is the voice
+state contract rather than the instruction set.
+
+**Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
+tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
+`OPZ_TIME_LIMIT=<seconds>`.

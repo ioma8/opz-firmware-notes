@@ -464,4 +464,5 @@ def build(raw, name="engine"):
 
 
 if __name__ == "__main__":
+    import opztime; opztime.watch("jit")
     print(__doc__)

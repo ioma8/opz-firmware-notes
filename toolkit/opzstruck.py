@@ -288,6 +288,7 @@ def selftest():
 
 
 if __name__ == "__main__":
+    import opztime; opztime.watch("struck engine")
     if len(sys.argv) > 1 and sys.argv[1] == "selftest":
         sys.exit(selftest())
     if len(sys.argv) > 2 and sys.argv[1] == "render":

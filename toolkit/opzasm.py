@@ -264,6 +264,7 @@ def selftest():
 
 
 if __name__ == "__main__":
+    import opztime; opztime.watch("assembler selftest")
     if len(sys.argv) > 1 and sys.argv[1] == "selftest":
         sys.exit(selftest())
     print(__doc__)

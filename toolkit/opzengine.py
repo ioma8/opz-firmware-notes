@@ -169,4 +169,5 @@ def main(argv):
 
 
 if __name__ == "__main__":
+    import opztime; opztime.watch("engine container tool")
     sys.exit(main(sys.argv))

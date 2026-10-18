@@ -30,6 +30,12 @@ def sat32(v):
     return 0x7FFFFFFF if v > 0x7FFFFFFF else (-0x80000000 if v < -0x80000000 else v)
 
 
+def s40(v):
+    """Wrap to a signed 40-bit accumulator value."""
+    v &= 0xFFFFFFFFFF
+    return v - 0x10000000000 if v & 0x8000000000 else v
+
+
 def s32(v):
     """Reinterpret a 32-bit pattern as a signed value.
 
@@ -60,6 +66,8 @@ class Machine:
         self.i = [0, 0, 0, 0]        # I0-I3 index registers (B/L/loop regs stay 0)
         self.astat = 0                 # only what CC2Stat moves write; arithmetic flags are not maintained
         self.rets = 0                  # RETS: the return-address register, set by every call
+        self.a = [0, 0]                # A0/A1: 40-bit accumulators, signed
+        self.av = [0, 0]               # AV0/AV1 overflow latches
         self.loops = {}                 # LC0/LC1 frames: {'start', 'end', 'lc'}
         self.allow_external = False     # audition mode: unmapped addresses read 0 / write to a dict
         self.external = {}
@@ -125,6 +133,7 @@ class Machine:
         while True:
             if self.steps > limit:
                 raise RuntimeError("step limit")
+            self.pc &= 0xFFFFFFFF
             o = self._off(self.pc, 2)
             h = int.from_bytes(self.mem[o:o + 2], "little")
             if not self.step(h, o):
@@ -132,6 +141,11 @@ class Machine:
 
 
     # ---- 32-bit DSP helpers, all read out of the SLEIGH sources -------------------------------
+
+    @staticmethod
+    def _sat40(v):
+        """Saturate a 40-bit accumulator value to 32 bits (A0 = A0 (S))."""
+        return max(-0x80000000, min(0x7FFFFFFF, v))
 
     def _shift_imm(self, h, h2):
         """Dsp32ShfImm (29-Dsp32ShfImm.sinc).
@@ -277,6 +291,24 @@ class Machine:
             lo = hv(v0, False) - hv(v1, False) if opL else hv(v0, False) + hv(v1, False)
             self.r[dst0] = s32(((hi & 0xFFFF) << 16) | (lo & 0xFFFF))
             return
+        if aopc == 0x08:                                     # accumulator load / saturate / move
+            if aop == 0:
+                self.a[0] = 0 if not sat else s40(self._sat40(self.a[0]))
+            elif aop == 1:
+                self.a[1] = 0 if not sat else s40(self._sat40(self.a[1]))
+            elif aop == 2:
+                if sat:
+                    self.a[0], self.a[1] = s40(self._sat40(self.a[0])), s40(self._sat40(self.a[1]))
+                else:
+                    self.a[0] = self.a[1] = 0
+            elif aop == 3:
+                if sat:
+                    self.a[1] = self.a[0]
+                else:
+                    self.a[0] = self.a[1]
+            else:
+                raise RuntimeError(f"AccOp aop={aop} not implemented at 0x{self.pc:08x}")
+            return
         if aopc == 0x0F:                                     # MMAVec2: negate both halves, saturated
             aop2 = (h2 >> 14) & 3
             if aop2 != 3:
@@ -318,6 +350,13 @@ class Machine:
                 v = self.r[src0] - self.r[src1] + ac0 - 1
             else:
                 raise RuntimeError(f"AddSubAC0 aop={aop} not implemented at 0x{self.pc:08x}")
+            u = v & 0xFFFFFFFF
+            carry = ((self.r[src0] & 0xFFFFFFFF) + (-(self.r[src1] & 0xFFFFFFFF) if aop else
+                     (self.r[src1] & 0xFFFFFFFF)) + ac0) >> 32
+            self.astat = (self.astat & ~(1 << 4)) | ((carry & 1) << 4)      # AC0
+            if (self.r[src0] >= 0) == (self.r[src1] >= 0 if not aop else self.r[src1] < 0) \
+                    and (s32(u) >= 0) != (self.r[src0] >= 0):
+                self.astat |= (1 << 2)                                       # AV0 overflow
             self.r[dst0] = sat32(v) if sat else s32(v)
             return
         if aopc == 0x07:                                     # Max/Min/Abs/Neg 32
@@ -356,6 +395,7 @@ class Machine:
 
     def step(self, h, o):
         self.steps += 1
+        self.pc &= 0xFFFFFFFF                              # a computed jump/return is never negative
         done_at = self.pc
         cont = self._step(h, o)
         if cont and self.loops:
@@ -699,14 +739,30 @@ class Machine:
                 target = self.p[reg]
                 if opc == 6:
                     self.rets = nxt
-                    self.p[6] -= 4
-                    self.st32(self.p[6], nxt)
                 self.pc = target
                 return True
             if opc in (1, 2):                              # RTS handled elsewhere; SSYNC/NOP-like
                 self.pc = nxt
                 return True
             if opc in (3, 4, 0xC):                         # CLI / STI / STI IDLE: no interrupts here
+                self.pc = nxt
+                return True
+            if opc == 7 or opc == 8:                       # CALL/JUMP (PC + Preg)
+                target = (self.pc + self.p[reg]) & 0xFFFFFFFF
+                if opc == 7:
+                    self.rets = nxt
+                self.pc = target
+                return True
+            if opc == 0xB:
+                # TESTSET: a test-and-set lock. Read the byte, set CC when it was clear, then set its
+                # top bit. Engines take one of these around their render body, so the OS's memory must
+                # start zeroed for the first note to render at all - which is exactly what unmapped
+                # audition memory gives us.
+                addr = self.p[reg] & 0xFFFFFFFF
+                off = self._off(addr)
+                byte = self.ld32(addr) & 0xFF if off is not None else self.external.get(addr, 0) & 0xFF
+                self.cc = 1 if byte == 0 else 0
+                self.st32(addr, (byte | 0x80))
                 self.pc = nxt
                 return True
             raise RuntimeError(f"ProgCtrl opc={opc:#x} at 0x{self.pc:08x}")
@@ -848,9 +904,10 @@ class Machine:
             delta = (s8 << 16) | swl
             target = (self.pc + delta * 2) & 0xFFFFFFFF
             if (h >> 8) & 1:                               # CALL
+                # silicon sets RETS and touches no memory: compiled leaf routines use [SP] and [SP+4]
+                # as scratch immediately after being called, which is only possible if the call did
+                # not push a return address. RTS is "return [RETS]".
                 self.rets = self.pc + 4
-                self.p[6] -= 4
-                self.st32(self.p[6], self.pc + 4)
                 self.pc = target
                 return True
             self.pc = target
@@ -879,9 +936,8 @@ class Machine:
             self.pc = nxt
             return True
 
-        if h == 0x0010:                                    # RTS
-            self.pc = self.ld32(self.p[6])
-            self.p[6] += 4
+        if h == 0x0010:                                    # RTS: return [RETS]
+            self.pc = self.rets
             return False
 
         # ldimm32: 0xDA00|reg, immH, immL, dummy
@@ -983,6 +1039,14 @@ class Machine:
                 val = 0
             elif gs == 4 and src == 7:                     # RETS
                 val = self.rets
+            elif gs == 4 and src == 1:                     # A0.W
+                val = s32(self.a[0])
+            elif gs == 4 and src == 3:                     # A1.W
+                val = s32(self.a[1])
+            elif gs == 4 and src == 0:                     # A0.X
+                val = (self.a[0] >> 32) & 0xFF
+            elif gs == 4 and src == 2:                     # A1.X
+                val = (self.a[1] >> 32) & 0xFF
             elif gs in (4, 6, 7):                          # ASTAT / other system registers
                 val = 0
             else:
@@ -994,7 +1058,15 @@ class Machine:
             elif gd == 2 and not ((h >> 5) & 1):
                 self.i[dst & 3] = val
             elif gd == 4 and dst == 7:                      # RETS
-                self.rets = val
+                self.rets = val & 0xFFFFFFFF               # unsigned: it is a return address
+            elif gd == 4 and dst == 1:                      # A0.W (low 32 bits, extension kept)
+                self.a[0] = s40((self.a[0] & ~0xFFFFFFFF) | (val & 0xFFFFFFFF))
+            elif gd == 4 and dst == 3:                      # A1.W
+                self.a[1] = s40((self.a[1] & ~0xFFFFFFFF) | (val & 0xFFFFFFFF))
+            elif gd == 4 and dst == 0:                      # A0.X
+                self.a[0] = s40((self.a[0] & 0xFFFFFFFF) | ((val & 0xFF) << 32))
+            elif gd == 4 and dst == 2:                      # A1.X
+                self.a[1] = s40((self.a[1] & 0xFFFFFFFF) | ((val & 0xFF) << 32))
             elif gd in (2, 3, 4, 6, 7):
                 pass                                       # M/B/L stacks, ASTAT, system: discarded
             else:
@@ -1061,22 +1133,28 @@ def call(m, entry, args, stack=(), limit=20_000_000):
         m.p[6] -= 4
         m.st32(m.p[6], a)
     m.p[6] -= 4
-    m.st32(m.p[6], 0xDEAD0000)             # sentinel return address
-    m.rets = 0xDEAD0000                    # and the register the callee sees
+    m.st32(m.p[6], 0xDEAD0000)             # the OS's frame word above the arguments
+    m.rets = 0xDEAD0000                    # RETS carries the return; nothing more is pushed
     m.pc = entry
     depth = m.steps
+    hosts = 0
     while m.steps - depth < limit:
+        m.pc &= 0xFFFFFFFF                     # registers hold signed 32-bit values; addresses are not
+        if m.pc == 0xDEAD0000:                 # RTS brought us back to the harness
+            return m.r[0]
         o = m._off(m.pc, 2)
-        if o is None:                          # jumped outside the window: treat as a host service
-            m.pc = m.ld32(m.p[6])
-            m.p[6] += 4
+        if o is None:
+            # Outside the window is a call into the OS. It returns the way any callee does now: through
+            # RETS, which the engine's own CALL set - popping the stack here was the old push-based
+            # convention and lands on stale data, spinning forever.
+            hosts += 1
+            if hosts > 64:
+                raise RuntimeError("engine keeps calling outside its window")
+            m.pc = m.rets
             m.r[0] = 0
             continue
+        hosts = 0
         h = int.from_bytes(m.mem[o:o + 2], "little")
-        if h == 0x0010:
-            m.pc = m.ld32(m.p[6])
-            m.p[6] += 4
-            return m.r[0]
         m.step(h, o)
     raise RuntimeError("call did not return")
 
@@ -1268,6 +1346,7 @@ def selftest():
 
 
 if __name__ == "__main__":
+    import opztime; opztime.watch("simulator selftest")
     if len(sys.argv) > 1 and sys.argv[1] == "selftest":
         sys.exit(selftest())
     print(__doc__)
