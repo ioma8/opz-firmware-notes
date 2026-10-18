@@ -158,6 +158,14 @@ Worth knowing before trusting any number here:
 - **Counting windows.** An earlier claim that the sine lookup "stops in later blocks" was an artefact of a window
   ending at `0x0800d400`; the table pointer walks past it.
 
+## The output is dominated by a block-rate artefact
+
+Worth stating once, because it explains most of the difficulty: at **every** pitch argument the dominant spectral peak in
+these engines' output is **exactly 750 Hz** - 48 kHz / 64, the block rate - with a contrast of roughly **500 to 1500**,
+while the musical tone measures only 20 to 70. Subtracting each block's least-squares offset and slope does not remove it
+(contrast stays 491-703), so it is not a per-block linear ramp. This is why plain peak-picking has misled so many
+measurements in this investigation, and why only a targeted contrast at a known frequency reads the note at all.
+
 ## Measurement is now the limiting factor
 
 Peak-based analysis cannot settle whether `chord` and `ep` track. A band-limited rFFT after a 64-sample
