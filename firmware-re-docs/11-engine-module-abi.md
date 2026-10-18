@@ -257,6 +257,15 @@ through post-incremented pointers, two words per frame.
 context**; `R1` feeds `0x1020408 * R1 + (R1 >> 4)` and is then scaled by a constant at `ctx+0x2c`, which is
 the shape of a note-to-frequency exponential with a per-module tuning factor.
 
+**Caveat on `onNoteOn` being called at all.** Tracing the OS side of the contract (doc 12 §12.10) puts a
+serious qualification on this section: the sequencer's note-start path calls `init` (`FUN_8012d278`) and then
+`render` (`FUN_8012e2c0`) every tick, and **nothing in that path invokes `onNoteOn`**. A complete scan of the
+image's 1020 indirect call/jump sites turns up no site that loads the instrument record's `+0x08` slot, which
+is where `onNoteOn` is stored. The export is resolved and its address is kept, so the engine must still
+*provide* it - the loader rejects a module without it - but on this evidence it is not what starts a note in
+the sequencer. Pitch therefore comes from `render`'s argument 2 (Q16), not from `onNoteOn`'s `R1`, which
+answers the question left open below in favour of `render` while leaving `onNoteOn`'s own arguments unverified.
+
 ### What still needs the device
 
 One thing: whether `onNoteOn`'s `R1` is a note number or an already-scaled frequency, and therefore whether an
