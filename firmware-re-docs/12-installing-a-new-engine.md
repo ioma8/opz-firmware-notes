@@ -848,3 +848,35 @@ Also corrected: `AC0` is ASTAT **bit 12**, not bit 4 (`instr16/05-CC2Stat.sinc`'
 AZ=0, AN=1, ACOCOPY=2, VCOPY=3, CC=5, AQ=6, AC0=12, AC1=13, AV0=16, ...). chord and digital read
 `CC = AC0` 57 times per render block, so the flag had been returning the always-zero path. Fixing its
 position is correct but does **not** change any engine's verdict on its own.
+
+### digital's render, read from the disassembly
+
+`digital.engine` (base `0x81be6000`, render `0x81be6160`) is a **pitch-band wavetable synth**, and its
+prologue explains why it had never sounded:
+
+```
+0x81be6168  R7 = R1                      ; R7 = render's pitch argument
+0x81be61e8  R0 = [P0 + 0x14]             ; P0 = 0x81be69f0, a table in the module
+0x81be61ec  CC = R0 <= R7                ; compare pitch against a band edge
+0x81be61f4  R0 = [P0 + 0x28]
+0x81be61f8  CC = R0 <= R7
+0x81be61fe  CC = R1 <= R7
+0x81be6200  R2 = 0xb / R0 = 0xa          ; select band index 10 or 11
+0x81be6218  P0 = P0 + (P2 << 2)          ; index the band table
+0x81be6222  R3 = R7 - R0                 ; pitch minus the band's base
+0x81be62b0  P1 = P1 + (P2 << 1)          ; 16-bit band entry at 0x81be69d4
+0x81be62b6  R1 = W[P1]; R3 = W[P1 + 2]
+```
+
+So the engine does consume the pitch argument, converting it against a table of band edges.
+
+What it does **not** do is keep any oscillator state between render calls: instrumenting the whole
+2608-byte module image across five consecutive renders shows **zero module words changing**, and the only
+cross-call state is four dwords of the engine state block. Its output therefore restarts every block, and
+the spectrum is dominated by the 64-sample block period (a 750 Hz artifact, since 48000/64 = 750), which is
+what every zero-crossing, autocorrelation and DFT measurement keeps locking onto.
+
+That is the concrete, still-open shape of the remaining factory-engine problem: these engines expect the
+voice's running phase to be maintained **outside** the engine, in the instrument record that
+`FUN_8012e2c0` owns, and no harness field tried so far (`amp+0x04/0x08/0x0c/0x10`, `record+0x160`,
+`+0x164`, `+0x168`, `+0x16c`, the whole 0x134-byte state block, params, note) supplies it.
