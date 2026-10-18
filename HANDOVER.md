@@ -651,3 +651,9 @@ tabulky na `0x8156f21c`). Ani přesná reprodukce tohoto volání efekty nerozje
 Tabulka i buffer (`0x8112b21c`) jsou BSS plněné až běžícím OS. Dále: výstup všech enginů dominuje artefakt na
 kmitočtu bloku (375–750 Hz) s kontrastem 500–1500×, hudební tón má 20–70×; žádná transformace na straně hostitele
 ho neodstraní. Celkem 152 zaznamenaných hypotéz.
+
+**Co je potřeba pro odblokování (upřesnění 2026-10-19):** repo umí číst *soubory* z jednotky (`opzcopyprobe`,
+`sergey-extraction/opzget.py`), ale **nemá žádný příkaz pro čtení paměti** — `opzpeek.py` pracuje jen s USB svazkem
+a v protokolu konzole žádná "read memory" operace není. Pro dump regionu `0x04xxxxxx` a běhových BSS
+(`0x8112b21c`, `0x8156f21c`) je tedy potřeba JTAG/SWD přes BF703 debug port, nebo dopsat do protokolu nový příkaz.
+Tohle je jediná chybějící věc; všechno ostatní je v repu hotové a ověřené.
