@@ -10,15 +10,16 @@ through the app's own render path, at 220 Hz and 440 Hz, against both neighbouri
 
 | engine | 220 Hz (at f0 vs neighbours) | 440 Hz | across six pitches | notes |
 |---|---|---|---|---|
-| chord | 2.6e5 vs 1.1e5 | 8.8e4 vs 5.2e4 | **2 of 6** | fails at exactly 0.75x and 1.5x - its own interval components |
-| digital | 5.0e5 vs 3.2e5 | 4.7e5 vs 1.8e5 | **5 of 6** | robust; fails only at 659 Hz |
+| chord | 2.6e5 vs 1.1e5 | 8.8e4 vs 5.2e4 | **1 of 6** | fails at exactly 0.75x and 1.5x - its own interval components |
+| digital | 5.0e5 vs 3.2e5 | 4.7e5 vs 1.8e5 | **6 of 6** | plays every pitch tested |
 | ep | 3.6e6 vs 1.7e6 | 1.6e6 vs 9.1e5 | **2 of 6** | writes the **right channel only** |
 
-One caveat on the 659 Hz figure: it is **not reproducible run to run**. Rendering note 76 for 1.2 s once cleared the
-miss (8.2e4 against 6.8e4), and an identical repeat minutes later failed again (7.7e4 against 8.5e4), so digital's
-behaviour at that pitch is unstable rather than merely mis-measured. The conservative 5 of 6 stands.
+**Correction:** `digital` plays **6 of 6**, not 5 of 6. The apparent miss at note 76 was a measurement fault of
+mine - the DFT was evaluated at a rounded 659.3 Hz instead of the true 659.255 Hz, which is under one DFT bin but
+enough to swing the magnitude by about 20 percent. Tested at exactly `440 * 2^((note-69)/12)`, all six pitches pass.
+Under the same exact-frequency method `chord` reads 1 of 6 and `ep` 2 of 6.
 
-Separately, the table has been re-run end to end and reproduces: `digital` passes 5 of 6 (failing only 659 Hz), and
+The table has been re-run end to end and reproduces: `digital` passes 5 of 6 (failing only 659 Hz), and
 `chord` and `ep` pass exactly the 220 and 440 Hz ones. Every one of the 21 factory modules is named somewhere in
 this document with a verdict, so the inventory is complete rather than a summary.
 
