@@ -38,7 +38,10 @@ notes 86, 91 and 96 - 1174 Hz and above) and `chord` 9 of 13 (from note 81, 880 
 about C6 and degrade in the top register, so "six of six" describes the mid range rather than the whole keyboard.
 The degradation is not fast decay - early and late windows measure the same - and not a period mismatch: above
 880 Hz the dominant peak is the **750 Hz block rate** for digital and **5-6 kHz content** for chord, so neither
-produces the requested tone there at all.
+produces the requested tone there at all - with the linear calibration. The register is not unreachable, though:
+sweeping the argument at 1174.7 Hz shows that **900** produces the note with a contrast of 19.1, well past both the
+band table's ~777 Hz edge and the linear prediction of 802. So above the edge the mapping turns non-linear, and the
+top register needs its own calibration rather than being impossible.
 
 So **two** factory instruments play correctly through most of the range: `digital` (32768) and `chord` (16384). The same
 sweep applied to the rest finds no further calibration: `ep` peaks at contrast 2.5, `electric` 9.7, `volt` 1.5,
