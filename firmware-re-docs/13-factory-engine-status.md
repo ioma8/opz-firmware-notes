@@ -14,7 +14,11 @@ through the app's own render path, at 220 Hz and 440 Hz, against both neighbouri
 | digital | 5.0e5 vs 3.2e5 | 4.7e5 vs 1.8e5 | **5 of 6** | robust; fails only at 659 Hz |
 | ep | 3.6e6 vs 1.7e6 | 1.6e6 vs 9.1e5 | **2 of 6** | writes the **right channel only** |
 
-That table has been re-run end to end and reproduces: `digital` passes 5 of 6 (failing only 659 Hz), and
+One caveat on the 659 Hz figure: it is **not reproducible run to run**. Rendering note 76 for 1.2 s once cleared the
+miss (8.2e4 against 6.8e4), and an identical repeat minutes later failed again (7.7e4 against 8.5e4), so digital's
+behaviour at that pitch is unstable rather than merely mis-measured. The conservative 5 of 6 stands.
+
+Separately, the table has been re-run end to end and reproduces: `digital` passes 5 of 6 (failing only 659 Hz), and
 `chord` and `ep` pass exactly the 220 and 440 Hz ones. Every one of the 21 factory modules is named somewhere in
 this document with a verdict, so the inventory is complete rather than a summary.
 
