@@ -1439,7 +1439,7 @@ def call(m, entry, args, stack=(), limit=20_000_000, lenient=False):
             # RETS, which the engine's own CALL set - popping the stack here was the old push-based
             # convention and lands on stale data, spinning forever.
             hosts += 1
-            if hosts > 64:
+            if hosts > HOST_CALL_LIMIT:
                 raise RuntimeError("engine keeps calling outside its window")
             m.pc = m.rets
             m.r[0] = 0
@@ -1448,6 +1448,12 @@ def call(m, entry, args, stack=(), limit=20_000_000, lenient=False):
         h = int.from_bytes(m.mem[o:o + 2], "little")
         m.step(h, o)
     raise RuntimeError("call did not return")
+
+
+# A factory engine that needs an OS service calls out of its window, gets 0 back, and may do so repeatedly.
+# 64 consecutive such calls used to raise, which reported a looping engine as a hard failure; raise this to
+# let such an engine run on and see whether it converges.
+HOST_CALL_LIMIT = 64
 
 
 def measure(note=69, seconds=1.0, engine="struck.engine"):

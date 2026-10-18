@@ -1601,3 +1601,17 @@ One detail explains the rest: `organ` with its `params` set to 0x7fffffff does m
 raises *"keeps calling outside its window"*. So these engines are not blocked by a missing seed; they are
 blocked because their rendering path issues a call the OS must answer. That is the same conclusion the four
 erroring engines reached from the other direction.
+
+### Why an out-of-window call cannot simply be stubbed
+
+`opzsim.call` already emulates an out-of-window call as a callee that returns 0 through RETS - it was never a
+hard failure. It only raised after 64 *consecutive* such calls. What that reveals is that these engines **spin**
+on a host call: each return is zero, so the caller's loop never converges.
+
+Stubbing the whole host-services table (all 13 dwords pointed at a bare `RTS` inside the window) changes nothing
+for `organ`, `analoga`, `saw013a` or `ministringshort` - they still raise, which also shows the offending calls
+do not go through those table entries. Raising the consecutive-call ceiling to 200,000 (now the `HOST_CALL_LIMIT`
+constant in `opzsim.py`) does not let any of them finish either.
+
+So the requirement is not "answer the call" but "answer it with the value the engine is waiting for" - a real
+OS service, not a stub.
