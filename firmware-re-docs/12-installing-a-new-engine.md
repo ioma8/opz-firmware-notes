@@ -1575,3 +1575,18 @@ that reads it - which is why an unseeded harness gets a one-line return. Seeding
 does get past the gate, but is not enough: organ stays at peak 0.0000 and emits only 1e-12, cluster stays at a
 constant 2e-4, and electric becomes audible (peak 0.0315 with 0x40000000) without tracking pitch at 220 or
 440 Hz. A further condition downstream of the gate is still unmet in all three.
+
+### The erroring engines really do want the OS to service them
+
+Mapping the OS image alongside the engine (the arrangement `opzos.build` uses) changes the failure of the four
+erroring modules. `analoga`, `saw013a` and `ministringshort` no longer report *"keeps calling outside its
+window"* - their out-of-window calls now land in real firmware code - and instead raise **"call did not
+return"**. `fm003b` never returns at all (it had not finished after 1,400 s).
+
+So these engines are not misreading a boundary; they issue a call that expects the OS to answer it, and no
+amount of seeding the module's own state supplies that answer. That is the same wall as the sequencer-state
+problem, now reached by a different route, and it also makes the OS-mapped route impractical for auditioning
+(one engine does not return at all).
+
+`electric` is separately ruled out: it responds to `state+0x10` only weakly (energy at 440 Hz moves between
+2.6e-4 and 4.3e-4) and never beats its 330/660 Hz neighbours, while its pitch argument has no effect whatever.
