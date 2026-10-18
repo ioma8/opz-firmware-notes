@@ -19,8 +19,11 @@ contrast peaks at **150**, not 300 - a table period of **16384 bytes** rather th
 period chord plays all four targets tested (contrast 18-44, its fifth only 2-7) and, through the app path, passes
 **6 of 6** pitches at contrast 17-31. `opzenginetool` now keeps a per-engine table period for this reason.
 
-So **two** factory instruments now play correctly across the range: `digital` (32768) and `chord` (16384). `ep` is
-insensitive to the pitch argument at every scale tried, so it stays at 2 of 6.
+So **two** factory instruments now play correctly across the range: `digital` (32768) and `chord` (16384). The same
+sweep applied to the rest finds no further calibration: `ep` peaks at contrast 2.5, `electric` 9.7, `volt` 1.5,
+`cluster` 1.0 and `organ` 2.2, while `sampleplayergain` and `synthsampler` are silent. Refining `electric` against
+a 220 Hz target gives an identical contrast of 38.9 at every argument from 19 to 112 - it ignores the pitch
+argument and produces a fixed spectrum, so no period will place it.
 
 **Correction:** `digital` plays **6 of 6**, not 5 of 6. The apparent miss at note 76 was a measurement fault of
 mine - the DFT was evaluated at a rounded 659.3 Hz instead of the true 659.255 Hz, which is under one DFT bin but
