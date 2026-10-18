@@ -452,10 +452,16 @@ So `toolkit/opzenginesweep.py` judges an engine only when tail RMS (energy *afte
 | verdict | count | meaning |
 |---|---|---|
 | `silent` | 10 | returns normally, writes nothing |
-| `needs-state` | 5 | calls a null function pointer, or leaves its module and never comes back |
+| `needs-state` | 4 | calls a null function pointer with no usable return address, or leaves its module |
 | `loops` | 5 | never returns within the step budget |
-| `flat` | 1 | `volt`: full-scale DC |
+| `flat` | 2 | `volt` is full-scale DC; `ministringshort` emits a saturated start-up blip then silence |
 | `AUDIO` | **0** | none |
+
+A null callback whose return address *is* valid is now emulated the way an in-window host call is: the
+service answers 0 and the engine continues. That is what `ministringshort` does - it calls null from
+`0x81bff33e` with `RETS = 0x81bff340` - and answering 0 turns its hard failure into the `flat` verdict above,
+which is the honest result: it keeps running and still writes no tone. Engines that arrive at address 0 with
+`RETS = 0` (chord, fm003b, reverb) returned through a zeroed `RETS` instead, and those stay `needs-state`.
 
 Two real defects were fixed while getting there:
 

@@ -1146,8 +1146,14 @@ def call(m, entry, args, stack=(), limit=20_000_000):
         if m.pc == 0xDEAD0000:                 # RTS brought us back to the harness
             return m.r[0]
         if m.pc == 0:
-            # A call through a zero pointer: the engine loaded a callback out of state the OS normally
-            # fills in, and the harness has supplied nothing there. Naming it beats spinning to the limit.
+            # A call through a zero pointer. When the return address is real, this is an OS callback the
+            # harness cannot supply: answer it with 0 and let the engine carry on, the same treatment an
+            # in-window host call gets. When it is not, something returned through a zeroed RETS and the
+            # engine is beyond recovery - say so rather than spinning.
+            if m._off(m.rets, 2) is not None:
+                m.pc = m.rets
+                m.r[0] = 0
+                continue
             raise RuntimeError("engine called a null function pointer: it wants OS-populated state")
         o = m._off(m.pc, 2)
         if o is None:
