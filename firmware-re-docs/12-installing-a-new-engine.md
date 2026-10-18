@@ -1640,3 +1640,21 @@ outcomes: every one still raises "keeps calling outside its window".
 So the loops are not waiting on a return value that a harness can supply. Combined with the previous section -
 the OS routines themselves now execute after the ProgCtrl STI fix - the conclusion is that these engines wait on
 **OS state created by a real boot**, and no single knob substitutes for it.
+
+### What organ's "loop" actually is: an out-of-range table index
+
+The out-of-window reads are not a host wait. Disassembling the loop explains them:
+
+```
+81b7d5bc  LSETUP(0x81b7d5c0, 0x81b7d5c0) LC0 = P1
+81b7d5c2  R1 = 0x64                              // divisor 100
+81b7d5c6  CALL 0x81b7ed08                        // organ's own routine, returns an index in R0
+81b7d5ce  P2 = 0x81b7f698                        // organ's table
+81b7d5da  P1 = P2 + (P1 << 2)                    // index * 4
+81b7d5dc  R0 = [P1]                              // <-- the "outside window" read
+```
+
+So the "keeps calling outside its window" failure is a **negative table index**: the routine at `0x81b7ed08`
+returns a value that runs off the front of organ's own table, and the read lands outside the module. It is a
+data-dependent fault inside organ's arithmetic, not a missing host service - which also explains why no
+`host_return` value or table stub changed anything.
