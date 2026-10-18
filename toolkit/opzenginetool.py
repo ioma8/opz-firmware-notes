@@ -53,10 +53,14 @@ DEFAULT_PORT = 8765
 
 def find_engines():
     seen, out = set(), []
-    for pat in ("engines-official/*.engine", "*.engine", "engines/*.engine", "build/*.engine"):
+    # engines-family and engines-effects are the verified substitutes for every factory slot; they were never
+    # discovered, so the tool offered only the partially working factory binaries and one root module.
+    for pat in ("engines-family/*.engine", "engines-effects/*.engine",
+                "engines-official/*.engine", "*.engine", "engines/*.engine", "build/*.engine"):
         for p in sorted(REPO.glob(pat)):
-            if p.name not in seen:
-                seen.add(p.name)
+            key = str(p)
+            if key not in seen:          # by full path: engines-family/volt.engine and engines-official/volt.engine
+                seen.add(key)            # are different modules that happen to share a file name
                 out.append(p)
     return out
 
@@ -85,7 +89,10 @@ def describe(path):
     # without that caveat would misrepresent them.
     support = ("factory: partial (see firmware-re-docs/13-factory-engine-status.md)"
                if "engines-official" in str(path) else "verified")
-    return {"path": str(path), "name": pathlib.Path(path).name, "raw": raw, "exports": ex,
+    label = pathlib.Path(path).name
+    if pathlib.Path(path).parent.name.startswith("engines"):
+        label = f"{pathlib.Path(path).parent.name}/{label}"    # disambiguate the two volt.engine files
+    return {"path": str(path), "name": label, "raw": raw, "exports": ex,
             "kind": kind, "base": mod["base"], "size": len(raw), "support": support,
             "md5": hashlib.md5(raw).hexdigest()}
 
