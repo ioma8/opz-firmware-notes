@@ -107,13 +107,17 @@ def render_clip(info, note, seconds, params):
     samples, envelope = [], []
     # an effect has nothing to process without an input: feed it a short burst of a decaying sine at the
     # note's frequency, so the effect's own character comes through instead of silence
-    inp = m.mem_base + Z.Machine.PARAM_OFF + 0x10000
-    state = m.mem_base + Z.Machine.SCRATCH_OFF + 0x800
-    for i in range(2 * BLOCK * 2):
-        t = i // 2
-        env = max(0.0, 1.0 - t / (FS * 0.25))
-        v = int(0.5 * env * math.sin(2 * math.pi * 440.0 * t / FS) * 2 ** 31)
-        m.st32(inp + 4 * i, v)
+    # the input buffer must NOT land on SCRATCH_OFF, which is where an instrument's context lives:
+    # writing there silenced struck.engine until this was spotted (measured pitch fell to the search floor)
+    inp = m.mem_base + Z.Machine.PARAM_OFF + 0x8000
+    state = m.mem_base + Z.Machine.PARAM_OFF + 0x9000
+    if fx:
+        for i in range(2 * BLOCK):
+            t = i
+            env = max(0.0, 1.0 - t / (FS * 0.25))
+            v = int(0.5 * env * math.sin(2 * math.pi * 440.0 * t / FS) * 2 ** 31)
+            m.st32(inp + 4 * i, v)
+            m.st32(inp + 4 * i + 4 * BLOCK * 2, v)
     for _ in range(int(seconds * FS / BLOCK)):
         for j in range(2 * BLOCK):
             m.st32(out + 4 * j, 0)
