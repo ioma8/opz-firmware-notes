@@ -303,3 +303,28 @@ repository (`~/.cache/opzenginetool/hostmem.json`):
 With that memory present, the engines get further but still do not all reach their sample loops; the remaining
 gap is the voice and envelope state the OS maintains around them, which is a separate piece of work and is
 recorded as such rather than papered over.
+
+### What still stands between a factory engine and sound
+
+Three things, and they are now named rather than suspected, which is the useful part:
+
+1. **`RETS` is a register, and I had it at zero.** `RTS` is `return [RETS]`, and `CALL` sets it; `LINK`
+   pushes it and `UNLINK` restores it. Compiled engines save it into a pointer (`MvRegToReg P2 = RETS`) before
+   calling helpers, and restore it before returning. With `RETS` reading as zero, any engine that touched it
+   returned to address 0 - which the harness then treated as a host call and silently terminated the render.
+   The interpreter now models it (`opzsim.Machine.rets`), set by every call form and by the harness entry.
+
+2. **They need the OS's sine table, which is now provided.** Covered above: `[host_table + 0xc]` is
+   `0x0800bb44`, a 2048-entry Q31 sine table in L2 SRAM. `opzhost.py` supplies it.
+
+3. **They need an accurate DSP accumulator, and this is the real remaining gap.** `chord`'s arithmetic helper
+   (`0x81be2c32`) is a software divider built on `Rot32` (rotate through carry), `MvToCC_STAT CC = AC0` and
+   `MvRegToRegCond`, with an `LSETUP` loop. It is not approximate arithmetic: it reads the accumulator carry
+   flag `AC0` on almost every iteration. The emulator tracks only what `CC2Stat` moves explicitly, so `AC0` is
+   always zero and every divide comes out wrong. Making factory engines audible means implementing the 40-bit
+   accumulators `A0`/`A1` with their flags (`AC0`, `AC1`, `AV0`, `AV1`, `AQ`) and the `Dsp32Mac` multiply-
+   accumulate family that drives them - a bounded but real piece of emulator work, not a tweak.
+
+Beyond the arithmetic, the engines also expect the per-voice and envelope state the OS maintains around them,
+which is the same class of problem as the host table: the harness has to supply it, and what to supply is only
+knowable by reverse engineering `PluginManager`/`Voice` rather than by reading an engine.

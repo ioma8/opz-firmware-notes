@@ -59,6 +59,7 @@ class Machine:
         self.cc = False
         self.i = [0, 0, 0, 0]        # I0-I3 index registers (B/L/loop regs stay 0)
         self.astat = 0                 # only what CC2Stat moves write; arithmetic flags are not maintained
+        self.rets = 0                  # RETS: the return-address register, set by every call
         self.loops = {}                 # LC0/LC1 frames: {'start', 'end', 'lc'}
         self.allow_external = False     # audition mode: unmapped addresses read 0 / write to a dict
         self.external = {}
@@ -398,6 +399,13 @@ class Machine:
                 else:
                     self.p[reg] = self.ld32(self.p[6])
                     self.p[6] += 4
+            elif grp == 4 and reg == 7:                    # RETS
+                if w:
+                    self.p[6] -= 4
+                    self.st32(self.p[6], self.rets)
+                else:
+                    self.rets = self.ld32(self.p[6])
+                    self.p[6] += 4
             else:
                 raise RuntimeError(f"push/pop of register group {grp} at 0x{self.pc:08x}")
             self.pc = nxt
@@ -690,6 +698,7 @@ class Machine:
             if opc in (5, 6):
                 target = self.p[reg]
                 if opc == 6:
+                    self.rets = nxt
                     self.p[6] -= 4
                     self.st32(self.p[6], nxt)
                 self.pc = target
@@ -823,6 +832,7 @@ class Machine:
             delta = (s8 << 16) | swl
             target = (self.pc + delta * 2) & 0xFFFFFFFF
             if (h >> 8) & 1:                               # CALL
+                self.rets = self.pc + 4
                 self.p[6] -= 4
                 self.st32(self.p[6], self.pc + 4)
                 self.pc = target
@@ -835,9 +845,9 @@ class Machine:
         # this the interpreter stops on a shipped engine's very first instruction.
         if h == 0xE800:
             fr = int.from_bytes(m[o + 2:o + 4], "little") * 4
-            rets = self.ld32(self.p[6])                    # CALL pushed it; RETS holds the same value
             self.p[6] -= 4
-            self.st32(self.p[6], rets)
+            self.st32(self.p[6], self.rets)                # LINK saves the return-address register
+            
             self.p[6] -= 4
             self.st32(self.p[6], self.p[7])
             self.p[7] = self.p[6]
@@ -848,7 +858,7 @@ class Machine:
             self.p[6] = self.p[7]
             self.p[7] = self.ld32(self.p[6])
             self.p[6] += 4
-            self.ld32(self.p[6])                           # pop RETS (discarded; RTS pops the real one)
+            self.rets = self.ld32(self.p[6])               # UNLINK restores RETS
             self.p[6] += 4
             self.pc = nxt
             return True
@@ -955,7 +965,9 @@ class Machine:
                 val = self.i[src & 3]
             elif gs == 3:                                  # B/L circular-buffer registers: not modelled
                 val = 0
-            elif gs in (4, 6, 7):                          # ASTAT / RETS / system registers
+            elif gs == 4 and src == 7:                     # RETS
+                val = self.rets
+            elif gs in (4, 6, 7):                          # ASTAT / other system registers
                 val = 0
             else:
                 raise RuntimeError(f"regmv: unsupported source class gs={gs} at 0x{self.pc:08x}")
@@ -965,6 +977,8 @@ class Machine:
                 self.p[dst] = val
             elif gd == 2 and not ((h >> 5) & 1):
                 self.i[dst & 3] = val
+            elif gd == 4 and dst == 7:                      # RETS
+                self.rets = val
             elif gd in (2, 3, 4, 6, 7):
                 pass                                       # M/B/L stacks, ASTAT, system: discarded
             else:
@@ -1032,6 +1046,7 @@ def call(m, entry, args, stack=(), limit=20_000_000):
         m.st32(m.p[6], a)
     m.p[6] -= 4
     m.st32(m.p[6], 0xDEAD0000)             # sentinel return address
+    m.rets = 0xDEAD0000                    # and the register the callee sees
     m.pc = entry
     depth = m.steps
     while m.steps - depth < limit:
