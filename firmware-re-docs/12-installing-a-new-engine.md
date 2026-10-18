@@ -742,6 +742,31 @@ to `state + 0x10` as the loop reads and writes its working buffer, and **returns
 caller**. It writes nothing to the output buffer yet - the samples go into its state working area - but it no
 longer destroys itself, and nothing about that change involved guessing at state contents.
 
+### The second silent decoder bug: Comp3op's pointer opcodes
+
+Chasing "chord writes a full block of zeros" produced a second real decoder fault. `Comp3op`
+(`instr16/15-Comp3op.sinc`) is one class with eight opcodes: 0-4 are data-register add, subtract, and, or
+and xor, while **5-7 write pointer registers** - `dst = s0 + s1`, `dst = s0 + (s1 << 1)` and
+`dst = s0 + (s1 << 2)`. The emulator treated every opcode as a data-register add or subtract, so chord's
+
+    PtrOp P1 = P2 + (P1 << 2)        (0x5e4a at 0x81be27c4)
+
+never touched `P1`. Its oscillator-table load therefore used the bare phase index - `0x37` - as a memory
+address, read zero from the hole below the module, and every computed sample was zero. It was invisible until
+the arguments and the `DspLdSt` mis-decode were fixed, which is why it survived so long.
+
+With the opcodes implemented, chord reads real table data (`0x565d942` at `0x800bc20`) and its loop produces a
+growing phase ramp and sine values, `crush` goes from all-zero to 13 distinct output values, and the sweep
+reports `crush` as detuned-but-signal rather than silent. Chord still writes zeros to the output buffer,
+because the copy path uses a value that remains zero - the next link in the chain - but the oscillator itself
+now works, which it never did before.
+
+**Hypothesis ledger.** `HYPOTHESES.csv` now carries this work as a running audit trail: four hypotheses about
+where the audio goes were disproved this round (state block, `I0`/`I1` presetting, short loop, no output
+writes), and the fifth - "the zero comes from the value chain" - was proved to be this decoder bug. Testing one
+hypothesis per iteration, with a written conclusion each time, is what stopped the same ground being covered
+twice.
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.

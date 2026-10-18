@@ -1105,12 +1105,32 @@ class Machine:
                     self.r[reg] = v
             self.pc = nxt
             return True
-        if sig == 0x5:                                     # addsub32
+        if sig == 0x5:                                     # Comp3op: 8 opcodes, 3 of them pointer ops
+            # instr16/15-Comp3op.sinc. opc 0-4 are the data-register forms (add, subtract, and, or, xor)
+            # and opc 5-7 write POINTER registers: dst = s0+s1, dst = s0 + (s1<<1), dst = s0 + (s1<<2).
+            # Treating every opc as data-register add/sub left chord's "PtrOp P1 = P2 + (P1 << 2)" as a
+            # no-op on P1, so its oscillator-table load used the bare index (0x37) as an address and every
+            # sample came out zero.
             opc = (h >> 9) & 7
             dst = (h >> 6) & 7
             s1 = (h >> 3) & 7
             s0 = h & 7
-            self.r[dst] = sat32(self.r[s0] + self.r[s1] if opc == 0 else self.r[s0] - self.r[s1])
+            if opc == 0:
+                self.r[dst] = s32(self.r[s0] + self.r[s1])
+            elif opc == 1:
+                self.r[dst] = s32(self.r[s0] - self.r[s1])
+            elif opc == 2:
+                self.r[dst] = s32(self.r[s0] & self.r[s1])
+            elif opc == 3:
+                self.r[dst] = s32(self.r[s0] | self.r[s1])
+            elif opc == 4:
+                self.r[dst] = s32(self.r[s0] ^ self.r[s1])
+            elif opc == 5:
+                self.p[dst] = s32((self.p[s0] + self.p[s1]) & 0xFFFFFFFF)
+            elif opc == 6:
+                self.p[dst] = s32((self.p[s0] + (self.p[s1] << 1)) & 0xFFFFFFFF)
+            else:
+                self.p[dst] = s32((self.p[s0] + (self.p[s1] << 2)) & 0xFFFFFFFF)
             self.pc = nxt
             return True
         if sig == 0x3:                                     # regmv
