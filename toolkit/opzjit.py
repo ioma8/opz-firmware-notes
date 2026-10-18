@@ -471,6 +471,9 @@ uint32_t OPZ_STUCK = 0;   /* set when a call exceeds its step budget, so a hung 
 int32_t  LC[2] = {0, 0};  /* loop counters, one per LSETUP slot; file scope so a stuck call can be inspected */
 uint32_t LB[2] = {0, 0}, LE[2] = {0, 0};
 int      HAVE[2] = {0, 0};
+/* Optional execution trace, for comparing the generated code against the interpreter: set OPZ_TRACING to
+   the number of instructions to record, then read OPZ_TRACE_N and OPZ_TRACE. */
+uint32_t OPZ_TRACE[4096]; int OPZ_TRACE_N = 0; int OPZ_TRACING = 0;
 /* leading sign-redundant bits, matching opzsim's _sgncount: lzcount(v)-1 for v>=0, lzcount(~v)-1 for v<0 */
 static int SGNB(int32_t v){ uint32_t u = (v < 0) ? ~(uint32_t)v : (uint32_t)v; int n = 0;
     while (n < 32 && (((u >> (31 - n)) & 1u) == 0)) n++; return n - 1; }
@@ -548,6 +551,7 @@ def emit(raw):
            "    long _steps = 0;",
            "    for (;;) {",
            "        if (++_steps > 4000000L) { OPZ_STUCK = pc; return -2; }",
+           "        if (OPZ_TRACING && OPZ_TRACE_N < OPZ_TRACING) OPZ_TRACE[OPZ_TRACE_N++] = pc;",
            "        switch (pc) {"]
     for a in sorted(seen):
         ln, code = seen[a]
