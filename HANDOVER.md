@@ -627,3 +627,18 @@ engine ignoruje, `.plz` soubory jsou nulové.
 (3) výslovné zadání na více­týdenní emulaci OS služeb, (4) přijetí náhradních enginů. Zařízení je podle sekce
 výše funkční a čtení z něj funguje (`opzcopyprobe`, `sergey-extraction/opzget.py`) — dump se tedy jeví jako
 nejschůdnější cesta.
+
+### Jak spustit testy (2026-10-19)
+
+Osm `test_*.py` v kořeni dřív nešlo spustit vůbec — importovaly `opzfarm`/`opzsim`/`opzassemble` z `/tmp`, které už
+neexistuje. Cesty jsou přepsané na repozitář a sedm z nich potřebuje `pyserial` (systémové `pip` ho odmítá kvůli
+PEP 668, takže patří do venv):
+
+```
+python3 -m venv /tmp/opzvenv && /tmp/opzvenv/bin/pip install pyserial
+for t in test_*.py; do /tmp/opzvenv/bin/python "$t" >/dev/null && echo "PASS $t" || echo "FAIL $t"; done
+```
+
+Stav: **6 z 8 prochází.** `test_opzfarm.py` a `test_success.py` padají na vlastních očekáváních vůči současnému
+`opzassemble.py` (chybí `ZIPWALK` řádek v zachyceném výstupu) — to je starý nesoulad testů, ne regrese z práce na
+enginech.
