@@ -631,6 +631,32 @@ Two things worth recording because they close off avenues:
   So the amp contents are not the missing piece either, and what remains is the *state block's* contents after
   `init` - the one thing this harness hands over empty.
 
+### The ABI detail that made every factory engine look state-starved
+
+For many rounds the sweeping conclusion here was "the factory engines are silent because their per-voice state
+is missing". That conclusion was wrong, and the correction is simple: **this ABI pushes every argument onto the
+stack as well as passing the first three in `R0`-`R2`, and the engines read them from the stack.**
+
+The evidence is in the offsets. `FUN_8012e2c0` calls an instrument as
+
+    (*render)(out, record[0x168], target - record[0x168] >> 6, record + 0x48, params, record + 0x30)
+
+and chord's prologue reads its context at `[FP+0x14]`, parameters at `[FP+0x18]`, amp at `[FP+0x1c]`. `LINK`
+pushes `RETS` and `FP` and sets `FP = SP`, so those offsets are stack words 4, 5 and 6 - i.e. the engine reads
+the *stack copies* of arguments 4, 5 and 6. A harness that pushes three words (`ctx, prm, amp`, the register
+arguments only) leaves those slots zero, and the engine sees no state even though it was passed correctly in
+registers.
+
+Switching to six stack words changed the sweep immediately: with the same state, same amp values and same
+engine files, `digital` and `electric` went from writing nothing to writing signal, `cluster` from silence to a
+0.016 peak, and several engines that previously hung now run far enough to fail on a concrete decoder gap
+instead (`analoga` on instruction `0xf64f`). The current table is 6 silent, 5 loops, 5 needs-state, 4 flat,
+1 error, 0 fully audible - still not tone, but no longer because the arguments were in the wrong place.
+
+Two decoder gaps surfaced in the same pass and are now implemented: `Dsp32Shf` `dsSopc=0x07` (**ExpAdj**, a
+normalising helper: the sign-bit count of `src0` - or of one half, or the worse of both - clamped by `src1`),
+and `RegMv`'s M-register forms (source index in bits 0-1, destination in bits 3-4).
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.

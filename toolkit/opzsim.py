@@ -64,6 +64,7 @@ class Machine:
         self.p = [0] * 8
         self.cc = False
         self.i = [0, 0, 0, 0]        # I0-I3 index registers (B/L/loop regs stay 0)
+        self.mreg = [0, 0, 0, 0]     # M0-M3 modifier registers (circular addressing not modelled)
         self.astat = 0                 # only what CC2Stat moves write; arithmetic flags are not maintained
         self.rets = 0                  # RETS: the return-address register, set by every call
         self.a = [0, 0]                # A0/A1: 40-bit accumulators, signed
@@ -141,6 +142,15 @@ class Machine:
 
 
     # ---- 32-bit DSP helpers, all read out of the SLEIGH sources -------------------------------
+
+    @staticmethod
+    def _sgncount(v):
+        """SIGNBITS: leading sign-redundant bits, lzcount(v)-1 for v>=0 and lzcount(~v)-1 for v<0."""
+        probe = (v & 0xFFFFFFFF) if v >= 0 else (~v) & 0xFFFFFFFF
+        bits = 0
+        while bits < 32 and not (probe >> (31 - bits)) & 1:
+            bits += 1
+        return bits - 1
 
     @staticmethod
     def _sat40(v):
@@ -241,11 +251,22 @@ class Machine:
                 v = (v & 0xFFFF) - (0x10000 if v & 0x8000 else 0)
             elif sop == 2:
                 v = ((v >> 16) & 0xFFFF) - (0x10000 if v & 0x80000000 else 0)
-            probe = v if v >= 0 else ~v
-            bits = 0
-            while bits < 32 and not (probe >> (31 - bits)) & 1:
-                bits += 1
-            self.r[dst] = bits - 1
+            self.r[dst] = self._sgncount(v)
+        elif sopc == 0x07:                                   # ExpAdj: dst = MIN(sign bits, src1)
+            # instr32/28-Dsp32Shf.sinc dsExpAdj: the "sign bits" of src0 (or of one half, or the worse of
+            # both halves when the (V) form is used) clamped by src1 - a normalisation helper.
+            raw0 = self.r[src0]
+            if sop == 1:
+                lo = (raw0 & 0xFFFF) - (0x10000 if raw0 & 0x8000 else 0)
+                hi = ((raw0 >> 16) & 0xFFFF) - (0x10000 if raw0 & 0x80000000 else 0)
+                bits = min(self._sgncount(lo), self._sgncount(hi))
+            elif sop == 2:
+                bits = self._sgncount((raw0 & 0xFFFF) - (0x10000 if raw0 & 0x8000 else 0))
+            elif sop == 3:
+                bits = self._sgncount(((raw0 >> 16) & 0xFFFF) - (0x10000 if raw0 & 0x80000000 else 0))
+            else:
+                bits = self._sgncount(raw0)
+            self.r[dst] = min(bits, self.r[src1])
         elif sopc == 0x0A:                                   # Extract: len bits at offset off from src1
             spec = self.r[src0] & 0xFFFFFFFF
             length, off = spec & 0x1F, (spec >> 8) & 0x1F
@@ -1044,6 +1065,8 @@ class Machine:
                 val = self.p[src]
             elif gs == 2 and not src_is_m:                 # gs=2, srcH=0 -> I registers
                 val = self.i[src & 3]
+            elif gs == 2:                                  # gs=2, srcH=1 -> M registers (bits 0-1)
+                val = self.mreg[src & 3]
             elif gs == 3:                                  # B/L circular-buffer registers: not modelled
                 val = 0
             elif gs == 4 and src == 7:                     # RETS
@@ -1066,6 +1089,8 @@ class Machine:
                 self.p[dst] = val
             elif gd == 2 and not dst_is_m:
                 self.i[dst & 3] = val
+            elif gd == 2:                                  # M registers (bits 3-4)
+                self.mreg[dst & 3] = val
             elif gd == 4 and dst == 7:                      # RETS
                 self.rets = val & 0xFFFFFFFF               # unsigned: it is a return address
             elif gd == 4 and dst == 1:                      # A0.W (low 32 bits, extension kept)

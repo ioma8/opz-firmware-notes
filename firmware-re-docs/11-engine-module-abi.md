@@ -257,6 +257,18 @@ through post-incremented pointers, two words per frame.
 context**; `R1` feeds `0x1020408 * R1 + (R1 >> 4)` and is then scaled by a constant at `ctx+0x2c`, which is
 the shape of a note-to-frequency exponential with a per-module tuning factor.
 
+**Every argument is passed on the stack as well as in a register.** This is the single most important
+detail in this document and it was missing: on this ABI the caller pushes *all* of an engine entry point's
+arguments onto the stack, and the first three are *also* placed in `R0`-`R2`. Compiled engines read them back
+from the stack, not from the registers. `chord`'s render prologue takes its context from `[FP+0x14]`, its
+parameters from `[FP+0x18]` and its amp object from `[FP+0x1c]`, and since `LINK` places `FP` eight bytes above
+the first stack word those offsets correspond exactly to stack words 4, 5 and 6 of a six-argument call. A
+harness that passes only three stack words leaves all three slots reading zero, and the engine then behaves as
+if it had been handed no state at all - which is precisely the "engines are silent, they must need OS state"
+symptom that dominated earlier investigation. Register-only argument passing is not sufficient, and a working
+call is `render(out, pitch_q16, bend, ctx, params, amp)` with stdout-style stack `(out, pitch_q16, bend, ctx,
+params, amp)` and `R0..R2 = out, pitch_q16, bend`.
+
 **Caveat on `onNoteOn` being called at all.** Tracing the OS side of the contract (doc 12 §12.10) puts a
 serious qualification on this section: the sequencer's note-start path calls `init` (`FUN_8012d278`) and then
 `render` (`FUN_8012e2c0`) every tick, and **nothing in that path invokes `onNoteOn`**. A complete scan of the

@@ -56,15 +56,22 @@ def play(mod_path, note=NOTE, freq=FREQ, blocks=BLOCKS):
         for j in range(2 * S.BLOCK):
             m.st32(out + 4 * j, 0)
         if kind == "render":
-            # three stack words, no padding: context, parameters, amp - padding shifts every slot and
-            # turns a working engine silent, which is exactly what an earlier sweep mistook for missing OS state
-            Z.call(m, ex["render"], [out, int(freq) << 16, 0], stack=(ctx, prm, amp), limit=150000)
+            # The Blackfin ABI passes every argument on the stack as well as in R0-R2, and factory
+            # engines read them from the stack: chord takes its context at [FP+0x14], its parameters at
+            # [FP+0x18] and its amp at [FP+0x1c], which only line up when all six words are pushed
+            # (LINK puts FP eight bytes above the first stack word). Pushing three leaves those slots
+            # zero, which is why the engines looked blind to their own state for so long.
+            freq_q16 = int(freq) << 16
+            Z.call(m, ex["render"], [out, freq_q16, 0],
+                   stack=(out, freq_q16, 0, ctx, prm, amp), limit=200000)
         else:
             for j in range(S.BLOCK):
                 v = 0.5 * math.sin(2 * math.pi * freq * (blk * S.BLOCK + j) / 48000)
                 m.st32(fx_in + 4 * j, int(v * (1 << 31)) & 0xFFFFFFFF)
-            # renderFX(ctx, freq, state, in, out): in/out are the deepest two stack words
-            Z.call(m, ex["renderFX"], [ctx, int(freq) << 16, fx_state, fx_in, out], limit=150000)
+            # same convention for effects: all five arguments on the stack, first three also in registers
+            freq_q16 = int(freq) << 16
+            Z.call(m, ex["renderFX"], [ctx, freq_q16, fx_state, fx_in, out],
+                   stack=(ctx, freq_q16, fx_state, fx_in, out), limit=200000)
         blk_samples = [m.ld32(out + 8 * j) / 2**31 for j in range(S.BLOCK)]
         if blk == 0:
             first_block = blk_samples
