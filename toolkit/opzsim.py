@@ -1015,7 +1015,15 @@ class Machine:
                 dst = (h2 >> 6) & 7
                 src0 = (h2 >> 3) & 7
                 src1 = h2 & 7
-                # the (T) extraction: rounding() clears the low four bytes, then 32-bit truncation
+                # instr32/26-Dsp32Mult.sinc builds res = (src0 * src1) << 1 and then takes bits 63:32, so
+                # the product is shifted by 31, not 32. Shifting by 32 halved every multiply in every
+                # engine and turned small products into zero, which is what kept chord's oscillator silent.
+                # Scaling is selected by the modifier field (dxMmod), not by the class: the SLEIGH's
+                # fractional forms build res = (src0 * src1) << 1 and take bits 63:32, i.e. >> 31, while
+                # the form `struck` emits - validated against real hardware, which sounds correct at
+                # 110/220/440/880 Hz with the old behaviour - needs >> 32. Shifting the whole class by 31
+                # made struck's pitch and decay tests fail, so this stays at 32 until chord's modifier is
+                # decoded and the two forms are separated properly.
                 self.r[dst] = sat32((self.r[src0] * self.r[src1]) >> 32)
             elif sig2 == 0:                                  # Dsp32Mac
                 self._mac(h, h2)

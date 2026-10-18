@@ -767,6 +767,25 @@ writes), and the fifth - "the zero comes from the value chain" - was proved to b
 hypothesis per iteration, with a written conclusion each time, is what stopped the same ground being covered
 twice.
 
+### The multiply-scaling question, and why it cannot be answered class-wide
+
+`Dsp32Mult` is the next suspect after the oscillator started working. `instr32/26-Dsp32Mult.sinc` builds
+`res = (src0 * src1) << 1` and then extracts bits 63:32, which is a right shift by **31**, while the emulator
+shifts by **32**.
+
+The two readings disagree, and the evidence is split in a way that rules out a class-wide answer:
+
+* with `>> 31`, `crush` gets louder and more distinct (peak 0.014 → 0.026, 12 distinct values), and chord's
+  products stop vanishing;
+* with `>> 31`, **`struck` fails ten tests** - pitch 2304 Hz where 440 was asked, decay buckets never reaching
+  T60 - while with `>> 32` it passes all ten and matches the hardware behaviour it was validated against on the
+  device (110/220/440/880 Hz, measured within 0.01%).
+
+An engine that sounds correct on real silicon is the strongest evidence available here, so the shift stays at
+32 and the hypothesis is recorded as *need more info*: the scaling must be selected by the per-instruction
+modifier field (`dxMmod`), with the fractional forms shifting by 31 and the form `struck` emits shifting by 32.
+Splitting them is the next step, and it needs chord's modifier decoded rather than a class-wide constant.
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.
