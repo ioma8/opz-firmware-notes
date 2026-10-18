@@ -271,7 +271,8 @@ async function init() {
   engines.forEach(e => {
     const d = document.createElement('div');
     d.className = 'eng';
-    d.innerHTML = `<span>${e.name}</span><span>${e.kind}, ${e.size} B</span>`;
+    const note = e.support && e.support !== 'verified' ? ` <em style="opacity:.7">(${e.support})</em>` : '';
+    d.innerHTML = `<span>${e.name}</span><span>${e.kind}, ${e.size} B${note}</span>`;
     if (!e.ok) d.classList.add('bad');
     d.onclick = () => { document.querySelectorAll('.eng').forEach(x => x.classList.remove('on'));
                         d.classList.add('on'); select(e.name); };
