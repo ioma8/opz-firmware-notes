@@ -88,8 +88,13 @@ Three things had to be right, and each was measured rather than assumed:
    `amp+0x0c = -0x40000000`, `amp+0x10 = 2` before every tick, and engines render through the OS's shared sine
    table and host-services table. Leave either out and engines read zeros and emit silence.
 
-`opzenginetool.render_clip` applies all three for modules under `engines-official`; `toolkit/opzfactorycheck.py`
-verifies the result.
+`opzenginetool.render_clip` applies all three for modules under `engines-official`, with a per-engine table period
+(see below); `toolkit/opzfactorycheck.py` verifies the result.
+
+**Verified end to end through the app itself**, not only in the harness: requesting `/api/render` from the running
+`opzenginetool` and decoding the served WAV gives `digital` a contrast of **179** at 220 Hz and **248.6** at 440 Hz
+(peak 0.124), and `chord` **23.8** and **28.2** (peak 0.068). Both therefore work as shipped - engine, app path and
+served audio - for those notes.
 
 ## Why the other ten do not
 
