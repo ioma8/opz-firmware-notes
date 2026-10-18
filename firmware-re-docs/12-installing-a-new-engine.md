@@ -572,6 +572,39 @@ call in the synth region (201 sites scanned), so it is reached through a registe
 the remaining candidates are the `+4`/`+8`-loading sites in `FUN_8010fd48` (`0x80110032`, loads `[P1+0x8]`)
 and `FUN_801149e4`/`FUN_80115fb4` (`0x80114a26`, `0x8011601a`, load `[P1+0x4]` with `R2 = FP`).
 
+### The render call, read out of the OS
+
+`FUN_8012e2c0(param_1, param_2, param_3)` is the per-voice engine tick - it advances the envelope, converts
+the level, and then dispatches into the engine:
+
+```c
+(**(code **)(param_1 + 4))(
+    param_2,                                    /* output buffer                        */
+    *(int *)(param_1 + 0x168),                  /* pitch, Q16, from the record          */
+    iVar7 - *(int *)(param_1 + 0x168) >> 6,     /* bend: target - current, >> 6         */
+    param_1 + 0x48,                             /* the engine's STATE                   */
+    param_3,                                    /* the params object                    */
+    param_1 + 0x30);                            /* the AMP object                       */
+```
+
+That fixes, in one place, everything doc 11 has been inferring from engine behaviour:
+
+* `render(out, pitch_q16, bend, state, params, amp)` - six arguments, matching the six-slot stack the
+  harness already builds.
+* the state is `record + 0x48`, exactly the pointer `init` receives;
+* **the amp object is `record + 0x30`, i.e. `state - 0x18`** - it is not an arbitrary pointer the OS hands
+  over separately but a fixed 24-byte slice of the same record, immediately below the state;
+* pitch comes from `record + 0x168` and the bend is the difference between the envelope's target and that
+  pitch, shifted right by 6.
+
+The surrounding envelope work is what populates the amp object before the call - `FUN_8012e0a4` stores into
+`amp+0x10` (`[P5 + 0x40]` with `P5 = record + 0x30`), a byte at `amp+0x14`, and keeps the working values in
+`record+0x160`, `+0x164`, `+0x16c`. Building the record exactly as the OS does (`+0x00/+0x04/+0x08/+0x0c`
+entry points, amp at `+0x30`, state at `+0x48`, zeroed elsewhere) and calling with the OS's own six arguments
+still renders silence for all thirteen instruments, with `volt` alone reaching full-scale DC - so the ABI is
+no longer a guess, and the gap is now strictly the *contents* of the amp object and of the state after the
+OS's envelope pass.
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.
