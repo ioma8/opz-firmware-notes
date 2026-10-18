@@ -1446,7 +1446,13 @@ def call(m, entry, args, stack=(), limit=20_000_000, lenient=False):
             m.pc = m.rets
             # A host call returns whatever `host_return` says: 0 by default, and a harness can set it to a
             # buffer pointer when the engine uses the result as one (it calls through it immediately).
-            m.r[0] = getattr(m, "host_return", 0)
+            if getattr(m, "host_bump", 0):
+                # act as a bump allocator: hand back a fresh address per host call, so an engine that asks the
+                # OS for a buffer gets one instead of zero
+                m.r[0] = m.host_bump
+                m.host_bump += getattr(m, "host_bump_step", 0x10000)
+            else:
+                m.r[0] = getattr(m, "host_return", 0)
             continue
         hosts = 0
         h = int.from_bytes(m.mem[o:o + 2], "little")
