@@ -1629,3 +1629,14 @@ executes garbage (`0x7980`) - a call through OS data that is zero in an unbooted
 
 So the engines are waiting on OS *state*, not merely OS code: the routines exist and can be executed, but the
 data they consult is uninitialised without a real boot.
+
+### The host call's return value is not what the looping engines wait on
+
+`opzsim` now exposes `Machine.host_return` (default 0, so behaviour is unchanged) to control what an
+out-of-window call hands back, in case an engine uses it as a buffer pointer and calls through it. Running
+`organ`, `analoga`, `saw013a` and `ministringshort` with 0, `0x81b00000` and `0x81500000` gives twelve identical
+outcomes: every one still raises "keeps calling outside its window".
+
+So the loops are not waiting on a return value that a harness can supply. Combined with the previous section -
+the OS routines themselves now execute after the ProgCtrl STI fix - the conclusion is that these engines wait on
+**OS state created by a real boot**, and no single knob substitutes for it.
