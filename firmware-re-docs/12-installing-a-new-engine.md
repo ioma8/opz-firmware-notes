@@ -605,6 +605,32 @@ still renders silence for all thirteen instruments, with `volt` alone reaching f
 no longer a guess, and the gap is now strictly the *contents* of the amp object and of the state after the
 OS's envelope pass.
 
+### What the OS writes into a record when a note starts
+
+`FUN_8012e0a4` is the voice's note-start routine (called by the instrument manager right after it fills the
+record). It writes the record fields the tick then reads:
+
+| field | value at note start |
+|---|---|
+| `record + 0x40` (**`amp+0x10`**) | `5` - the amp state the engines test against zero |
+| `record + 0x38` (**`amp+0x08`**) | `0x7f000000` - a full-scale gain |
+| `record + 0x3c` (**`amp+0x0c`**) | `-(record[0x34] * [0x815c8088])` |
+| `record + 0x44`, `+0x45` (**`amp+0x14`**, **`amp+0x15`**) | bytes from the caller |
+| `record + 0x168` | the pitch passed as `render`'s second argument |
+| `record + 0x160`, `+0x164` | envelope level and target |
+| `record + 0x16c` | envelope counter |
+| `record + 0x18`, `+0x20`, `+0x28`, `+0x10`, `+0x25`, `+0x2c`, `+0x2d`, `+0x178` | assorted voice state |
+
+Two things worth recording because they close off avenues:
+
+* **This function contains no indirect call**, so the OS's note-on path does not invoke the engine's
+  `onNoteOn` export: it calls `init` (in `FUN_8012d278`) and `render` (in `FUN_8012e2c0`) and nothing else. The
+  export exists in the plug object and must be called from somewhere, but it is not part of starting a note.
+* Feeding the tick the OS's own note-start amp values (`amp+0x08 = 0x7f000000`, `amp+0x10` swept 1-6,
+  `record+0x168` = 440 in Q16) still renders `0.0000` for all thirteen instruments, `volt` alone reaching DC.
+  So the amp contents are not the missing piece either, and what remains is the *state block's* contents after
+  `init` - the one thing this harness hands over empty.
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.
