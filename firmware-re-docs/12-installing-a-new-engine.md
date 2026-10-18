@@ -722,6 +722,26 @@ the `LINK` allocates, or that one of the pointer values feeding `P0` differs fro
 at the same narrow check - the value of `P0`'s base against a disassembly of `0x81be2620..0x81be2760` - rather
 than at engine state.
 
+### The decoder bug behind chord's self-destruction: `DspLdSt` mis-claimed as `LdSt`
+
+Chord overwrote its own caller's frame for many rounds. The cause was not engine state: it was the
+interpreter decoding `[I0++]` as a `P0` increment.
+
+`DspLdSt` (`instr16/19-DspLdSt.sinc`) carries its signature `0x27` in bits 10-15 and covers `[I0++]`,
+`[I0--]`, `[I0]` and `[I0++M]`. The 16-bit `LdSt` class uses bits 12-15 = `0x9`, which is a *prefix* of that
+signature, so `0x9c02` - `R2 = [I0++]` - matched `LdSt` first and was executed as a load through `P0` with
+post-increment. Chord's loop loads three samples per iteration that way, so each iteration walked `P0` another
+twelve bytes up its own frame until the stores at `[P0 + 4]` and `[P0 + 8]` landed on the saved `FP` and
+`RETS`, and the final `RTS` jumped into the engine's state block. Every earlier attempt to explain that damage
+with engine state was chasing a symptom.
+
+With `DspLdSt` implemented ahead of `LdSt` (including the `[I0++M]` modifier-register form and the 16-bit
+half-register loads and stores, which needed real 2-byte accessors so a half store cannot clobber its
+neighbour), chord runs its 8,863 instructions, reaches its 64-frame loop, advances `I0`/`I1` from `state + 8`
+to `state + 0x10` as the loop reads and writes its working buffer, and **returns through UNLINK/RTS to its
+caller**. It writes nothing to the output buffer yet - the samples go into its state working area - but it no
+longer destroys itself, and nothing about that change involved guessing at state contents.
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.

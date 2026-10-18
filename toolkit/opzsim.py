@@ -111,6 +111,32 @@ class Machine:
             return s32(self.external.get(addr & 0xFFFFFFFF, 0))
         return s32(int.from_bytes(self.mem[o:o + 4], "little"))
 
+    def _rd16(self, addr):
+        """16-bit read, used by DspLdSt's half-register forms."""
+        addr &= 0xFFFFFFFF
+        o = self._off(addr, 2)
+        if o is None:
+            v = self.ld32(addr & ~3) & 0xFFFFFFFF
+            return (v >> (8 * (addr & 3))) & 0xFFFF if (addr & 3) < 3 else ((v >> 16) & 0xFFFF)
+        return int.from_bytes(self.mem[o:o + 2], "little")
+
+    def _wr16(self, addr, v):
+        """16-bit write, so a half-register store cannot clobber its neighbour."""
+        addr &= 0xFFFFFFFF
+        v &= 0xFFFF
+        o = self._off(addr, 2)
+        if o is None:
+            base = addr & ~3
+            old = self.ld32(base) & 0xFFFFFFFF
+            shift = 8 * (addr & 3)
+            if (addr & 3) == 3:
+                new = (old & 0x00FFFFFF) | (v << 24)
+            else:
+                new = (old & ~(0xFFFF << shift)) | (v << shift)
+            self.external[base] = new & 0xFFFFFFFF
+            return
+        self.mem[o:o + 2] = v.to_bytes(2, "little")
+
     def st32(self, addr, v):
         o = self._off(addr)
         if o is None:
@@ -1017,6 +1043,45 @@ class Machine:
                 off -= 0x1000
             self.pc = self.pc + off * 2
             return True
+        # DspLdSt (instr16/19-DspLdSt.sinc): sig 0x27 at bits 10-15 - the class for [I0++], [I0--], [I0]
+        # and [I0++M]. It MUST be tested before the 16-bit LdSt class, whose signature at bits 12-15 (0x9)
+        # is a prefix of it: decoding these as LdSt advanced P0 instead of I0, and chord's P0 then drifted
+        # up its own frame until it overwrote the saved RETS and returned into its state block.
+        if (h >> 10) == 0x27:
+            w = (h >> 9) & 1
+            aop = (h >> 7) & 3
+            mm = (h >> 5) & 3
+            ireg = (h >> 3) & 3
+            reg = h & 7
+            idx = self.i[ireg] & 0xFFFFFFFF
+            if aop == 3:                                   # [Ireg + Mreg]: no pointer update
+                addr = (idx + (self.mreg[mm] & 0xFFFFFFFF)) & 0xFFFFFFFF
+            else:
+                addr = idx
+                step = 2 if mm in (1, 2) else 4
+                if aop == 0:
+                    self.i[ireg] = s32(idx + step)
+                elif aop == 1:
+                    self.i[ireg] = s32(idx - step)
+            if w == 0:
+                if mm == 0:
+                    self.r[reg] = self.ld32(addr)
+                else:
+                    half = self._rd16(addr)
+                    if mm == 1:
+                        self.r[reg] = s32((self.r[reg] & 0xFFFF0000) | half)
+                    else:
+                        self.r[reg] = s32((self.r[reg] & 0xFFFF) | (half << 16))
+            else:
+                if mm == 0:
+                    self.st32(addr, self.r[reg] & 0xFFFFFFFF)
+                elif mm == 1:
+                    self._wr16(addr, self.r[reg] & 0xFFFF)
+                else:
+                    self._wr16(addr, (self.r[reg] >> 16) & 0xFFFF)
+            self.pc = nxt
+            return True
+
         if sig == 0x9:                                     # ldst
             sz = (h >> 10) & 3
             store = (h >> 9) & 1
