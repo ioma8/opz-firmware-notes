@@ -108,7 +108,11 @@ def link(frame_bytes):
 
 
 def unlink():
-    return _u16(0xE801)
+    """UNLINK. Linkage is a 32-bit class (instr32/35-Linkage.sinc): lnkSig is bits 1-15 of the first
+    halfword (0x7400, so 0xe801 with R=1) and the SECOND halfword is the frame word, which UNLINK
+    ignores but still consumes. Emitting only the first halfword put the following instruction one
+    halfword early, so an UNLINK followed by RTS executed the RTS' halfword as data."""
+    return _u16(0xE801, 0x0000)
 
 
 def rts():
@@ -222,7 +226,7 @@ SELFTEST = [
     ("[P4++] = R0", lambda: ldst("P4", "R0", store=True), bytes.fromhex("2092"), "chord render 0x81be28ba"),
     ("R2 = [P0++]", lambda: ldst("P0", "R2"), bytes.fromhex("0290"), "volt render 0x81bf0346"),
     ("R4 = [P0++]", lambda: ldst("P0", "R4"), bytes.fromhex("0490"), "volt render 0x81bf0364"),
-    ("UNLINK", unlink, bytes.fromhex("01e8"), "volt render 0x81bf06f6"),
+    ("UNLINK", unlink, bytes.fromhex("01e80000"), "volt render 0x81bf06f6"),
     ("RTS", rts, bytes.fromhex("1000"), "volt render 0x81bf06fa"),
     ("JUMP.S +0x578", lambda: jump_s(0x81bf017a, 0x81bf06f2), bytes.fromhex("bc22"), "volt render 0x81bf017a"),
     ("LINK 0x78", lambda: link(0x78), bytes.fromhex("00e81e00"), "volt render prologue 0x81bf0158"),

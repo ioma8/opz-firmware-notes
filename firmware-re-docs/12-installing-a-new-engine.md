@@ -1207,3 +1207,25 @@ six-word factory layout puts `out` where it expects `ctx` and it renders zeros. 
 cannot judge our engines and opzenginetool cannot judge the factory ones** - each tool is correct for its
 own convention, and neither verdict should be quoted across the boundary. "Audible in the app" means the
 `opzplay` / `opzenginetool` path; the factory sweeps in this document use the factory convention.
+
+### Effects, and a real `UNLINK` bug in the assembler
+
+Effects export `renderFX(ctx, freq_q16, state, in, out)` with `in` and `out` as stack arguments.
+`toolkit/build_effects.py` builds one - `dist`, which is gain-then-wrap, a distortion the name actually
+describes. Measured: **output = 4.0x input** on 63 of 64 frames, so the effect path works end to end.
+
+Getting there exposed a genuine assembler defect. `opzasm.unlink()` emitted only the first halfword
+(`01 e8`) while `UNLINK` is a 32-bit class whose second halfword is the frame word - the factory bytes at
+`volt` render `0x81bf06f6` are `01 e8 00 00`. The short form put the following instruction one halfword
+early, so an `UNLINK` followed by `RTS` executed the RTS' halfword as data and fell into the module's name
+strings. `opzasm.unlink()` now emits four bytes and its self-test expectation was corrected to the factory
+form; `struck.engine` and the whole family were rebuilt.
+
+Two more traps recorded from the same session, both of which produced false readings:
+
+- `Z.call(m, entry, args)` puts only `args[:3]` in registers and pushes `stack=` - passing a five-argument
+  list and no `stack` silently drops arguments four and five, which made an effect look like it wrote
+  nothing.
+- Argument reads must happen **before** borrowing registers: `LINK` leaves the first stack argument at
+  `FP+8`, but pushing seven registers first shifts `SP`, so the loads after a borrow land on the saved
+  registers instead of the arguments.
