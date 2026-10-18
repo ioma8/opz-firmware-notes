@@ -512,6 +512,47 @@ The lesson generalises across the remaining engines: when a factory engine loops
 iterations or writes a constant, that is not an emulator bug to chase in the instruction decoder - it is the
 engine acting on a state value the OS would have supplied.
 
+### The instrument record: where the engine's state actually lives
+
+Chasing "why is every factory engine silent" into the OS finally turned up the structure that answers it.
+The synth keeps its instruments in an array of **`0x17c`-byte records** based at synth-object `+0x480`
+(`iVar14 = iVar11 + 0x480` in `FUN_801184c0`, the per-tick synth function). A record holds the engine's
+resolved entry points and the state the engine is given:
+
+| offset | contents |
+|---|---|
+| `+0x00` | `init` |
+| `+0x04` | `render` |
+| `+0x08` | `onNoteOn` |
+| `+0x0c` | `onNoteOff` |
+| `+0x10` | byte: the selected engine id (`*(char *)(param_1 + 0x10) = (char)param_4`) |
+| `+0x14` | int: engine id used for selection |
+| `+0x1c` | a value from `FUN_800fc160(DAT_81059280)` |
+| `+0x48` | **the engine's state block** - this is the pointer passed as `init`'s first argument |
+
+`FUN_8012d278` fills the record: it asks the plugin registry (`FUN_800fc104(DAT_81059280, engine_id)`) for
+the plug object, copies `plug[0]`/`plug[2]`/`plug[3]`/`plug[4]` into `+0x00`/`+0x04`/`+0x08`/`+0x0c`, and then
+calls
+
+    (*pcVar14)(puVar15 + 0x12, param_2, uVar5, uVar5, &DAT_8156f2b8);
+
+i.e. **`init(state, voice_index, x, x, &DAT_8156f2b8)`** - five arguments, of which the harness has been passing
+two. The fifth points at `0x8156f2b8`, which reads as zeros in the image (runtime-filled RAM).
+
+Two things follow, and both are useful even though neither made an engine sing yet:
+
+1. The state is a plain `0x134`-byte block *inside* the OS's record, not a set of OS-maintained pointers. The
+   OS does not pre-fill it with callbacks; it calls `init` and lets the engine set itself up. That weakens the
+   "needs OS-populated state" explanation I have been repeating and points instead at the arguments and
+   ordering still being wrong.
+2. Retrying every instrument with a five-argument `init` changes behaviour (`cluster` and `volt` now reach
+   full-scale output instead of silence) without producing tone, so the extra arguments matter but are not
+   sufficient.
+
+Source paths located for the next step: `InstrumentManager.cpp` at `0x815c7b30` (referenced by
+`FUN_8012d638`, `FUN_8012d524`, `FUN_8012d278`), `FxManager.cpp` at `0x8156f22c`, and `Voice.cpp` at
+`0x815c828b` - the last has no cross-references in the image, so it is reached through a pointer.
+
 **Practical note on runs:** the toolkit now installs a two-minute watchdog (`toolkit/opztime.py`) on every
 tool, because an unmodelled engine loop otherwise hangs a run silently. Override with
 `OPZ_TIME_LIMIT=<seconds>`.
