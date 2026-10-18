@@ -14,6 +14,10 @@ through the app's own render path, at 220 Hz and 440 Hz, against both neighbouri
 | digital | 5.0e5 vs 3.2e5 | 4.7e5 vs 1.8e5 | **5 of 6** | robust; fails only at 659 Hz |
 | ep | 3.6e6 vs 1.7e6 | 1.6e6 vs 9.1e5 | **2 of 6** | writes the **right channel only** |
 
+That table has been re-run end to end and reproduces: `digital` passes 5 of 6 (failing only 659 Hz), and
+`chord` and `ep` pass exactly the 220 and 440 Hz ones. Every one of the 21 factory modules is named somewhere in
+this document with a verdict, so the inventory is complete rather than a summary.
+
 The six-pitch column is the honest measure. `opzfactorycheck` tests two notes, which is enough to reject a fixed
 spectrum (see `electric` below) but **overstates** engines like `chord` whose output legitimately contains a
 fifth: at 165 and 659 Hz the target's neighbour is its own interval, so the test fails on correct behaviour.
