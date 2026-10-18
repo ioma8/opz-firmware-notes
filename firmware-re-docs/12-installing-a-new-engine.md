@@ -317,7 +317,19 @@ Three things, and they are now named rather than suspected, which is the useful 
 2. **They need the OS's sine table, which is now provided.** Covered above: `[host_table + 0xc]` is
    `0x0800bb44`, a 2048-entry Q31 sine table in L2 SRAM. `opzhost.py` supplies it.
 
-3. **They need an accurate DSP accumulator, and this is the real remaining gap.** `chord`'s arithmetic helper
+3. **The calling convention on silicon pushes nothing.** `chord`'s software divider at `0x81be2c32` is a
+   leaf reached with `CALL 0x81be2c32`, and its first two instructions store working values straight into
+   `[SP]` and `[SP+4]` (`_StDregToM32bit [SP] = R4`, `[SP+0x4] = R5`). A callee may only do that if the call
+   did **not** put a return address on the stack: on silicon `CALL` sets `RETS` and touches no memory, and
+   `RTS` is `return [RETS]`. The helper returns with `JUMP (P2)` where `P2 = RETS` was saved at entry, which
+   is the same fact stated the other way. Ghidra's SLEIGH shows `call`/`return [RETS]` as pushing and popping
+   because that is how a decompiler models them - treating it as the hardware stack behaviour is wrong, and
+   it is why the interpreter has to keep a separate `RETS` register rather than relying on its own push.
+   Engines reached from the OS still see one word above their arguments, so the OS's dispatcher evidently
+   supplies its own frame word; that is the only way to reconcile `struck` reading its arguments through a
+   pushed word on real hardware with the leaf-function scratch use above.
+
+4. **They need an accurate DSP accumulator, and this is the real remaining gap.** `chord`'s arithmetic helper
    (`0x81be2c32`) is a software divider built on `Rot32` (rotate through carry), `MvToCC_STAT CC = AC0` and
    `MvRegToRegCond`, with an `LSETUP` loop. It is not approximate arithmetic: it reads the accumulator carry
    flag `AC0` on almost every iteration. The emulator tracks only what `CC2Stat` moves explicitly, so `AC0` is

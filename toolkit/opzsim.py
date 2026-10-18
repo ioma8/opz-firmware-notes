@@ -804,17 +804,33 @@ class Machine:
             self.pc = self.pc + 8
             return True
 
-        # LoopSetupImm (instr32/30-LoopSetupImm.sinc): sig 0x1C1 at bits 7-15, rop at 5-6 (0x2 = the
-        # immediate-count form), c at bit 4 selects LC0/LC1, the count is immH<<6|immL, and the loop's
-        # END address is inst_start + eoff*2 while its start is the following instruction. The loop runs
-        # until the counter reaches zero, so it executes lc+1 times - the convention gcc's LSETUP
-        # idioms assume (a loop of N has lc = N-1).
+        # LSETUP, both forms (instr32/30-LoopSetupImm.sinc and 31-LoopSetup.sinc share the signature
+        # 0x1C1 at bits 7-15). rop at bits 5-6 says where the count comes from: 0 = leave the loop
+        # counter alone, 1 = LC = Preg, 3 = LC = Preg>>1, and 2 is the immediate form whose count is
+        # immH<<6|immL. The start address comes from the first half's 4-bit offset and the end from the
+        # second half's 10-bit one - NOT from the following instruction, which is what an earlier version
+        # of this assumed and which silently made every register-count loop iterate a garbage number of
+        # times.
         if (h & 0xFF80) == 0xE080:
-            slot = (h >> 4) & 1
+            rop, slot = (h >> 5) & 3, (h >> 4) & 1
+            soff = h & 0xF
             h2 = int.from_bytes(m[o + 2:o + 4], "little")
-            count = ((h & 0xF) << 6) | ((h2 >> 10) & 0x3F)
-            end = self.pc + ((h2 & 0x3FF) * 2)
-            self.loops[slot] = {"start": self.pc + 4, "end": end, "lc": count}
+            reg, lop, eoff = (h2 >> 12) & 7, (h2 >> 10) & 3, h2 & 0x3FF
+            start = (self.pc + soff * 2) & 0xFFFFFFFF
+            end = (self.pc + eoff * 2) & 0xFFFFFFFF
+            if rop == 2:
+                count = ((h & 0xF) << 6) | ((h2 >> 10) & 0x3F)
+            elif rop == 1:
+                count = self.p[reg] & 0xFFFFFFFF
+            elif rop == 3:
+                count = (self.p[reg] & 0xFFFFFFFF) >> 1
+            else:
+                prev = self.loops.get(slot)
+                count = prev["lc"] if prev else 0
+            if lop == 1 and count == 0:                    # LSETUPZ: skip the loop entirely
+                self.pc = end
+                return True
+            self.loops[slot] = {"start": start, "end": end, "lc": count}
             self.pc = self.pc + 4
             return True
 
