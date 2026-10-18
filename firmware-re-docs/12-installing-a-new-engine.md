@@ -1463,3 +1463,15 @@ two most recent sine-table taps gives a precise picture:
 So the oscillator phase is being advanced (its stride tracks pitch exactly) and then simply not converted: the
 sine lookup stops firing, and the buffer receives a ramp through R4/R6. That is the precise defect - not the
 pitch input, which demonstrably works.
+
+### Correction: the sine lookup never stops
+
+An earlier note in this document said the lookup fires only in the early blocks. That was wrong, and the cause
+was my own instrumentation: I counted reads inside a window ending at `0x0800d400`, and the table pointer
+walks past it. With the window widened to `0x0800a000`-`0x08020000`, every block performs **130 reads** -
+about two per output sample, matching the two interpolating taps - and the pointer advances **440 bytes per
+read** at a 440 Hz request, marching from `0x0800bb44` to `0x08013xxx` over ten blocks.
+
+So the oscillator runs continuously and its stride is the requested frequency. What defeats measurement is the
+output itself: each block is a ramp whose intra-block slope steps repeat at the 64-sample block rate, and that
+751 Hz component dominates the spectrum (1.4e-2) whether or not per-block DC is removed.
