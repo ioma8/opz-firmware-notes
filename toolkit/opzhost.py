@@ -29,14 +29,51 @@ TABLE_WORDS = 13
 REGIONS = [(0x0800B000, 0x3000), (TABLE_ADDR, 0x40)]
 
 
+def image_path(image=None):
+    for cand in (image, "from-sergey/firmware/blackfin/bin/opz.ldr", "/tmp/opz-fw/opz.ldr"):
+        if cand and pathlib.Path(cand).exists():
+            return pathlib.Path(cand)
+    return None
+
+
+def regions_from_image(image=None):
+    """The two host regions built straight from the OS image.
+
+    The image is a dlm container whose segments carry their own load addresses, so the bytes can be read
+    directly with opzengine.parse - no Ghidra project and no cache are needed, and nothing derived from
+    the firmware is written into the repository.
+    """
+    path = image_path(image)
+    if path is None:
+        return []
+    import opzengine as E
+    segs = E.parse(path.read_bytes())
+    regions = []
+    for base, size in REGIONS:
+        buf = bytearray(size)
+        for flags, dest, length, fill, payload in segs:
+            end = dest + (len(payload) if payload else length)
+            lo, hi = max(base, dest), min(base + size, end)
+            if lo >= hi or not payload:
+                continue
+            for addr in range(lo, hi):
+                off = addr - dest
+                if off < len(payload):
+                    buf[addr - base] = payload[off]
+        regions.append((base, bytes(buf)))
+    return regions
+
+
 def load():
-    """[(base, bytes)] from the cache, or [] when it has not been generated."""
-    if not CACHE.exists():
-        return []
-    try:
-        return [(r["base"], bytes.fromhex(r["hex"])) for r in json.loads(CACHE.read_text())]
-    except Exception:
-        return []
+    """[(base, bytes)]: the cache when it exists, else the regions rebuilt from the OS image."""
+    if CACHE.exists():
+        try:
+            cached = [(r["base"], bytes.fromhex(r["hex"])) for r in json.loads(CACHE.read_text())]
+            if cached:
+                return cached
+        except Exception:
+            pass
+    return regions_from_image()
 
 
 def host_table():
