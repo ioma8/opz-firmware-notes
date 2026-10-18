@@ -1148,3 +1148,32 @@ and 32-bit sine buffers and the pointer in `state+0xc`, `state+0x14` and `state+
 returns cleanly and outputs **zero**. The render also consults its own note-to-sample table at
 `0x81b6a454` / `0x81b6a570`, so the sample path has at least one further condition that pointing it at PCM
 does not satisfy.
+
+## A family of working instruments, built with our own toolchain
+
+Everything above is about playing the *factory* binaries, which still need state the sequencer computes.
+For an app that must ship working, correctly-pitched instruments today, `toolkit/build_family.py` drives
+the same verified builder (`build_struck.py`) once per preset, changing only the modal ratios, the
+per-mode damping and the strike position - the builder reads `opzstruck.MARIMBA`,
+`opzstruck.MARIMBA_T60` and `build_struck.STRIKE_POS` when it runs, so a family is a driver rather than a
+rewrite.
+
+Measured with `opzenginetool.py --selfcheck` (cache cleared between runs) and a harmonic-centroid check:
+
+| engine | pitch @ 440 Hz request | harmonic centroid |
+|---|---|---|
+| bar | 440.1 Hz | 5.68 |
+| bell | 440.1 Hz | 1.19 |
+| glass | 440.1 Hz | 3.68 |
+| organ | 440.1 Hz | 1.29 |
+| pluck | 440.1 Hz | 2.61 |
+
+All five render audible signal at the requested pitch and are spectrally distinct, so the app can play a
+complete instrument set today.
+
+**These are our engines, not the OP-Z factory engines, and must not be presented as the latter.** They
+exist because the factory binaries need per-voice state that only the sequencer computes; this route
+delivers audible, correctly-pitched instruments without depending on the missing `0x04xxxxxx` region.
+
+Usage: `python3 toolkit/build_family.py engines-family` (the `.engine` files are gitignored; the generator
+is the artifact).
