@@ -1240,3 +1240,30 @@ Two effects are built and measured:
 Both names describe what the code does. The remaining six effect slots (`chorus`, `chorus2`, `delay`,
 `fdnreverb`, `reverb`, `tapetwo`) need delay lines and modulated feedback; they are **not** built, because
 shipping a gain stage under the name "reverb" would be false.
+
+### A real delay line, and two more assembler gaps it exposed
+
+`delay` is now built and measured. It is a circular buffer of 4096 words in module data, wrapped by
+masking the byte offset (`& 0x3fff`, valid because the size is a power of two), reading 1024 words behind
+the write pointer:
+
+```
+buf[idx] = in; delayed = buf[(idx - 4096) & 0x3fff]; out[i] = in + delayed; idx = (idx + 4) & 0x3fff
+```
+
+Verified with an impulse: a single `0x40000000` at frame 0 produces **exactly one** echo, at frame
+**1024** (21.3 ms), and nothing else. The write index persists across blocks in module data word 0, so
+successive blocks form one continuous delay line.
+
+Building it required two additions to `opzasm.py`, both already implemented and verified in the
+interpreter:
+
+- **`comp_eq`** - `CC = Rdst == Rsrc` (`instr16/08-CCFlag.sinc`): `CC = R0 == R3` encodes as `0x0818`,
+  matching the factory bytes.
+- **`logic32`** - `Rdst = Rsrc0 op Rsrc1` (`instr16/15-Comp3op.sinc`), opcode 2 = AND.
+
+And it exposed a third **pointer-group defect, this time in the assembler**: `ldimm32` could only emit
+the data-register form, so every `Preg = imm32` in a built engine silently wrote a data register - the
+exact bug the interpreter had two rounds ago. `ldimm32` now emits `0xda08|reg` for pointer destinations
+and `0xda00|reg` for data ones. Every module was rebuilt afterwards and all gates pass: 34/34 encodings,
+`struck` selftest, `opzplay` realtime and audible, 440.1 Hz, 21/21 containers round-trip clean.

@@ -120,7 +120,71 @@ def build_crush(drop=20):
     return _pack(c, "renderFX")
 
 
-def _pack(c, render_name):
+D_BUF_OFF = 0x40          # delay buffer sits after the small header area in module data
+BUF_BYTES = 16384         # 4096 words = 85 ms at 48 kHz, power of two so the wrap is a mask
+BUF_MASK = BUF_BYTES - 1
+DLY_BYTES = 4096          # read 1024 words (21 ms) behind the write pointer
+
+
+def build_delay():
+    """A real delay line: a power-of-two circular buffer in module data, `out = in + buf[idx-delay]`.
+
+    Every address stays in a DATA register because `addsub32` has no pointer form; a pointer register
+    is only used for the access itself (`regmv P4, R3`). Register allocation:
+    R0 sample/mix, R1 delay bytes, R2 wrap mask, R3 scratch, R4 buffer base, R5 write index,
+    R6 step (4), R7 count*4.
+    """
+    c = B.Code(CODE_BASE)
+    for nm in ("initModule", "init", "onNoteOn", "onNoteOff"):
+        c.label(nm)
+        c.emit(A.ldimm7("R0", 0))
+        c.emit(A.rts())
+
+    c.label("renderFX")
+    c.emit(A.link(0))
+    c.emit(A.regmv("P0", "SP"))
+    for _ in range(2):                                  # saved FP, saved RETS
+        c.emit(A.ldst("P0", "R0"))
+    c.emit(A.ldst("P0", "R1"))                          # in
+    c.emit(A.ldst("P0", "R2"))                          # out
+    c.emit(A.regmv("P1", "R1"))
+    c.emit(A.regmv("P2", "R2"))
+    c.emit(A.push_r7_p5())
+    c.emit(A.ldimm32("R7", 256))                        # 64 frames x 4
+    c.emit(A.ldimm7("R6", 4))
+    c.emit(A.ldimm32("R1", DLY_BYTES))
+    c.emit(A.ldimm32("R2", BUF_MASK))
+    c.emit(A.ldimm32("R4", DATA_BASE + D_BUF_OFF))
+    c.emit(A.ldimm32("P0", DATA_BASE))
+    c.emit(A.ldst("P0", "R5", aop=2))                   # R5 = persisted write index
+
+    c.label("loop")
+    c.emit(A.ldst("P1", "R0"))                          # R0 = in
+    c.emit(A.addsub32("R3", "R4", "R5", "+"))           # write address
+    c.emit(A.regmv("P4", "R3"))
+    c.emit(A.ldst("P4", "R0", store=True, aop=2))       # buf[idx] = in
+    c.emit(A.addsub32("R3", "R5", "R1", "-"))           # idx - delay
+    c.emit(A.logic32("R3", "R3", "R2", "&"))            # wrap
+    c.emit(A.addsub32("R3", "R4", "R3", "+"))           # read address
+    c.emit(A.regmv("P4", "R3"))
+    c.emit(A.ldst("P4", "R3", aop=2))                   # R3 = delayed
+    c.emit(A.addsub32("R0", "R0", "R3", "+"))           # mix
+    c.emit(A.ldst("P2", "R0", store=True))              # out[i]
+    c.emit(A.addsub32("R5", "R5", "R6", "+"))           # idx += 4
+    c.emit(A.logic32("R5", "R5", "R2", "&"))            # wrap index
+    c.emit(A.addsub32("R7", "R7", "R6", "-"))
+    c.emit(A.cmp_eq0("R7"))
+    c.branch("loop", cond=False)
+
+    c.emit(A.ldimm32("P0", DATA_BASE))
+    c.emit(A.ldst("P0", "R5", store=True, aop=2))       # persist the index
+    c.emit(A.pop_r7_p5())
+    c.emit(A.unlink())
+    c.emit(A.rts())
+    return _pack(c, "renderFX", data_bytes=D_BUF_OFF + BUF_BYTES)
+
+
+def _pack(c, render_name, data_bytes=0x40):
     names = {}
     for nm in ("initModule", "init", render_name, "onNoteOn", "onNoteOff"):
         names[nm] = c.pos()
@@ -133,7 +197,7 @@ def _pack(c, render_name):
         hdr += names[nm].to_bytes(4, "little")
         hdr += c.labels[nm].to_bytes(4, "little")
     hdr += b"\x00" * 8
-    data = bytearray(0x40)
+    data = bytearray(data_bytes)
     payload = len(hdr) + len(code) + len(data)
     segs = [
         (0x5000, 0x11A00000, 0, payload, b""),
@@ -148,7 +212,7 @@ def _pack(c, render_name):
 def main(argv):
     outdir = pathlib.Path(argv[1] if len(argv) > 1 else "engines-effects")
     outdir.mkdir(parents=True, exist_ok=True)
-    for name, builder in (("dist", build_dist), ("crush", build_crush)):
+    for name, builder in (("dist", build_dist), ("crush", build_crush), ("delay", build_delay)):
         raw = builder()
         p = outdir / f"{name}.engine"
         p.write_bytes(raw)

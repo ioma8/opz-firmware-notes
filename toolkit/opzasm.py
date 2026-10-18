@@ -77,6 +77,29 @@ def regmv(dst, src):
     return _u16(w)
 
 
+def comp_eq(dst, src):
+    """`CC = Rdst == Rsrc` (CCFlag, instr16/08-CCFlag.sinc): bits 11-15 = 0b00001, i (immediate) bit 10,
+    opc bits 7-9 (0 = ==), g bit 6 (0 = data registers) and the two registers at bits 3-5 / 0-2.
+    `CC = R0 == R3` is therefore 0x0818."""
+    w = (0x1 << 11) | (0 << 10) | (0 << 9) | (0 << 7) | (0 << 6)
+    w |= (D_REGS.index(src) & 7) << 3
+    w |= D_REGS.index(dst) & 7
+    return _u16(w)
+
+
+def logic32(dst, src0, src1, op="&"):
+    """`Rdst = Rsrc0 op Rsrc1` (Comp3op, instr16/15-Comp3op.sinc): signature 0x5 at bits 12-15, opcode at
+    bits 9-11 (0 add, 1 sub, 2 AND, 3 OR, 4 XOR), dst at 6-8, src1 at 3-5, src0 at 0-2."""
+    codes = {"+": 0, "-": 1, "&": 2, "|": 3, "^": 4}
+    if op not in codes:
+        raise Unsupported(f"logic operator {op}")
+    w = (0x5 << 12) | (codes[op] << 9)
+    w |= (D_REGS.index(dst) & 7) << 6
+    w |= (D_REGS.index(src1) & 7) << 3
+    w |= D_REGS.index(src0) & 7
+    return _u16(w)
+
+
 def addsub32(dst, src0, src1, op):
     """`dst = src0 op src1` for + and - (16-bit form, no flags)."""
     if op not in ("+", "-"):
@@ -168,8 +191,15 @@ def ldimm32(dst, value):
     zero dummy word. Reading only four bytes of this form is what made the immediate look
     half-encoded earlier; the display hides the length.
     """
+    # liwGrp is bit 3 of the header: group 0 is a data register (0xda08 loads P0, 0xda00 loads R0).
+    # Emitting only the data form meant any "Preg = imm32" was silently written to a data register -
+    # the same defect the interpreter had, and it produced an engine that assembled but did nothing.
     v = value & 0xFFFFFFFF
-    return _u16(0xDA00 | (D_REGS.index(dst) & 7), (v >> 16) & 0xFFFF, v & 0xFFFF, 0)
+    if dst in P_REGS:
+        head = 0xDA00 | 0x8 | (P_REGS.index(dst) & 7)
+    else:
+        head = 0xDA00 | (D_REGS.index(dst) & 7)
+    return _u16(head, (v >> 16) & 0xFFFF, v & 0xFFFF, 0)
 
 
 def cmp_eq0(reg):
