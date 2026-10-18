@@ -46,6 +46,68 @@ def s32(v):
     return v - 0x100000000 if v >= 0x80000000 else v
 
 
+class SparseMem:
+    """A whole-address-space memory for running the firmware, which needs L1 (0x11a...), L2 (0x08...)
+    and the main image (0x80...) live at once. A flat bytearray cannot span those (they are 1.9 GB apart),
+    so the space is paged: reads and writes outside the loaded pages return zero.
+
+    Only `opzos.py` uses this. Engine audition keeps the plain bytearray, which is much faster.
+    """
+
+    PAGE = 1 << 16
+    SPACE = 1 << 32
+
+    def __init__(self):
+        self.pages = {}
+
+    def __len__(self):
+        return self.SPACE
+
+    def _page(self, index, create=False):
+        pg = self.pages.get(index)
+        if pg is None and create:
+            pg = bytearray(self.PAGE)
+            self.pages[index] = pg
+        return pg
+
+    def __getitem__(self, key):
+        if isinstance(key, slice):
+            start, stop = key.start, key.stop
+            if stop <= start:
+                return b""
+            out = bytearray(stop - start)
+            pos = start
+            while pos < stop:
+                pi = pos // self.PAGE
+                po = pos % self.PAGE
+                take = min(stop - pos, self.PAGE - po)
+                pg = self.pages.get(pi)
+                if pg is not None:
+                    out[pos - start:pos - start + take] = pg[po:po + take]
+                pos += take
+            return bytes(out)
+        pi, po = divmod(key, self.PAGE)
+        pg = self.pages.get(pi)
+        return pg[po] if pg is not None else 0
+
+    def __setitem__(self, key, value):
+        if isinstance(key, slice):
+            start = key.start
+            data = bytes(value)
+            pos, i = start, 0
+            while i < len(data):
+                pi = pos // self.PAGE
+                po = pos % self.PAGE
+                take = min(len(data) - i, self.PAGE - po)
+                pg = self._page(pi, create=True)
+                pg[po:po + take] = data[i:i + take]
+                pos += take
+                i += take
+            return
+        pi, po = divmod(key, self.PAGE)
+        self._page(pi, create=True)[po] = value & 0xFF
+
+
 class Machine:
     """A memory window plus the register file.
 
@@ -998,12 +1060,20 @@ class Machine:
             self.pc = self.rets
             return False
 
-        # ldimm32: 0xDA00|reg, immH, immL, dummy
+        # LdImm32 (instr64/38-LdImm.sinc): liwSig 0x368, and liwGrp selects the register file - group 0
+        # is a data register and group 1 a pointer register, which is bit 3 of the first halfword
+        # (0xda08 = P0, 0xda00 = R0). Writing a pointer destination into the data file instead left every
+        # "P0 = <address>" inert: the firmware's own boot dispatch reads its vector table through P0 and
+        # then found P0 = 0, and every engine that loads a table base this way read from address 0.
         if (h & 0xFF00) == 0xDA00:
             reg = h & 7
             imh = int.from_bytes(m[o + 2:o + 4], "little")
             iml = int.from_bytes(m[o + 4:o + 6], "little")
-            self.r[reg] = s32(imh << 16 | iml)
+            value = imh << 16 | iml
+            if h & 0x8:                                    # liwGrp = 1: a pointer register
+                self.p[reg] = value
+            else:
+                self.r[reg] = s32(value)
             self.pc = self.pc + 8
             return True
 

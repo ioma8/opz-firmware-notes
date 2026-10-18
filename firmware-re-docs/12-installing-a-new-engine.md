@@ -1021,3 +1021,27 @@ places its record at `0x81600000`, above the image and clear of the stack.
 **Conclusion:** every remaining field is computed by the plug manager, and the plug manager's registry is
 built during boot from the settings on the filesystem. Driving the engines through the real sequencer
 therefore requires booting the firmware (flash/NAND plus the file layer), not another harness input.
+
+## A fifth decoder fault: `LdImmToReg` into a pointer register wrote a data register
+
+`LdImm32` (`instr64/38-LdImm.sinc`, `liwSig` 0x368) selects the register file with `liwGrp`: group 0 is a
+data register and group 1 a pointer register, which is **bit 3 of the first halfword** — `0xda08` loads P0,
+`0xda00` loads R0. opzsim matched only the top byte and always wrote the data file, so every
+`P0 = <address>` in every engine and in the firmware was inert.
+
+Why it hid for so long: a wrong destination register does not crash, it just leaves the pointer at its old
+value, so engines read from address 0 and produce silence or a ramp. It surfaced only when the firmware was
+started at its own entry: the boot dispatch reads its vector table through `P0`
+(`P0 = 0x11904cf0`, then `P1 = [P0 + (R1 << 2)]`, then `JUMP (P1)`), and with P0 stuck at 0 it jumped to
+address 0 on the first dispatch.
+
+After the fix: the firmware's L1 startup code at `0x11900000` executes 4,932 steps (it previously did not
+run at all), and the factory-engine sweep changes again to **2 detuned, 2 flat, 3 loops, 4 needs-state,
+10 silent** — chord 6040 Hz at peak 0.050, digital unchanged at 0.0725 tail-rms, crush and volt now flat.
+All gates stay green: simulator suite (519,370 steps), `struck`, the player, 34/34 encodings and 21/21
+containers.
+
+Boot status: `0x80000000` is a vector *dispatcher*, not reset (it takes the vector in R1 and returns for
+vector 0), and `0x11900000` is the real startup entry. It now runs until it reaches bytes
+`00ec 00ed 00ee` at `0x119027dc` — three consecutive values, i.e. a data table, so something upstream
+still diverges. Ghidra cannot help there directly: the L1 segments are not imported into its project.

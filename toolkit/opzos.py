@@ -38,7 +38,12 @@ def find_image(explicit=None):
 
 
 def machine_with(image):
-    m = Z.Machine(BASE, SIZE)
+    """A whole-address-space machine: the firmware needs L1 (0x11a...), L2 (0x08...) and the main image
+    (0x80...) at once, which a single flat bytearray cannot span."""
+    m = Z.Machine(0, 1 << 16)
+    m.mem = Z.SparseMem()
+    m.mem_base = 0
+    m.p[6] = 0x81FF0000                     # stack, below the engine windows
     m.allow_external = True
     return m
 
@@ -46,9 +51,7 @@ def machine_with(image):
 def map_segments(m, raw):
     n = 0
     for flags, dest, length, fill, payload in E.parse(raw):
-        if not (BASE <= dest < BASE + SIZE):
-            continue
-        off = dest - BASE
+        off = dest
         if flags & E.FLAG_FILL:
             m.mem[off:off + length] = b"\x00" * length
         else:
