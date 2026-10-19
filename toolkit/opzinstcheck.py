@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""Drive every factory *instrument* from the vendor library and report which play.
+
+Mirror of opzfxcheck.py for the instrument half. Engines are the 13 factory
+instrument classes in ~/.opz-decode/opzso/libSnakePlugin.so, executed under
+Unicorn through the loader in ~/projects/customs/opz-clone/tools/unicorn-harness.
+
+Host data (this is the part that took longest to get right): engine globals must
+be written at the addresses the loader uses, which are the Ghidra decompile's
+addresses **minus 0x100000**. Writing at the Ghidra address silently does
+nothing, and every engine then renders zeros.
+
+usage: opzinstcheck.py [--blocks N] [--only NAME ...]
+exits nonzero unless every instrument renders audio.
+"""
+import argparse, json, math, struct, sys
+from pathlib import Path
+from unicorn import UC_PROT_ALL
+
+CLONE = Path.home() / "projects/customs/opz-clone"
+sys.path.insert(0, str(CLONE / "tools/unicorn-harness"))
+SO = Path.home() / ".opz-decode/opzso"
+SYMS = SO / "syms.json"
+
+INSTRUMENTS = ("AnalogA", "Chord", "Cluster", "Digital", "EP", "Electric", "Fm003b",
+               "MiniStringShort", "Organ", "SamplePlayerGain", "Saw013a",
+               "SynthSampler", "Volt")
+FRAMES = 64
+# Ghidra address - 0x100000. Gains and tables the instrument classes read.
+GAINS = (0x124A5CC, 0x124A5D0, 0x124A5D4, 0x124A5D8, 0x124A5DC, 0x124A5E0,
+         0x124A6F0, 0x124A718, 0x124A71C, 0x124A720, 0x124A724)
+OCTAVE_TABLE = 0x124A658
+CLUSTER_BANDS = (0x124A900, 0x124AA00)
+# The whole host-data region these classes read: envelope-rate curves, octave and
+# per-band gain tables. Left zero, every engine renders silence; filled with the
+# i16 unity 0x7FFF they play. This is the single most load-bearing supply.
+HOST_DATA = (0x124A500, 0x124C400)
+
+# Data globals each class's render reads, taken from its decompile and corrected by
+# -0x100000. The four consecutive dwords at the top of each block are the variant
+# gain table, exactly as Digital's 0x124A5D0..0x124A5DC.
+ENGINE_GLOBALS = {
+    "SynthSampler":   (0x124A5CC, 0x124A6C0),
+    "Volt":           (0x124A6F0, 0x124A718, 0x124A71C, 0x124A720, 0x124A724),
+    "Electric":       (0x124A808, 0x124A830, 0x124A834, 0x124A838, 0x124A83C),
+    "MiniStringShort": (0x124A8C0, 0x124A8DC, 0x124A8E0, 0x124A8E4, 0x124A8E8),
+    "Organ":          (0x124AFD0, 0x124B310, 0x124B314, 0x124B318, 0x124B31C),
+    "EP":             (0x124BEA0, 0x124C030, 0x124C064, 0x124C0A0, 0x124C120,
+                       0x124C1A0, 0x124C1A4, 0x124C1A8, 0x124C1AC, 0x124C200),
+}
+
+
+def symbols():
+    return json.loads(SYMS.read_text())["symbols"]
+
+
+def find(syms, cls, frag):
+    prefix = f"_ZN{len(cls)}{cls}"
+    for s in syms:
+        n = s.get("name", "")
+        if n.startswith(prefix) and frag in n:
+            return n
+    return None
+
+
+def supply(so, cls=""):
+    """Host data every instrument gets: gains, gain tables and a wavetable."""
+    for g in GAINS + tuple(ENGINE_GLOBALS.get(cls, ())):
+        so.write_u32(g, 0x7FFFFFFF)
+    for a in range(*HOST_DATA, 2):
+        so.write(a, struct.pack("<h", 0x7FFF))
+    wav = so.alloc(8192 * 4)
+    so.write_u32_array(wav, [int(math.sin(2 * math.pi * i / 8192) * 0x7FFFFFFF) & 0xFFFFFFFF
+                             for i in range(8192)])
+    so.write(so.interface + 0x18, struct.pack("<Q", wav))
+    # AnalogAHost's contract: interface+0x28 points at five fract32_t[65] filter-state
+    # banks, each 16 rows, allocated by the host. Filtered engines fault without it.
+    banks = so.alloc(5 * 16 * 65 * 4)
+    so.write(so.interface + 0x28, struct.pack("<Q", banks))
+
+
+from opzso import OpzSo, phase_increment  # noqa: E402  (needs CLONE on sys.path)
+
+
+def play(so, syms, cls, blocks):
+    state, temp = so.alloc(0x1000), so.alloc(0x1000)
+    params, adsr = so.alloc(0x100), so.alloc(0x40)
+    out = so.alloc(FRAMES * 2 * 4)
+    so.write_u32_array(params, [0] + [0x40404040] * 17)
+    so.write_u32(adsr + 0x04, 0x7FFFFFFF)
+    so.write_u32(adsr + 0x08, 0x7FFFFFFF)
+    so.write_u32(adsr + 0x10, 3)                 # the state index Digital's host arms
+    so.call(find(syms, cls, "initModule"), [0, so.interface, so.flags])
+    so.call(find(syms, cls, "4init"), [state, 5, 0, 0, temp])
+    note = find(syms, cls, "8onNoteOn")
+    if note:
+        so.call(note, [60, 100, state, params])
+    total = peak = 0
+    for _ in range(blocks):
+        so.write(out, b"\0" * (FRAMES * 8))
+        so.call(find(syms, cls, "6render"),
+                [out, phase_increment(60), 0, state, params, adsr])
+        v = so.read_i32_array(out, FRAMES * 2)
+        total += sum(1 for x in v if x)
+        peak = max(peak, max((abs(x) for x in v), default=0))
+    return total, peak
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--blocks", type=int, default=40)
+    ap.add_argument("--only", nargs="*", default=None)
+    a = ap.parse_args(argv)
+
+    syms = symbols()
+    names = a.only or INSTRUMENTS
+    working = 0
+    for cls in names:
+        so = OpzSo()
+        for base, size in ((0x1E0000, 0x200000 - 0x1E0000), (0x200000, 0x1800000)):
+            try:
+                so.uc.mem_map(base, size, UC_PROT_ALL)
+            except Exception:
+                pass
+        so.stub("noop", lambda s, n: None)
+        stub = so.stub_address("noop")
+        so.interface = so.alloc(0x80)
+        for off in range(0, 0x80, 8):
+            so.write(so.interface + off, struct.pack("<Q", stub))
+        so.flags = so.alloc(8)
+        supply(so, cls)
+        try:
+            nz, peak = play(so, syms, cls, a.blocks)
+        except Exception as e:
+            print(f"  {cls:18s} {type(e).__name__}")
+            continue
+        ok = nz > 0
+        working += ok
+        print(f"  {cls:18s} {nz}/{a.blocks * FRAMES * 2} nonzero, peak {peak}"
+              f"{'' if ok else '   SILENT'}")
+    print(f"\n{working} of {len(names)} factory instruments render audio")
+    return 0 if working == len(names) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -393,3 +393,27 @@ could bring an engine up was an artefact of the address error, and any engine wh
 read from its decompile should now be reachable the same way. Volt, Organ, EP, Electric,
 MiniStringShort, Chord, Fm003b, Saw013a and SynthSampler still need their own global sets at corrected
 addresses.
+
+### The generic host does work: 9 of 13 instruments (2026-10-19)
+
+Correcting the two mistakes fixes the instrument half almost entirely. `toolkit/opzinstcheck.py`
+runs all thirteen factory instrument classes from the vendor library through one host and reports
+which render:
+
+| supply | why it matters |
+|---|---|
+| globals written at **Ghidra address - 0x100000** | writing at the Ghidra address, 0x100000 too high, silently does nothing and every engine renders zeros |
+| `0x124A500`-`0x124C400` filled with i16 `0x7FFF` | envelope-rate curves and the octave/per-band gain tables; left zero, every engine is silent |
+| Q31 wavetable at `interface+0x18` | the oscillator table |
+| five `fract32_t[65]` filter-state banks at `interface+0x28` | filtered engines fault with `UC_ERR_READ_UNMAPPED` without it |
+| `params = [0, 0x40404040 x17]`, ADSR level and mul `0x7FFFFFFF`, `state_index 3` | the block Digital's own working host arms |
+| `init(state, 5, 0, 0, temp)` | the clone's working init arguments |
+
+With that, **9 of 13 render**: Chord, Cluster, Digital, EP, Electric, MiniStringShort, Organ and
+Volt at 2558-2560 of 2560 nonzero (peaks 0.16-0.40 full scale) and AnalogA nonzero but at peak 533,
+i.e. inaudible. Still silent: Fm003b, Saw013a, SamplePlayerGain and SynthSampler - the two samplers
+need a sample record through `interface+0x48`, and Saw013a needs the init constants its own port
+documents.
+
+The earlier section concluding that instruments need hand-written per-engine hosts is superseded:
+one host reaches nine of them once the addresses and the table region are right.
