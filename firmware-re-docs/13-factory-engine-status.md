@@ -1327,3 +1327,13 @@ i.e. it loses only to its own 0.75x neighbour - the shape a slice engine takes u
 
 `opzinstcheck` now carries `DEFAULT_NOTE = {"SamplePlayerGain": 43}` so a working engine is not reported as
 silent for being asked outside its range. Tallies: 13 of 13 emit audio, 11 of 13 play the requested note.
+
+**Cluster is not out of range - it is not a pitched oscillator.** Running the neighbour test at notes 40, 48, 55
+and 65 gives a request-to-neighbour ratio that is **constant and below one**: 316.66 against 537.36, 120.90
+against 208.62, 52.00 against 92.52, 15.29 against 27.49 - about 0.59 every time, with the dominant bin stuck at
+85.0 Hz. Its overall output scales with the requested frequency but never peaks at it, which is the shape of a
+band-add engine fed a band table rather than an oscillator.
+
+So the pitched test is as inapplicable to `Cluster` as it is to a slice sampler, and the engine can only be
+verified against a recorded vendor fixture - which the sibling repository does not carry for it. It stays out of
+the note tally rather than being called broken.

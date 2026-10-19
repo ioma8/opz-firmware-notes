@@ -23,7 +23,7 @@ what is verified, what is not, and why.
 | gap | bounded to | evidence |
 |---|---|---|
 | `TapeTwo` (effect) | the tape-buffer mix inside `renderFX` | every caller-side cause excluded: readiness answer, host `sampleLine→tapeBuffer` transfer, scratch pointer, dispatch variant, sixth ("gain") argument, all eight exports |
-| `Cluster` (instrument) | its rate/band source | output energy is invariant to the render increment, the note argument, `onNoteOn`'s note, `params[0..2]` and the record fields |
+| `Cluster` (instrument) | its band-add path | output energy is invariant to the render increment, the note argument, `onNoteOn`'s note, `params[0..2]` and the record fields; the request-to-neighbour ratio is a constant ~0.59 at notes 40/48/55/65, i.e. it adds band content rather than a pitched tone, so the note test cannot judge it |
 | 7 device instruments (`analoga`, `fm003b`, `ministringshort`, `saw013a`, `organ`, `SamplePlayerGain`, `SynthSampler`) | the OS per-voice tick | the tick does `CALL.A 0x04020a70` after 68 steps = ADSP-BF70x **L2 Bank 0 mask ROM** (0x04000000, 512 kB). `opz.ldr` maps only 0x11A / 0x08 / 0x80; 1,195 call sites name 51 ROM entries; the manual publishes no address table |
 | 8 device effects | OS-populated buffer state | `dist` takes its scratch pointer from `module+0x554` (zeroed by `init`) and its output buffer from another OS-filled field |
 
