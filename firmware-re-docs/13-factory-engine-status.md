@@ -372,3 +372,24 @@ The same was tried on Organ, Cluster, Electric, EP, MiniStringShort and Volt, an
 produced a sample. The four instruments that do work in `opz-clone` work because each has a dedicated host class
 supplying exactly the globals its engine reads, plus a translated port with byte-exact fixtures. **Any further
 instrument needs that same treatment; there is no shortcut.**
+
+## A trap that invalidated earlier host-data fills, and Cluster now playing (2026-10-19)
+
+**Ghidra's decompiled addresses for engine *globals* are 0x100000 above the real ones**, exactly as they
+are for code. Every earlier attempt to supply host data wrote to the Ghidra address, so the writes landed
+in unused memory and the engine kept reading zeros. Digital's own working host in `opz-clone` shows the
+truth: its five gain globals are at `0x124A5CC`-`0x124A5DC` and its octave table at `0x124A658`, while
+the decompile of the same code names `0x134A5CC` and `0x134A658`.
+
+With the correction applied - gains at `0x124A5CC`..`0x124A5E0`, a 16-entry i16 octave table at
+`0x124A658`, Cluster's per-band i16 table filled over `0x124A900`-`0x124AA00`, a Q31 wavetable at
+`interface+0x18`, `params = [0, 0x40404040 x17]`, ADSR level and mul `0x7fffffff` with `state_index 3`,
+`init(state, 5, 0, 0, temp)` and `onNoteOn(60,100)` - **Cluster renders 5118 of 5120 samples nonzero at
+peak 848755646**, and the same harness reproduces **Digital at 5118 of 5120, peak 424056965**.
+
+That second figure is the important one: it means the generic harness is now correct, because it
+reproduces an engine whose working host is already known. The earlier conclusion that no generic host
+could bring an engine up was an artefact of the address error, and any engine whose data globals can be
+read from its decompile should now be reachable the same way. Volt, Organ, EP, Electric,
+MiniStringShort, Chord, Fm003b, Saw013a and SynthSampler still need their own global sets at corrected
+addresses.
