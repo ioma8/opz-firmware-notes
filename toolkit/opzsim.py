@@ -1429,11 +1429,6 @@ def call(m, entry, args, stack=(), limit=20_000_000, lenient=False):
                 # called has reused, leaving RETS 0. Report the value and stop rather than claiming the
                 # engine needs OS state - only the OS-driving harness asks for this.
                 return m.r[0]
-            if lenient:
-                # The firmware's own call chain can unwind through a frame that the code it called has
-                # reused, leaving RETS 0. Only the OS-driving harness asks for this: report the value and
-                # stop, instead of claiming the engine needs OS state.
-                return m.r[0]
             raise RuntimeError("engine called a null function pointer: it wants OS-populated state")
         o = m._off(m.pc, 2)
         if o is None:
@@ -1456,7 +1451,12 @@ def call(m, entry, args, stack=(), limit=20_000_000, lenient=False):
             continue
         hosts = 0
         h = int.from_bytes(m.mem[o:o + 2], "little")
-        m.step(h, o)
+        before = m.steps
+        if not m.step(h, o) and m.steps == before:
+            # step() returned without executing anything - an opcode the interpreter refuses. Spinning on
+            # it spends the whole step budget and then blames the callee, so name the instruction instead.
+            raise RuntimeError(f"halted on an unexecutable instruction at 0x{m.pc & 0xFFFFFFFF:08x} "
+                               f"(halfword 0x{h:04x})")
     raise RuntimeError("call did not return")
 
 
