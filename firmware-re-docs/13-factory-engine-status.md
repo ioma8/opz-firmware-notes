@@ -465,3 +465,23 @@ or 17 if AnalogA is scored as not playing. The three left: **TapeTwo**, **Fm003b
 For `Saw013a` the block is not this harness: `opz-clone`'s purpose-built `Saw013aHost`, driven with
 its own fixture parameters and increment `0x309977`, also returns 0 of 128 nonzero samples, so the
 vendor binary's live render needs something the existing fixtures do not encode.
+
+### The three that are left, and what is measured about each (2026-10-19)
+
+| engine | state | evidence |
+|---|---|---|
+| `Fm003b` | **renders, inaudibly** | 2558/2560 nonzero but only at `params[0] = 0x7FFFFFFF`, and at peak 2746 of 2^31 (-138 dB). Its render multiplies `params[0]` by `0xc4a28200`, so a zero parameter deletes the term. Live but not playing |
+| `Saw013a` | **silent** | 0/2560 at every `params[0]` and every ADSR phase, and `opz-clone`'s purpose-built `Saw013aHost` also returns 0/128 with its own fixture parameters and increment |
+| `TapeTwo` | **silent** | 0/25600 over 200 blocks even with the host-data fill that revives the instruments; `Delay` renders 19966/25600 with the same call |
+
+Honest scoring of the objective, therefore:
+
+| | audible | renders only | total |
+|---|---|---|---|
+| effects | 7 | 0 | 8 |
+| instruments | 9 | 2 (`AnalogA` 533, `Fm003b` 2746) | 13 |
+| **total** | **16** | **2** | **21** |
+
+So **16 of 21 factory engines play at audio level, 18 of 21 render nonzero samples**, and three do
+not render at all. The instrument verifier counts any nonzero sample, which is why it prints 11 of 13
+rather than 9 of 13 - read its peaks, not just its count.
