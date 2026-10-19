@@ -1241,3 +1241,17 @@ is that `SamplePlayerGain` writes 128 of 128 nonzero samples per block instead o
 Because the strict count is the defensible metric, the configuration is now an **opt-in** flag
 (`opzinstcheck --vendor-host`) rather than the default; the default keeps 11 of 13 at note 60 and 9 of 13 at
 every tested note.
+
+**Checked the ARM64 dispatch contract against the Blackfin effect modules.** The sibling port documents the
+vendor `FxManager::render` dispatch: it tail-calls the plug with `(params, *(u32 *)(slot + 0xe8),
+slot + 0x20, a, b, gain)` - two output buffers and a gain, not an in/out pair. Calling the eight `.engine`
+effect modules the same way, `(params, 64, state, out_a, out_b, 0x7FFFFFFF)`:
+
+* `dist`, `chorus`, `crush`, `chorus2` run and write **0 of 128** into either buffer;
+* `delay` and `tapetwo` stop with `call did not return`, `reverb` with `keeps calling outside its window`,
+  `fdnreverb` on a null function pointer.
+
+So the Blackfin effect modules do **not** follow the ARM64 dispatch contract - they reach for OS state the
+harness does not have, exactly as the instruments do. The 0-of-8 figure is a real property of these modules in
+an OS-less harness, not only an argument-order mistake, although the harness does still call them in a
+different order than the ARM64 build.
