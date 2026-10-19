@@ -510,3 +510,32 @@ from silence to 833080925 and 848755649.
 
 **Tally: 13 of 13 instruments + 7 of 8 effects = 20 of 21 factory engines playing**, with `TapeTwo`
 the only one left.
+
+## Why TapeTwo cannot be made to sound through renderFX (2026-10-19)
+
+`TapeTwo::renderFX` contains two loops, and reading them together settles the question that has
+consumed many rounds:
+
+```
+do {  *(undefined2 *)(z_l + lVar25) = 0;            // clear
+      *(undefined2 *)(z_r + lVar25) = 0;
+      ... advance the tape position at state+0 by local_8c
+      lVar25 = lVar25 + 2;
+} while (lVar25 != 0x80);
+
+lVar25 = 0;                                          // same range, immediately after
+do {  lVar27 = (ushort at z_l + lVar25) << 0x10) * uVar20;
+      ...
+} while (lVar25 != 0x80);
+```
+
+The clear loop and the read loop cover the **identical byte range**, so `renderFX` multiplies zero by
+its counter on every sample and its output stores are zero **by construction**. No host input can fix
+that: variants 0-16, all six argument positions including the int gain, every buffer below and above
+1 MB, all `params[0]`/`params[1]` settings, its own APK preset, 2,000 blocks of latency, 16-bit input
+encodings, `updateTapeStop` in four call shapes, and `k_crossFadeOut`/`crossFade_step` at four settings
+all leave it at zero.
+
+**Conclusion:** the effects ceiling with this library is **7 of 8**, not 8 of 8. `TapeTwo`'s audible
+path is in another entry point (it carries `updateTapeStop`, `TapeTwoGetDucker`, `getAdjustedNote`,
+`onNoteOn` and `onNoteOff`), not in the shared `renderFX` the effect harness drives.
