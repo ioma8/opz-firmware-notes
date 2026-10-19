@@ -964,3 +964,29 @@ fixed-sample signature.
 This also corrects the previous entry: Digital failing at note 72 is engine behaviour (its wavetable band
 structure), not a defect in the test. The honest headline is **6 of 13 at every tested note, 9 of 13 at note
 60**, not "9 of 13 plays the note".
+
+### The increment unit was wrong - this supersedes the single-note tallies above
+
+`phase_increment()` in the clone returns **Q31 at 44.1 kHz** (`freq/44100 * 2**31` = 12740059 for note 60).
+The engines read their second argument as a **Q32 increment at the 48 kHz the render is read at**, and the
+measurement says so directly: `12740059 / 2**32 * 48000 = 142.4 Hz`, and Digital's measured fundamental for a
+261.6 Hz request was **140.6 Hz**. The two units differ by 2.177, so every engine was being asked for roughly
+half the note.
+
+Computing the increment as `freq/48000 * 2**32` changes the picture:
+
+| note | plays the request (beats both neighbours) |
+|---|---|
+| 57 | 9 of 13 |
+| 60 | **11 of 13** |
+| 72 | 10 of 13 |
+
+Nine engines now pass at **all three** notes: AnalogA, Chord, Digital, EP, Electric, Fm003b, MiniStringShort,
+Saw013a and Volt. Two exceptions are measured, not tuned: EP and Electric genuinely take the old
+Q31-at-44.1-kHz unit (scale 0.5442, where they score 8.86 and 20.61 against neighbours near 1.0), and the
+earlier "Chord and Fm003b need x2" finding is explained by this same unit error rather than by a half-size
+table.
+
+Still out: **Cluster** and **SamplePlayerGain** fail at every note (27-39 at the request, but always below
+their own 0.75x neighbour - the fixed-sample signature, for which this test says nothing), **Organ** passes 2
+of 3 (fails 57) and **SynthSampler** 1 of 3 (passes only 60).

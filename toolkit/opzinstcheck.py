@@ -111,13 +111,23 @@ def supply(so, cls=""):
 from opzso import OpzSo, phase_increment  # noqa: E402  (needs CLONE on sys.path)
 
 
-# The render's second argument is a phase increment, and the table it walks is not the same size in every
-# engine: Chord and Fm003b advance half as far per unit as the rest, so they need twice the increment to
-# reach the requested note. Measured with the neighbour test at 140 blocks - Fm003b goes from 9.30 against
-# neighbours 154.62/62.10 at x1 to 6133.99 against 29.91/17.37 at x2, and Chord from 84.29 (loses to its own
-# fourth, 1404.87) to 32388.86 against 1411.53/38.50 at x1.7. Same asymmetry the Blackfin path documents
-# (chord walks 16384 bytes per cycle where digital walks 32768).
-PHASE_SCALE = {"Chord": 2.0, "Fm003b": 2.0}
+# The render's second argument is a phase increment for a 32-bit phase accumulator: one full cycle per
+# 2**32, at the sample rate the render is being read at. The clone's `phase_increment()` returns a Q31
+# increment computed for 44.1 kHz, which is low by 2 * 48000/44100 = 2.177 and made every engine play
+# roughly half the requested frequency (Digital measured 140.6 Hz for a 261.6 Hz request, exactly the
+# 2**32 reading of the argument it was given). So the increment is computed here from the request and the
+# 48 kHz read rate instead, and no per-engine scale is needed.
+# EP and Electric are the exception: with the 2**32 unit they play 2.177x sharp, i.e. their oscillator takes
+# the older Q31-at-44.1-kHz unit that `phase_increment()` returns, so they keep that scale (48000/(2*44100)
+# of the corrected increment = 0.5442). Measured, not assumed: at that scale EP scores 7.90 against
+# neighbours 0.71/0.69 and Electric 25.05 against 1.24/0.83, while at the corrected unit they score 0.61 and
+# 1.73 and lose.
+PHASE_SCALE = {"EP": 0.5442, "Electric": 0.5442}
+
+
+def increment_for(note, fs=48000.0):
+    freq = 440.0 * 2 ** ((note - 69) / 12.0)
+    return int(round(freq / fs * (1 << 32))) & 0xFFFFFFFF
 
 
 def play(so, syms, cls, blocks, note=60):
@@ -138,7 +148,7 @@ def play(so, syms, cls, blocks, note=60):
     for _ in range(blocks):
         so.write(out, b"\0" * (FRAMES * 8))
         so.call(find(syms, cls, "6render"),
-                [out, int(phase_increment(note) * PHASE_SCALE.get(cls, 1.0)), 0, state, params, adsr])
+                [out, int(increment_for(note) * PHASE_SCALE.get(cls, 1.0)), 0, state, params, adsr])
         v = so.read_i32_array(out, FRAMES * 2)
         total += sum(1 for x in v if x)
         peak = max(peak, max((abs(x) for x in v), default=0))
