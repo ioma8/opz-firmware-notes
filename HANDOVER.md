@@ -740,6 +740,13 @@ vynulovaný**, takže všech 128 zápisů do `out` je nula. Přes 300 bloků `ta
 nikdy není nenulový a `updateTapeStop` ve čtyřech režimech to nemění. Chybí tedy hostitelský
 převod `sampleLine → tapeBuffer_z`, který tato builda v `renderFX` neprovádí.
 
+**Opraveno 2026-10-19:** tahle hypotéza byla změřena a **neplatí**. Při stubu všech slotů rozhraní na 1 se
+`sampleLine_l` vstupem skutečně naplní (16 z 16 nenulových slov, první `61800448`), ale `renderFX` sám
+zapíše 128 nulových slov do `tapeBuffer_l` (střídavé offsety `0, 128, 2, 130, …`) a ta samá slova pak čte.
+Provedení „chybějícího" převodu z hostu (kopie `sampleLine → tapeBuffer_z` při volání služby s opcode
+`0xa0002`) 32× přes 8 bloků výsledek nemění (0 z 1024), stejně jako naplnění šestého argumentu vstupem
+(0 z 768). Ticho je tedy v mixu samotného `tapeBuffer`, ne v chybějícím převodu.
+
 **Pozor na past:** ukazatele do pásek jsou 64bitové (`0x200000531000`). Kdo je čte po 4 bajtech,
 dostane zkrácenou hodnotu a háčky pak hlásí „žádné zápisy", což je artefakt, ne chování enginu.
 

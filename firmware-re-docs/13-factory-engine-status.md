@@ -810,3 +810,21 @@ nothing. `dist.engine` reads only `ctx+0` and `ctx+4` (once each, both zero) and
 pointer of zero** at `0x81bfa4b2` while writing its own data page `0x81c3a000`. So the 0 of 8 measures a
 harness mismatch, not silent effects: like the instruments, the effects walk buffer pointers the OS fills
 before a block.
+
+### TapeTwo: the "missing host transfer" explanation is wrong, 2026-10-19
+
+The standing explanation was that the host never converts `sampleLine` into `tapeBuffer_z`. That was tested
+directly and does not hold:
+
+* with every interface slot stubbed to answer 1, `sampleLine_l` **is** filled with the input (16 of 16
+  nonzero words, first `61800448`) - recording works;
+* a read/write timeline over one block shows `renderFX` **itself** writing 128 zero words into
+  `tapeBuffer_l` (interleaved byte offsets `0, 128, 2, 130, ...`) and then reading those same 128 back;
+* performing the supposed host transfer (copy `sampleLine` -> `tapeBuffer_z` at the engine's own transfer
+  service call, opcode `0xa0002`) **32 times over 8 blocks changes nothing**: output stays 0 of 1024;
+* filling the sixth argument with the input sine changes nothing either: 0 of 768.
+
+So TapeTwo issues six host calls per block - slot 0 with opcodes 1 and 0, slot 1 with opcodes 5, 6 and
+`0xa0002` twice - and then zeroes and re-reads the tape buffer inside the block regardless of what the host
+answers. The silence is in the tape buffer's own mix path, not in a missing host conversion, and the
+handover text that said otherwise has been corrected.
