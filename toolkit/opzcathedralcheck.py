@@ -22,7 +22,7 @@ def render(raw, exports, note, vel=0x7FFFFFFF, env=0x7FFFFFFF, bend=0, blocks=96
     for ctx in ctxs:
         m.st32(ctx + 0x118, env)
         Z.call(m, exports["init"], [ctx, 0])
-    m.st32(amp + 0x08, vel)
+    m.st32(amp + 0x04, vel)
     m.st32(amp + 0x10, 2)
     left = [[] for _ in ctxs]
     for _ in range(blocks):
@@ -71,6 +71,14 @@ def main(path="cathedral.engine"):
     q = len(clips[60]) // 4
     head, tail = sum(v * v for v in clips[60][:q]), sum(v * v for v in clips[60][-q:])
     assert 0.75 < tail / head < 1.25, f"note 60 is not sustained ({head:.3e} -> {tail:.3e})"
+
+    # A pitch held BETWEEN two table rows must sustain too. Interpolating two unit vectors shortens the
+    # radius, and this oscillator has no damping of its own, so a shorter radius is a fade: half a semitone
+    # off row 100 used to lose 83% in 0.8 s. This is the check that catches that class of bug.
+    between = render(raw, exports, 100.5, blocks=480)
+    q = len(between) // 4
+    head, tail = sum(v * v for v in between[:q]), sum(v * v for v in between[-q:])
+    assert 0.85 < tail / head < 1.15, f"a pitch held between rows fades ({head:.3e} -> {tail:.3e})"
 
     # Dynamics: velocity (amp+0x08) and the OS envelope (record+0x160 == ctx+0x118) both scale the output.
     loud = peak(clips[60])

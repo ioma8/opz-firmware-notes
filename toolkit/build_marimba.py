@@ -173,13 +173,22 @@ def build():
     c.emit(A.rts())
 
     # ---------------------------------------------------------- onNoteOff(a1, ctx)
+    # Which register carries ctx here is NOT established: doc 11 §11.16 documents the per-voice state map and
+    # the note-on path, and says nothing about this export's arguments. R1 is the best guess, so the pointer
+    # is range-checked first: a wrong guess then writes nothing instead of 64 bytes at whatever integer R1
+    # held. A no-op here is harmless - render's amp gate still ends the voice.
     c.label("onNoteOff")
-    c.emit(A.regmv("P0", "R1"))              # ctx is argument 2 (see doc 11 section 11.16)
+    c.emit(A.logic32("R3", "R1", "R1", "|")) # R3 = the context candidate
+    c.ins("ldimm32", "R2", 0x10000000)       # nothing below the image/L1 regions is a pointer
+    c.emit(A.comp_lt("R3", "R2"))
+    c.branch("off_ret", cond=True)
+    c.emit(A.regmv("P0", "R1"))
     c.ins("ldimm7", "R2", 1)
     c.emit(A.ldst("P0", "R2", store=True))   # +0x00 = 1: struck, so render will not restart the note
     c.ins("ldimm7", "R2", 0)
     for _ in range(15):                      # +0x04 .. +0x3f: zero the state, so the voice is silent
         c.emit(A.ldst("P0", "R2", store=True))
+    c.label("off_ret")
     c.emit(A.rts())
 
     # ---------------------------------------------------------- render(out, freq, off, ctx, params, env)
@@ -286,6 +295,11 @@ def build():
     # as a sub-audio thump at full amplitude rather than as nothing.
     c.ins("cmp_eq0", "R6")
     c.branch("idle_pitch", cond=True)
+    # A negative pitch argument compares as an enormous unsigned number, so the search would clamp to row
+    # 127 - a full-scale 12.5 kHz note instead of silence. Anything past the table's range is no pitch.
+    c.ins("ldimm32", "R4", 0x40000000)      # 16384 Hz in Q16, above the highest row's 12544 Hz
+    c.emit(A.comp_lt("R6", "R4"))
+    c.branch("idle_pitch", cond=False)
     c.ins("ldimm7", "R5", 0)                 # lo
     c.ins("ldimm32", "R2", 127)              # hi
     c.ins("ldimm32", "R3", D_FREQ)           # base, untouched across the loop

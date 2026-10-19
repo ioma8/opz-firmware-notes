@@ -693,6 +693,28 @@ of how many reads happened, so a single `[P0++]` in the wrong place silently shi
 **the failure looked like excessive damping, not like misalignment**, which is exactly the shape of bug that a
 "does it make sound?" test passes: it did make sound, for one block.
 
+### Where an engine's loudness can come from, and what `onNoteOff`'s arguments are
+
+Two questions come up every time a new engine is written, and the repositories' answer to each is partial.
+
+**Loudness.** `render`'s six arguments carry no velocity, so an engine that wants dynamics has only the amp
+object (argument 6, `record+0x30`) and the OS's own per-voice state. What is known about the amp object
+(doc `12`): the OS writes `amp+0x08 = 0x7f000000` and `amp+0x10 = 5` when a note starts, `amp+0x10` is the
+state word every factory engine tests against zero, and `chord` loads `amp+0x04` at `0x81be278c` as its
+**voice gain**. So `amp+0x04` is the field that carries level — not `amp+0x08`, which is a constant and gives
+no velocity at all. The envelope's current level is at `record+0x160`, which is `ctx+0x118` for an engine
+given `record+0x48` as its state; that one is written every tick by the OS envelope pass.
+
+Both fields are filled by the OS and neither is verified on hardware, so an engine should treat a missing one
+as "no attenuation" rather than as zero gain: a wrong guess then costs a dead velocity knob instead of a
+silent engine.
+
+**`onNoteOff`.** Unlike `onNoteOn`, whose two relevant registers are pinned down (`R1` note, `R2` context —
+hardware-proved on 1.2.45), this export's argument positions are **not established by any source here**. Both
+authored engines read the context from `R1`, which is a guess, and both range-check the pointer before
+writing: a wrong guess then writes nothing instead of sixty-four bytes at whatever integer `R1` happened to
+hold. A no-op is harmless because the amp gate in `render` still ends the voice.
+
 ## 11.17 Installing a new engine on a real unit: what actually works
 
 Three routes were tried on hardware (firmware 1.2.45 / OS 1.2.43). Only the third worked. The full procedure,

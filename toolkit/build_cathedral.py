@@ -4,6 +4,18 @@
 Six phase-coherent pipe ranks (16′, 8′, 4′, 2 2/3′, 2′ and 1 1/3′) are mixed per voice.
 Each voice is independent and sustains while the OS amp gate is active. Add the OP-Z's reverb
 track effect for the cathedral tail; this engine itself stays a compact, dry organ source.
+
+The voice contract, all of it from render's own arguments (the OS note-start path calls init and
+render, never onNoteOn): pitch is argument 2 in Q16 Hz, argument 3 is the glide delta
+`(target - current) >> 6` and lands half of itself on the block's midpoint, and a note is struck
+when the amp object's state word goes from idle to active. Loudness is the OS envelope
+(`ctx+0x118`, i.e. `record+0x160`) times the amp object's voice gain (`amp+0x04`, the field chord
+reads at 0x81be278c); a zero there means unity, so a wrong guess about that field costs a dead
+velocity knob instead of a silent engine.
+
+Not implemented, deliberately: `params[]` is unread (guessing which of the eighteen words is a
+drawbar risks silencing the engine, and `params[2..5]` are amp arguments on this ABI), the output
+is mono, and there is no engine-generated reverb - the space is the track effect's job.
 """
 import math, pathlib, sys
 
@@ -85,13 +97,23 @@ def build():
     c.emit(A.rts())
 
     # ---------------------------------------------------------- onNoteOff(a1, ctx)
+    # Which register carries ctx here is NOT established: doc 11 §11.16 documents the per-voice state map
+    # and the note-on path, and says nothing about this export's arguments. R1 is the best guess (it matches
+    # onNoteOn, where the context is the second of the two registers used), so the pointer is range-checked
+    # first: a wrong guess then writes nothing instead of 64 bytes at whatever integer R1 happened to hold.
+    # A no-op here is harmless - the amp gate in render still ends the voice.
     c.label("onNoteOff")
-    c.emit(A.regmv("P0", "R1"))              # ctx is argument 2 (see doc 11 section 11.16)
+    c.emit(A.logic32("R3", "R1", "R1", "|")) # R3 = the context candidate
+    c.ins("ldimm32", "R2", 0x10000000)       # nothing below the image/L1 regions is a pointer
+    c.emit(A.comp_lt("R3", "R2"))
+    c.branch("off_ret", cond=True)
+    c.emit(A.regmv("P0", "R1"))
     c.ins("ldimm7", "R2", 1)
     c.emit(A.ldst("P0", "R2", store=True))   # +0x00 = 1: struck, so render will not restart the note
     c.ins("ldimm7", "R2", 0)
     for _ in range(15):                      # +0x04 .. +0x3f: zero the state, so the voice is silent
         c.emit(A.ldst("P0", "R2", store=True))
+    c.label("off_ret")
     c.emit(A.rts())
 
     # ---------------------------------------------------------- render(out, freq, off, ctx, params, env)
@@ -129,9 +151,14 @@ def build():
     c.jump("done")
     c.label("amp_active")
     c.emit(A.regmv("P0", "R5"))
-    for _ in range(2):
-        c.emit(A.ldst("P0", "R0"))
-    c.emit(A.ldst("P0", "R4"))               # amp+0x08: velocity gain, Q31
+    c.emit(A.ldst("P0", "R0"))              # skip amp+0x00, P0 = amp+0x04
+    c.emit(A.ldst("P0", "R4"))              # amp+0x04: the per-voice gain chord loads at 0x81be278c
+    # ...not amp+0x08, which the OS writes as the constant 0x7f000000 at note start (doc 12), so it carries
+    # no velocity. If the OS leaves 0x04 unfilled the field is zero, and a zero gain would silence the voice
+    # permanently, so zero means unity: the worst case is then a working engine with a dead velocity knob.
+    c.ins("cmp_eq0", "R4")
+    c.branch("save_velocity", cond=False)
+    c.ins("ldimm32", "R4", 0x7FFFFFFF)
     c.label("save_velocity")
     c.emit(A.regmv("P0", "P3"))
     for _ in range(28):
@@ -164,16 +191,23 @@ def build():
         c.emit(A.ldst("P0", "R1", store=True))   # y2 = 0
     c.label("playing")
 
-    # The OS supplies pitch plus a per-sample glide increment. Use the block midpoint and interpolate
-    # between adjacent semitone coefficient rows, so pitch bend/glide is smooth rather than quantized.
+    # The OS supplies pitch plus a glide increment equal to (target - current) >> 6, so half of it lands on
+    # the block's midpoint and interpolating between adjacent rows keeps a glide continuous instead of
+    # quantised. A zero pitch is tested BEFORE the bend is added: after it, the bend alone made the guard
+    # miss and the engine emitted an 8 Hz thump at full amplitude.
+    c.ins("cmp_eq0", "R6")
+    c.branch("pitch_idle", cond=True)
     c.emit(A.shl("R4", "R7", 5))
     c.emit(A.addsub32("R6", "R6", "R4", "+"))
-    c.ins("cmp_eq0", "R6")
-    c.branch("zero_pitch", cond=True)
-    c.jump("pitch_valid")
-    c.label("zero_pitch")
+    # A negative midpoint compares as an enormous unsigned number and would select the top row - a
+    # full-scale 12.5 kHz note instead of silence. Anything past the table's range is no pitch at all.
+    c.ins("ldimm32", "R4", 0x40000000)      # 16384 Hz in Q16, above the highest row's 12544 Hz
+    c.emit(A.comp_lt("R6", "R4"))
+    c.branch("pitch_ok", cond=True)
+    # A trampoline, because idle_pitch sits after the frame loop and is past the conditional branch's range.
+    c.label("pitch_idle")
     c.jump("idle_pitch")
-    c.label("pitch_valid")
+    c.label("pitch_ok")
 
     # Clamp below/above the table explicitly; in particular note 127 must select its own row.
     c.ins("ldimm32", "P0", D_FREQ)
@@ -261,7 +295,9 @@ def build():
     c.emit(A.regmv("P0", "P3"))
     for _ in range(16):
         c.emit(A.ldst("P0", "R0"))            # P0 = ctx+0x40 scratch
-    for _ in range(N_MODES):
+    c.ins("ldimm32", "R6", 0x40000000)        # 0.5 in Q31, for the radius correction below
+    c.ins("ldimm32", "R7", 0x20000000)        # 0.25: below this the pair is not a rotation at all
+    for m in range(N_MODES):
         c.emit(A.ldst("P1", "R0"))            # lower c
         c.emit(A.ldst("P1", "R1"))            # lower s
         c.emit(A.ldst("P2", "R2"))            # upper c
@@ -269,12 +305,37 @@ def build():
         c.emit(A.addsub32("R5", "R2", "R0", "-"))
         c.emit(A.mul32("R5", "R5", "R3"))
         c.emit(A.addsub32("R5", "R5", "R5", "+"))
-        c.emit(A.addsub32("R0", "R0", "R5", "+"))
-        c.emit(A.ldst("P0", "R0", store=True))
+        c.emit(A.addsub32("R0", "R0", "R5", "+"))   # interpolated c
         c.emit(A.addsub32("R5", "R4", "R1", "-"))
         c.emit(A.mul32("R5", "R5", "R3"))
         c.emit(A.addsub32("R5", "R5", "R5", "+"))
-        c.emit(A.addsub32("R1", "R1", "R5", "+"))
+        c.emit(A.addsub32("R1", "R1", "R5", "+"))   # interpolated s
+        # Interpolating between two unit vectors shortens the radius to cos(dw/2), and this oscillator has
+        # no damping of its own, so a pitch held between rows decays instead of sustaining: measured, half a
+        # semitone off row 100 fell to 28% in 0.8 s. Correct it by the first-order factor 1 + (0.5 - r^2/2),
+        # added rather than multiplied in because Q31 cannot hold 1.5 and 1.0 + eps would saturate.
+        c.emit(A.mul32("R2", "R0", "R0"))           # c^2, half scale
+        c.emit(A.mul32("R5", "R1", "R1"))           # s^2, half scale
+        c.emit(A.addsub32("R2", "R2", "R5", "+"))   # r^2 / 2, about 0.5
+        # A rank past the 0.45*FS gate has a zero row, so the pair is a partial vector whose length IS the
+        # level: rescaling that would restore a rank the table deliberately muted, so leave it alone.
+        c.emit(A.comp_lt("R2", "R7"))
+        c.branch(f"coef_store_{m}", cond=True)
+        c.emit(A.addsub32("R5", "R6", "R2", "-"))   # eps = 0.5 - r^2/2
+        # 1/sqrt(1-2eps) is 1 + eps + 1.5eps^2 + ..., and at the top of the table eps reaches 2e-3, where
+        # dropping the squared term still costs about a third of a decibel per second.
+        c.emit(A.mul32("R2", "R5", "R5"))            # eps^2 / 2
+        c.emit(A.addsub32("R4", "R2", "R2", "+"))    # eps^2
+        c.emit(A.addsub32("R2", "R2", "R4", "+"))    # 1.5 eps^2
+        c.emit(A.addsub32("R5", "R5", "R2", "+"))    # eps + 1.5 eps^2
+        c.emit(A.mul32("R2", "R0", "R5"))
+        c.emit(A.addsub32("R2", "R2", "R2", "+"))   # c * eps
+        c.emit(A.addsub32("R0", "R0", "R2", "+"))
+        c.emit(A.mul32("R2", "R1", "R5"))
+        c.emit(A.addsub32("R2", "R2", "R2", "+"))   # s * eps
+        c.emit(A.addsub32("R1", "R1", "R2", "+"))
+        c.label(f"coef_store_{m}")
+        c.emit(A.ldst("P0", "R0", store=True))
         c.emit(A.ldst("P0", "R1", store=True))
 
     # Combine the OS envelope level (record+0x160 == ctx+0x118) with the note velocity gain. Both live at
