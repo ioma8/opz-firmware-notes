@@ -267,3 +267,24 @@ established method (symbol → Unicorn fixture → port → byte-exact test). Th
 2 of 13 instruments as far as it can go; feeding the clone's *device ground truth* for `saw013a` to our Blackfin
 binary still fails because the engine copies only the first 13 interface entries into its own state, leaving
 `+0x40`/`+0x48` at zero so its host calls go to address 0.
+
+## The effect ABI, and effects that actually process audio
+
+Resolving the effect classes in `libSnakePlugin.so` gives their mangled names, and those carry the signature:
+
+```
+Crush::renderFX(unsigned const* params, int frames, void* state,
+                fract32_t* in, fract32_t* out, fract32_t* scratch)
+```
+
+Called that way — `initModule`, `init`, then `renderFX(params, 64, state, in, out, out)` — the effects do work:
+
+| engine | output |
+|---|---|
+| `Crush` | **125 of 128 nonzero**, peak 46,551 |
+| `Dist` | 7 of 128 nonzero, peak 2,453 |
+| `Chorus` | silent |
+
+So two of the eight factory effects genuinely process audio in the vendor library. Every attempt in this repository
+used a five-word stack with the buffers last, which is simply the wrong convention; the vendor's is **params and
+frame count first, buffers third and fourth**.
