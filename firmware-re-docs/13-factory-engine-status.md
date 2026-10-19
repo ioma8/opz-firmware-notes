@@ -857,3 +857,20 @@ expected to fill it before each block. Supplying a buffer there drops the null-a
 and 270 stores still go to low addresses (`0x81bfa1a4`, `0x81bfa1b8`, `0x81bfa1ca` writing to 4, 8, `0x204`).
 So the output base is a second OS-supplied field. The effect population is therefore one step further along
 than "calling-convention mismatch" and still not playable without the OS state.
+
+### Rendering audio is not playing the note, 2026-10-19
+
+`opzinstcheck` now also reports each instrument's dominant spectral bin (tail window, mean removed, Hann
+window, 80-3000 Hz scan with a fine pass). It changes what the headline number means:
+
+* all 13 still render audio - 2556 to 2560 nonzero samples;
+* but only **Digital** lands within a semitone of the requested note 60 (261.6 Hz): 267.5 Hz, +38 cents;
+* **EP** and **MiniStringShort** peak on the second harmonic (+32 and +134 cents), **Organ** on the fourth
+  (+147);
+* **AnalogA, Chord, Fm003b, Saw013a, Volt** put their dominant energy near 140-150 Hz - about half the
+  request - and **Cluster, SamplePlayerGain, SynthSampler** at 75 Hz.
+
+So "13 of 13 render audio" is accurate and must not be read as "13 of 13 play the requested note". The
+column is labelled **informational**: a dominant-bin scan is not a pitch tracker on an engine with several
+partials, so the rest need a per-engine harmonic comparison before any claim about playing the note
+correctly.

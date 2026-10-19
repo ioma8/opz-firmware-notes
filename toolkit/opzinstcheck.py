@@ -125,6 +125,7 @@ def play(so, syms, cls, blocks):
     if note:
         so.call(note, [60, 100, state, params])
     total = peak = 0
+    mono = []
     for _ in range(blocks):
         so.write(out, b"\0" * (FRAMES * 8))
         so.call(find(syms, cls, "6render"),
@@ -132,7 +133,33 @@ def play(so, syms, cls, blocks):
         v = so.read_i32_array(out, FRAMES * 2)
         total += sum(1 for x in v if x)
         peak = max(peak, max((abs(x) for x in v), default=0))
-    return total, peak
+        mono += v[0::2]                       # left channel: some engines write only one
+    return total, peak, mono
+
+
+def pitch(samples, fs=48000.0, lo=80.0, hi=3000.0):
+    """Dominant frequency by DFT scan, then a fine pass around the best bin.
+
+    Non-zero samples only prove an engine emits something; "plays correctly" needs the note. Chord
+    deliberately puts energy a fifth above the root, so the caller compares the result with the requested
+    frequency and its harmonics rather than demanding equality.
+    """
+    import cmath
+    if not samples or not any(samples):
+        return 0.0
+    # the tail of the run is the steady state; the attack and any DC or envelope offset would otherwise
+    # dominate the scan (an unwindowed whole-run scan reported 55 Hz for every engine, which is the
+    # envelope rate, not the note)
+    tail = samples[len(samples) // 2:]
+    mean = sum(tail) / len(tail)
+    n = len(tail)
+    windowed = [(s - mean) * (0.5 - 0.5 * math.cos(2 * math.pi * i / (n - 1))) for i, s in enumerate(tail)]
+    def mag(f):
+        return abs(sum(s * cmath.exp(-2j * math.pi * f * i / fs) for i, s in enumerate(windowed)))
+    best = max((mag(lo + 0.5 * k), lo + 0.5 * k) for k in range(int((hi - lo) / 0.5)))
+    centre = best[1]
+    fine = max((mag(centre - 5 + 0.25 * k), centre - 5 + 0.25 * k) for k in range(41))
+    return fine[1]
 
 
 def main(argv=None):
@@ -159,15 +186,25 @@ def main(argv=None):
         so.flags = so.alloc(8)
         supply(so, cls)
         try:
-            nz, peak = play(so, syms, cls, a.blocks)
+            nz, peak, mono = play(so, syms, cls, a.blocks)
         except Exception as e:
             print(f"  {cls:18s} {type(e).__name__}")
             continue
         ok = nz > 0
         working += ok
-        print(f"  {cls:18s} {nz}/{a.blocks * FRAMES * 2} nonzero, peak {peak}"
+        want = 440.0 * 2 ** ((60 - 69) / 12.0)
+        hz = pitch(mono)
+        n = round(hz / want) if hz else 0
+        cents = 1200 * math.log2(hz / (want * n)) if hz and n else float("nan")
+        # informational: a dominant-bin scan is not a pitch tracker on an engine with several partials
+        verdict = "" if not ok else (f"  dominant ~{hz:6.1f} Hz ({n}x{want:.1f}, {cents:+.0f} cents)"
+                                     if n >= 1 else f"  dominant ~{hz:6.1f} Hz, not near {want:.1f}")
+        print(f"  {cls:18s} {nz}/{a.blocks * FRAMES * 2} nonzero, peak {peak}{verdict}"
               f"{'' if ok else '   SILENT'}")
     print(f"\n{working} of {len(names)} factory instruments render audio")
+    print("the dominant-bin column is informational: it only means the run is not silence at the note's")
+    print("frequency. Only Digital lands within a semitone of the requested note; the rest need a")
+    print("per-engine harmonic comparison before anything is claimed about playing the note correctly.")
     return 0 if working == len(names) else 1
 
 
