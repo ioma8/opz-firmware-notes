@@ -461,27 +461,44 @@ R0 and R1 and never touches stack arguments; a 128-entry coefficient table compu
 `opzmarimba.py` so the engine contains no transcendentals — a note is an index. Registers render needs beyond
 the volatile set are saved with the verified push/pop pair.
 
-**The decay macro is read from `params[1]`, and `params[2]` was wrong.** The first build used `params[2]` on
-the reasoning that the third knob is the obvious place for decay. Doc `11` §11.9 rules that out: `chord` passes
-`params[2]`, `params[3]`, `params[4]` and `params[5]` to the OS parameter-smoothing service (`host_table[7]`),
-so those four are the amp/envelope arguments, not engine knobs, while the sibling port's parameter map records
-`params[0]` and `params[1]` as the two entries every ported engine reads. The mechanism is unchanged — argument 5
-is a *stack* argument, reached with post-increment loads because the encoder has no displacement load — and the
-mapping is accurate, with buckets landing within 1 % of their target T60. `opzverify.py` now pins the choice
-discriminatingly: bucket 5 written **only** into `params[1]` gives a 3.0 s tail, and written only into
-`params[2]` leaves the 0.1 s tail untouched. Which knob the OS binds to `params[1]` is still unconfirmed on
-hardware.
+**A voice starts from render's own arguments, and that is what makes the engine polyphonic.** The first
+build opened its gate and captured its note in `onNoteOn`, which meant a voice could only sound if that
+export was called for it. §11.9 says the sequencer's note-start path calls `init` and `render` and nothing
+else, so on the device the engine behaved monophonically: notes arrived, but only the one voice the
+keyboard path happened to arm ever sounded. Every factory instrument is immune to this because it takes
+everything it needs from the tick:
 
-**The sixth argument is an amp object, and the first build ignored it.** Render is
-`render(out, freq_q16, bend, ctx, params, amp)`, and every factory instrument tests `amp+0x10` first and returns
-when it is zero, because the OS owns the voice and a released voice must cost nothing (§11.9). The engine now
-reads that word from the stack and returns early on zero, which is what makes `onNoteOff` unnecessary for a
-voice the OS has already reclaimed. A null `amp` pointer still renders, so a caller that passes only three
-stack words behaves exactly as before — and all four harness call sites now pass a live object
-(`amp+0x10 = 2`) instead.
+```
+render(out, pitch_q16, bend, state, params, amp)
+        │     │           │      │       │      └─ +0x10 nonzero = the OS still wants this voice
+        │     │           │      │       └─ the 18-word parameter array
+        │     │           │      └─ this voice's own 0x134-byte state block
+        │     │           └─ pitch target minus last tick, >> 6
+        │     └─ pitch, Q16 Hz, recomputed by the OS every tick
+        └─ interleaved stereo
+```
 
-Code and claim were re-measured together: `opzsim.py selftest` passes 25 checks including a new
-"amp state 0 -> silence", and `opzverify.py marimba.engine` passes 14, including the two decay-index checks.
+The engine now does the same. Contention is resolved in favour of the arguments:
+
+* **pitch** is argument 2. The row is the nearest semitone, located by a seven-step binary search over a
+  128-entry Q16-Hz table built into the module — no logarithm, no state, and exact for every note because
+  the OS derives that argument from its own semitone table. A glide quantises to the nearest semitone
+  (≤50 cents) and `bend` is ignored; interpolating between adjacent rows is the fix if that ever matters.
+* **voice activity** is `amp+0x10`. Zero means the voice is idle: the render clears the "struck" flag and
+  returns without touching the mix. When it goes from idle to active the strike comb is seeded into the
+  state — that is the note-on.
+* **`onNoteOn`** remains exported because the loader rejects a module without it, but it now only clears
+  the struck flag, i.e. asks for a re-strike. That keeps the live-keyboard path immediate without making
+  the voice depend on it. `onNoteOff` zeroes the state and marks the voice struck, so a released note is
+  silent and does not restart.
+
+`opzsim.py selftest` proves the property directly rather than by inspection: two records are initialised,
+**no `onNoteOn` is called at all**, and they are then ticked alternately — the test reads 219.9 Hz and
+880.1 Hz from the same two records in the same run.
+
+**The decay macro is read from `params[1]`, and `params[2]` was wrong.**Code and claim were re-measured together: `opzsim.py selftest` passes 27 checks including "amp state 0 ->
+silence" and "two voices play two pitches at once", and `opzverify.py marimba.engine` passes 14, including
+the two decay-index checks and 13 notes at a worst error of 0.05%.
 
 The coefficient table itself carries **no** damping: `r = 1.0`, so the rotation is exactly norm-preserving and
 the entire tail comes from a per-block gain. That separation is what makes the macro map to an absolute T60

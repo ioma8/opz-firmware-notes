@@ -87,6 +87,19 @@ def comp_eq(dst, src):
     return _u16(w)
 
 
+def comp_lt(dst, src):
+    """`CC = Rdst < Rsrc`, unsigned (CCFlag opc 3, same field layout as `comp_eq`).
+
+    Unsigned because a coefficient table search compares positive words; the signed forms (opc 1/2) would
+    misread a top-bit-set word as negative. The interpreter has decoded opc 0-4 since the CCFlag work, so
+    this only adds the emitter the builder lacked.
+    """
+    w = (0x1 << 11) | (3 << 7) | (0 << 6)
+    w |= (D_REGS.index(src) & 7) << 3
+    w |= D_REGS.index(dst) & 7
+    return _u16(w)
+
+
 def logic32(dst, src0, src1, op="&"):
     """`Rdst = Rsrc0 op Rsrc1` (Comp3op, instr16/15-Comp3op.sinc): signature 0x5 at bits 12-15, opcode at
     bits 9-11 (0 add, 1 sub, 2 AND, 3 OR, 4 XOR), dst at 6-8, src1 at 3-5, src0 at 0-2."""

@@ -40,12 +40,12 @@ def setup(raw, bucket=4, note=None):
     return m, exports, ctx, prm, amp, out
 
 
-def capture(m, exports, ctx, prm, amp, out, blocks):
+def capture(m, exports, ctx, prm, amp, out, blocks, hz=440.0):
     buf = []
     for _ in range(blocks):
         for j in range(2 * S.BLOCK):
             m.st32(out + 4 * j, 0)
-        Z.call(m, exports["render"], [out, 440 << 16, 0], stack=(ctx, prm, amp))
+        Z.call(m, exports["render"], [out, int(round(hz * 65536)), 0], stack=(ctx, prm, amp))
         buf += [m.ld32(out + 4 * j) for j in range(2 * S.BLOCK)]
     return buf
 
@@ -73,7 +73,7 @@ def main(argv):
         # slice is truncated and the estimate drifts (0.8 s of 32.7 Hz once read as 33.4 Hz)
         window = 4096 if want > 200 else 16384
         m, ex, ctx, prm, amp, out = setup(raw, note=n)
-        buf = capture(m, ex, ctx, prm, amp, out, max(60, window // S.BLOCK + 16))
+        buf = capture(m, ex, ctx, prm, amp, out, max(60, window // S.BLOCK + 16), hz=want)
         got = S.measure_freq(buf, window=window)
         err = abs(got - want) / want
         peak = max(abs(v) for v in buf) / 2 ** 31
@@ -122,7 +122,7 @@ def main(argv):
     m, ex, ctx, prm, amp, out = setup(raw, note=69)
     for j in range(2 * S.BLOCK):
         m.st32(out + 4 * j, 0)
-    Z.call(m, ex["render"], [out, 440 << 16, 0], stack=(ctx, 0, amp))   # null params
+    Z.call(m, ex["render"], [out, 440 << 16, 0], stack=(ctx, 0, amp))   # null params, note 69
     buf = [m.ld32(out + 4 * j) for j in range(2 * S.BLOCK)]
     check("null params survives", any(v != 0 for v in buf), "renders with gain 1.0")
 
@@ -142,8 +142,11 @@ def main(argv):
     m, ex, ctx, prm, amp, out = setup(raw, note=69)
     capture(m, ex, ctx, prm, amp, out, 4)
     Z.call(m, ex["init"], [ctx, 0])
-    buf = capture(m, ex, ctx, prm, amp, out, 1)
-    check("init silences the voice", all(v == 0 for v in buf), "gate cleared by init")
+    buf = capture(m, ex, ctx, prm, amp, out, 4, hz=440.0)
+    # init no longer silences, and must not: it returns a voice to "ready to strike", which is what lets
+    # a record the OS has just allocated start a note with nobody calling onNoteOn.
+    check("init readies the voice", max(abs(v) for v in buf) > 0,
+          f"a fresh record sounds, peak {max(abs(v) for v in buf) / 2 ** 31:.3f}")
 
     # ---- cost: instructions per render call, and the resulting DSP load
     m, ex, ctx, prm, amp, out = setup(raw, note=69)

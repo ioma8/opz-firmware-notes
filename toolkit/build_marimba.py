@@ -22,6 +22,11 @@ Design, and why each choice was forced:
 * **Only verified instruction forms.** opzasm raises `Unsupported` rather than guessing, so a mistake
   fails the build instead of producing a module that loads and misbehaves.
 * **Volatile registers only, plus the verified push/pop pair** for the registers render() must borrow.
+* **A voice comes alive from render's own arguments**, never from `onNoteOn`: pitch is argument 2, and
+  the amp object's state word (argument 6, +0x10) says whether the OS still wants this voice. The strike
+  is seeded when that state goes from idle to active. `onNoteOn` is still exported - the loader requires
+  it - but it only asks for a re-strike. This is what makes the engine polyphonic: every voice record the
+  OS ticks has its own context, pitch and amp, so N records sound N notes.
 
 Known limitations, stated rather than hidden:
   - the decay macro is read from params[PARAM_DECAY], and that index is still not confirmed on hardware.
@@ -33,11 +38,11 @@ Known limitations, stated rather than hidden:
     - buckets land within 1% of their target T60 - but which knob the OS binds to params[1] is still an
     assumption;
   - the strike position is fixed at 0.22 (baked into the seed table), not a live macro;
-  - pitch comes from the note `onNoteOn` stores, not from render's argument 2, which doc `11` §11.9
-    identifies as a Q16 frequency. The hardware test settles the choice in favour of this build - it
-    measured 440.1 Hz for A4 - but the sequencer's note-start path never calls `onNoteOn` (§11.9), so a
-    voice started by the sequencer alone would read note 0. Switching to argument 2 needs a
-    frequency-to-row conversion, which is a logarithm this build deliberately does not contain;
+  - pitch comes from render's argument 2 (Q16 Hz) and the row is the NEAREST semitone, found with a
+    seven-step binary search over the build-time frequency table. The OS derives that argument from its
+    own semitone table, so for every real note the match is exact; during a pitch glide the row quantises
+    to the nearest semitone (up to 50 cents) and `bend`, argument 3, is ignored. Interpolating between
+    adjacent rows would remove that, and is the next thing to do if glides ever matter;
   - `mul32` emits the (T) extraction, and that extraction is `>> 32` rather than the `>> 31` of a Q31
     fractional multiply (SLEIGH's `rounding(..., 4)` clears four bytes). Every multiply therefore
     returns half scale and each mode output is doubled with one add, mirroring `frac_q31()` in
@@ -70,6 +75,7 @@ D_G      = DATA_BASE + 0x2C         # the decay factor chosen for this note
 D_STATE  = DATA_BASE + 0x30         # 6 modes x (y1, y2) = 12 words
 D_TABLE  = DATA_BASE + 0x60         # 128 notes x 6 modes x (c, s)
 D_GAINS  = DATA_BASE + 0x1860       # 8 per-block decay factors, selected by the decay macro
+D_FREQ   = DATA_BASE + 0x1880       # 128 notes' frequencies in Q16 Hz, the pitch search's index
 T60_LONG = 8.0                      # the table's own damping; the macro shortens from here
 PARAM_DECAY = 1                     # params[1]: read by every ported engine, unlike params[2..5]
 N_MODES = 6
@@ -167,33 +173,31 @@ def build():
     c.emit(A.rts())
 
     # ---------------------------------------------------------- onNoteOn(a1, note, ctx, a4)
+    # The note-store and the strike moved into render: on the device this export is not what starts a
+    # note (doc 11 §11.9), so a voice must never depend on having been called. It only asks render to
+    # re-strike, which is what a live keyboard note wants.
     c.label("onNoteOn")
     c.emit(A.regmv("P0", "R2"))              # ctx is argument 3
-    c.ins("ldimm7", "R3", 1)
-    c.emit(A.ldst("P0", "R3", store=True))   # +0x00 gate = 1
-    c.emit(A.ldst("P0", "R1", store=True))   # +0x04 the note, which the table row is derived from
-    c.emit(A.ldst("P0", "R3", store=True))   # +0x08 row pointer, filled in by render
     c.ins("ldimm7", "R3", 0)
-    c.emit(A.ldst("P0", "R3", store=True))   # +0x0c reserved
-    c.ins("ldimm32", "R0", D_STRIKE)         # strike comb: per-mode seed, not one seed for all
-    c.emit(A.regmv("P1", "R0"))
-    for _ in range(N_MODES):
-        c.emit(A.ldst("P1", "R0"))           # seed for this mode
-        c.emit(A.ldst("P0", "R0", store=True))   # y1 = seed
-        c.emit(A.ldst("P0", "R3", store=True))   # y2 = 0
+    c.emit(A.ldst("P0", "R3", store=True))   # +0x00 = 0: not struck yet
+    c.emit(A.ldst("P0", "R1", store=True))   # +0x04 the note, bookkeeping only
     c.emit(A.rts())
 
     # ---------------------------------------------------------- onNoteOff(a1, ctx)
     c.label("onNoteOff")
     c.emit(A.regmv("P0", "R1"))              # ctx is argument 2 (see doc 11 section 11.16)
+    c.ins("ldimm7", "R2", 1)
+    c.emit(A.ldst("P0", "R2", store=True))   # +0x00 = 1: struck, so render will not restart the note
     c.ins("ldimm7", "R2", 0)
-    c.emit(A.ldst("P0", "R2", store=True, aop=2))
+    for _ in range(15):                      # +0x04 .. +0x3f: zero the state, so the voice is silent
+        c.emit(A.ldst("P0", "R2", store=True))
     c.emit(A.rts())
 
     # ---------------------------------------------------------- render(out, freq, off, ctx, params, env)
     c.label("render")
     c.emit(A.push_r7_p5())
     c.emit(A.regmv("P5", "R0"))              # out: interleaved stereo, 64 frames
+    c.emit(A.logic32("R6", "R1", "R1", "|")) # R6 = arg2, the pitch in Q16 Hz (R1 is volatile-only)
 
     # Arguments 4 and 5 are stack arguments and only the arguments are on the stack - the OS pushes no
     # extra frame word, so arg4 sits exactly where the callee's SP starts. The seven saved registers above
@@ -233,31 +237,81 @@ def build():
     # three register words behaves as it did before.
     c.ins("cmp_eq0", "R5")
     c.branch("amp_ok", cond=False)           # amp != 0 -> test its state word
-    c.jump("gate")
+    c.jump("vstart")
     c.label("amp_ok")
     c.emit(A.regmv("P0", "R5"))
     for _ in range(4):
         c.emit(A.ldst("P0", "R0"))
     c.emit(A.ldst("P0", "R0", aop=2))        # amp+0x10: the amp state machine, 0 = idle
     c.ins("cmp_eq0", "R0")
-    c.branch("done", cond=True)
-
-    # ---- gate
-    c.label("gate")
+    c.branch("vstart", cond=False)           # active -> go and play
+    # Idle means the OS released or has not yet started this voice. Clear "struck" so the next active
+    # tick seeds the strike, then leave: an idle voice costs nothing and writes nothing.
     c.emit(A.regmv("P0", "P3"))
-    c.emit(A.ldst("P0", "R0", aop=2))        # ctx+0x00
+    c.ins("ldimm7", "R1", 0)
+    c.emit(A.ldst("P0", "R1", store=True, aop=2))   # ctx+0x00 = 0
+    c.jump("done")
+
+    # ---- voice start. This is what makes the engine polyphonic: every voice record the OS renders has
+    # its own context, its own pitch argument and its own amp object, and a strike is seeded from those
+    # alone - so N records sound N notes without anything having to call onNoteOn per voice (doc 11
+    # §11.9: the sequencer's note-start path calls init and render, not onNoteOn). The first build kept
+    # the gate and the note in here and only onNoteOn ever set them, so a voice the OS started itself
+    # stayed silent and the engine behaved monophonically.
+    c.label("vstart")
+    c.emit(A.regmv("P0", "P3"))
+    c.emit(A.ldst("P0", "R0", aop=2))        # ctx+0x00: 0 = needs a strike
     c.ins("cmp_eq0", "R0")
-    c.branch("done", cond=True)
-
-    # ---- row pointer from the note, saved into the context so it can be rewound each frame
+    c.branch("playing", cond=False)          # already struck -> leave the ringing state alone
     c.emit(A.regmv("P0", "P3"))
-    c.emit(A.ldst("P0", "R0"))               # skip the gate; P0 = ctx+0x04
-    c.emit(A.ldst("P0", "R4"))               # R4 = note
-    c.emit(A.shl("R2", "R4", 4))             # note * 16
-    c.emit(A.shl("R5", "R4", 5))             # note * 32; together note * 48 without a multiply,
-    c.emit(A.addsub32("R4", "R2", "R5", "+"))# since mul32 is a FRACTIONAL multiply
-    c.ins("ldimm32", "R5", D_TABLE)
-    c.emit(A.addsub32("R5", "R5", "R4", "+"))# R5 = the coefficient row
+    c.ins("ldimm7", "R1", 1)
+    c.emit(A.ldst("P0", "R1", store=True))   # +0x00 = 1 (struck)
+    for _ in range(3):                       # +0x04 note and +0x08 row are render's to fill, +0x0c reserved
+        c.emit(A.ldst("P0", "R0"))           # P0 = ctx+0x10
+    c.ins("ldimm32", "R0", D_STRIKE)         # the strike comb: a per-mode seed, not one seed for all
+    c.emit(A.regmv("P1", "R0"))
+    for _ in range(N_MODES):
+        c.emit(A.ldst("P1", "R0"))           # seed for this mode
+        c.emit(A.ldst("P0", "R0", store=True))   # y1 = seed
+        c.emit(A.ldst("P0", "R1", store=True))   # y2 = 0
+    c.label("playing")
+
+    # ---- row pointer from the PITCH ARGUMENT, saved into the context so it can be rewound each frame.
+    # A binary search over the 128 Q16-Hz thresholds: seven iterations whatever the note, no logarithm and
+    # no state. The OS builds its pitch from its own semitone table, so the nearest row is the exact note
+    # even though only the frequency is passed.
+    c.ins("ldimm7", "R5", 0)                 # lo
+    c.ins("ldimm32", "R2", 127)              # hi
+    c.ins("ldimm32", "R3", D_FREQ)           # base, untouched across the loop
+    c.label("psearch")
+    c.emit(A.addsub32("R0", "R2", "R5", "-"))    # hi - lo
+    c.ins("ldimm7", "R1", 1)
+    c.emit(A.addsub32("R0", "R0", "R1", "-"))    # 0 -> lo and hi are adjacent
+    c.ins("cmp_eq0", "R0")
+    c.branch("found", cond=True)
+    c.emit(A.addsub32("R0", "R5", "R2", "+"))
+    c.emit(A.shr("R0", "R0", 1))             # R0 = mid
+    c.emit(A.shl("R1", "R0", 2))
+    c.emit(A.addsub32("R4", "R3", "R1", "+"))    # &FREQ[mid]
+    c.emit(A.regmv("P0", "R4"))
+    c.emit(A.ldst("P0", "R1", aop=2))        # FREQ[mid]
+    c.emit(A.comp_lt("R6", "R1"))            # CC = pitch < FREQ[mid], unsigned
+    c.branch("ps_hi", cond=True)
+    c.emit(A.logic32("R5", "R0", "R0", "|"))    # lo = mid
+    c.jump("psearch")
+    c.label("ps_hi")
+    c.emit(A.logic32("R2", "R0", "R0", "|"))    # hi = mid
+    c.jump("psearch")
+    c.label("found")
+    c.emit(A.shl("R2", "R5", 4))             # index * 16
+    c.emit(A.shl("R3", "R5", 5))             # index * 32; together index * 48 without a multiply,
+    c.emit(A.addsub32("R5", "R2", "R3", "+"))# since mul32 is a FRACTIONAL multiply
+    c.ins("ldimm32", "R4", D_TABLE)
+    c.emit(A.addsub32("R5", "R4", "R5", "+"))    # R5 = the coefficient row
+
+    c.emit(A.regmv("P0", "P3"))
+    c.emit(A.ldst("P0", "R0"))               # skip +0x00, P0 = ctx+0x04
+    c.emit(A.ldst("P0", "R0"))               # skip +0x04 (the note), P0 = ctx+0x08
     c.emit(A.ldst("P0", "R5", store=True))   # ctx+0x08 = row, P0 = ctx+0x0c
     c.emit(A.ldst("P0", "R0"))               # skip reserved, P0 = ctx+0x10
     c.emit(A.regmv("P2", "P0"))              # writer trails the reader
@@ -351,6 +405,10 @@ def build():
     for t60 in (0.1, 0.2, 0.4, 0.8, 1.6, 3.0, 5.0, T60_LONG):
         g = 10 ** (-3.0 * S.BLOCK / (t60 * FS))
         data += int(round(g * 2 ** 31)).to_bytes(4, "little")
+    # The pitch argument is Q16 Hz (doc 11 §11.9), and the OS derives it from its own semitone table, so a
+    # search over these thresholds lands exactly on a row for every real note. One row per semitone.
+    for note in range(128):
+        data += int(round(440.0 * 2 ** ((note - 69) / 12.0) * 65536)).to_bytes(4, "little")
 
     payload = len(hdr) + len(code) + len(data)
     segs = [

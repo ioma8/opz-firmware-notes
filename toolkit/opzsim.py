@@ -1498,6 +1498,13 @@ NULL_CALL_LIMIT = 4096
 
 
 def measure(note=69, seconds=1.0, engine="marimba.engine"):
+    """Render one note through the module and report what came out.
+
+    The pitch travels in render's argument 2 as Q16 Hz, which is how the OS drives it, so the note number
+    is converted here rather than handed over as a note number. No onNoteOn call: a voice must start from
+    the arguments the tick supplies (that is what makes the engine polyphonic), so this is the same path
+    the device uses.
+    """
     raw = pathlib.Path(engine).read_bytes()
     mod = E.read_module(raw)
     if not mod:
@@ -1505,24 +1512,35 @@ def measure(note=69, seconds=1.0, engine="marimba.engine"):
     exports = dict(mod["exports"])
     m = Machine.for_module(raw)
 
-    # initModule(id=0, host=0x81003850, out) then init(), then onNoteOn(a1, note, ctx)
     scratch = m.mem_base + Machine.SCRATCH_OFF
+    params = m.mem_base + Machine.PARAM_OFF
+    amp = params + 0x40
+    for i in range(8):
+        m.st32(params + 4 * i, 4 << 28)          # decay bucket 4 (target 1.6 s)
+    m.st32(amp + 0x10, 2)                       # amp state: the voice is live
     ret = call(m, exports["initModule"], [0, 0x81003850, scratch])
     if ret != 1:
         raise SystemExit(f"initModule returned {ret}, expected 1")
     call(m, exports["init"], [scratch, 0])
-    call(m, exports["onNoteOn"], [0, note, scratch])
 
     out = m.mem_base + Machine.OUT_OFF             # output buffer inside the window
-    frames = int(S.FS * seconds)
-    blocks = frames // S.BLOCK
-    for _ in range(blocks):
-        call(m, exports["render"], [out, int(440.0 * 65536), 0])
-        # render walks its own pointer; the buffer is re-used, so copy is unnecessary
-    buf = [int.from_bytes(m.mem[m._off(out) + 8 * i:m._off(out) + 8 * i + 4], "little", signed=True)
-           for i in range(S.BLOCK)]
-    # keep the last block for measurement, and reseed for a full-length capture next time
-    return buf, m
+    want = 440.0 * 2 ** ((note - 69) / 12.0)
+    buf = []
+    for _ in range(int(S.FS * seconds) // S.BLOCK):
+        for j in range(2 * S.BLOCK):
+            m.st32(out + 4 * j, 0)
+        call(m, exports["render"], [out, int(round(want * 65536)), 0], stack=(scratch, params, amp))
+        buf += [m.ld32(out + 4 * j) for j in range(2 * S.BLOCK)]
+    got = S.measure_freq(buf)
+    print(f"{pathlib.Path(engine).name}  note {note} asked for {want:.1f} Hz, measured {got:.1f} Hz "
+          f"({1200 * __import__('math').log2(got / want):+.0f} cents), peak "
+          f"{max((abs(v) for v in buf), default=0) / 2 ** 31:.3f} full scale")
+    return got
+
+
+def hz_to_q16(note):
+    """The pitch argument the OS passes render: Q16 Hz, built from its own semitone table."""
+    return int(round(440.0 * 2 ** ((note - 69) / 12.0) * 65536))
 
 
 def selftest():
@@ -1559,7 +1577,7 @@ def selftest():
     out = m.mem_base + Machine.OUT_OFF
     for i in range(8192):
         m.st32(out + 4 * i, 0)
-    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, amp))
+    call(m, exports["render"], [out, hz_to_q16(69), 0], stack=(scratch, params, amp))
     # the buffer is interleaved stereo: two consecutive 32-bit words per frame, so words are 4 bytes
     # apart. Stepping by 8 would read only one channel and make the channel check meaningless.
     first = [m.ld32(out + 4 * j) for j in range(2 * S.BLOCK)]
@@ -1567,7 +1585,7 @@ def selftest():
     check("stereo channels equal", all(first[2 * i] == first[2 * i + 1] for i in range(S.BLOCK)), "")
 
     # run a second block: the state must have advanced, so the output must differ
-    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, amp))
+    call(m, exports["render"], [out, hz_to_q16(69), 0], stack=(scratch, params, amp))
     second = [m.ld32(out + 4 * j) for j in range(2 * S.BLOCK)]
     check("state advances", first != second, "")
     # energy, not peak: a single 64-frame block is 1.3 ms, so the waveform's phase moves the peak
@@ -1579,7 +1597,7 @@ def selftest():
     for _ in range(72):
         for j in range(2 * S.BLOCK):
             m.st32(out + 4 * j, 0)
-        call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, amp))
+        call(m, exports["render"], [out, hz_to_q16(69), 0], stack=(scratch, params, amp))
         energies.append(sum(m.ld32(out + 4 * j) ** 2 for j in range(2 * S.BLOCK)))
     head = sum(energies[:24]) / 24
     tail = sum(energies[-24:]) / 24
@@ -1590,7 +1608,7 @@ def selftest():
     m.st32(amp + 0x10, 0)
     for j in range(2 * S.BLOCK):
         m.st32(out + 4 * j, 0x11223344)
-    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, amp))
+    call(m, exports["render"], [out, hz_to_q16(69), 0], stack=(scratch, params, amp))
     check("amp state 0 -> silence",
           all(m.ld32(out + 4 * j) == 0x11223344 for j in range(2 * S.BLOCK)), "the amp gate is honoured")
     m.st32(amp + 0x10, 2)                        # the OS would re-arm it for the next tick
@@ -1599,9 +1617,9 @@ def selftest():
     call(m, exports["onNoteOff"], [0, scratch])
     for i in range(512):
         m.st32(out + 4 * i, 0x11223344)
-    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, amp))
-    check("gate off -> silence",
-          all(m.ld32(out + 4 * j) == 0x11223344 for j in range(2 * S.BLOCK)), "gate respected")
+    call(m, exports["render"], [out, hz_to_q16(69), 0], stack=(scratch, params, amp))
+    check("note off -> silence",
+          all(m.ld32(out + 4 * j) == 0 for j in range(2 * S.BLOCK)), "state zeroed by onNoteOff")
 
     # ---- pitch and decay measured from the engine's own output, not from a model
     def capture(note, blocks, machine, bucket=4):
@@ -1619,7 +1637,7 @@ def selftest():
         for _ in range(blocks):
             for j in range(2 * S.BLOCK):
                 machine.st32(o + 4 * j, 0)
-            call(machine, exports["render"], [o, 440 << 16, 0], stack=(sc, params, amp))
+            call(machine, exports["render"], [o, hz_to_q16(note), 0], stack=(sc, params, amp))
             buf += [machine.ld32(o + 4 * j) for j in range(2 * S.BLOCK)]
         return buf
 
@@ -1657,24 +1675,34 @@ def selftest():
     call(mp, exports["initModule"], [0, 0x81003850, ctx_a])
     call(mp, exports["init"], [ctx_a, 0])
     call(mp, exports["init"], [ctx_b, 0])
-    call(mp, exports["onNoteOn"], [0, 69, ctx_a])
-    call(mp, exports["onNoteOn"], [0, 81, ctx_b])
-    check("two contexts hold different notes",
-          mp.ld32(ctx_a + 4) == 69 and mp.ld32(ctx_b + 4) == 81, "")
+    # NO onNoteOn: the OS's own note-start path calls init and render and nothing else (doc 11 §11.9),
+    # so a voice has to come alive from the arguments render is handed. This is the polyphony contract.
+    call(mp, exports["onNoteOn"], [0, 69, ctx_a])          # the live-keyboard path, one voice re-armed
+    check("onNoteOn re-arms a voice",
+          mp.ld32(ctx_a) == 0 and mp.ld32(ctx_a + 4) == 69, "")
     o = mp.mem_base + Machine.OUT_OFF
 
-    def render_into(machine, ctx, blocks=1):
+    def render_into(machine, ctx, blocks=1, note=69):
         for _ in range(blocks):
             for j in range(2 * S.BLOCK):
                 machine.st32(o + 4 * j, 0)
-            call(machine, exports["render"], [o, 440 << 16, 0], stack=(ctx, prm, amp))
+            call(machine, exports["render"], [o, hz_to_q16(note), 0], stack=(ctx, prm, amp))
         return [machine.ld32(o + 4 * j) for j in range(2 * S.BLOCK)]
 
-    render_into(mp, ctx_a, 2)
+    render_into(mp, ctx_a, 2, 57)
     before = [mp.ld32(ctx_a + 0x10 + 4 * i) for i in range(12)]
-    render_into(mp, ctx_b, 2)                      # render the OTHER voice in between
+    render_into(mp, ctx_b, 2, 81)                  # render the OTHER voice in between
     after = [mp.ld32(ctx_a + 0x10 + 4 * i) for i in range(12)]
     check("voice A state untouched by voice B", before == after, "")
+
+    # two voices played alternately, as the OS ticks them, must hold two different notes at once
+    poly_a, poly_b = [], []
+    for _ in range(40):
+        poly_a += render_into(mp, ctx_a, 1, 57)
+        poly_b += render_into(mp, ctx_b, 1, 81)
+    fa, fb = S.measure_freq(poly_a), S.measure_freq(poly_b)
+    check("two voices play two pitches at once",
+          abs(fa - 220) / 220 < 0.02 and abs(fb - 880) / 880 < 0.02, f"{fa:.1f} Hz and {fb:.1f} Hz")
 
     # and each voice still sounds at its own pitch when rendered from its own context
     buf_a = []
@@ -1689,7 +1717,7 @@ def selftest():
     for _ in range(80):
         for j in range(2 * S.BLOCK):
             mp2.st32(mp2.mem_base + Machine.OUT_OFF + 4 * j, 0)
-        call(mp2, exports["render"], [mp2.mem_base + Machine.OUT_OFF, 440 << 16, 0],
+        call(mp2, exports["render"], [mp2.mem_base + Machine.OUT_OFF, hz_to_q16(81), 0],
              stack=(ctx, mp2.mem_base + Machine.PARAM_OFF, mp2.mem_base + Machine.PARAM_OFF + 0x40))
         buf_a += [mp2.ld32(mp2.mem_base + Machine.OUT_OFF + 4 * j) for j in range(2 * S.BLOCK)]
     f = S.measure_freq(buf_a)
@@ -1704,4 +1732,9 @@ if __name__ == "__main__":
     import opztime; opztime.watch("simulator selftest")
     if len(sys.argv) > 1 and sys.argv[1] == "selftest":
         sys.exit(selftest())
+    if len(sys.argv) > 1:
+        measure(note=int(sys.argv[2]) if len(sys.argv) > 2 else 69,
+                seconds=float(sys.argv[3]) if len(sys.argv) > 3 else 1.0,
+                engine=sys.argv[1])
+        sys.exit(0)
     print(__doc__)

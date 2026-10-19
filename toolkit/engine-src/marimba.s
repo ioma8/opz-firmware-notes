@@ -16,11 +16,17 @@
 ;     y1' = r*cos(w)*y1 - r*sin(w)*y2
 ;     y2' = r*sin(w)*y1 + r*cos(w)*y2
 ;
+; A voice comes alive from render's own arguments, never from onNoteOn: the pitch is argument 2 (Q16 Hz),
+; located in the coefficient table by a binary search over a Q16-Hz table, and the amp object's state word
+; (argument 6, +0x10) says whether the OS still wants this voice. The strike is seeded when that goes from
+; idle to active. This is what makes the engine polyphonic - each voice record the OS ticks has its own
+; context, pitch and amp, so N records sound N notes.
+;
 ; Per mode: 4 multiplies, 2 add/subs, 2 state words. Six modes = 24 multiplies per frame.
 ; A block is 64 frames, so one render call is 1536 multiplies -- comfortably inside the core.
 ;
 ; Layout of the per-voice context (all Q31 unless noted):
-;   +0x00  gate (0 = idle; every instrument render returns early on this)
+;   +0x00  struck (0 = needs a strike, 1 = ringing; onNoteOff sets 1, onNoteOn clears it)
 ;   +0x04  frame counter / block phase
 ;   +0x08  mode count
 ;   +0x10 .. per-mode c, s, y1, y2  (4 words each, 6 modes = 96 bytes)
@@ -100,9 +106,10 @@ render:
         P4 = [SP + 0x1c] ;              ; args 4..6 are on the stack
         P3 = [SP + 0x20] ;
         P2 = [SP + 0x24] ;              ; the amp object
-        R0 = [P2 + 0x10] ;              ; env+0x10: amp state machine, 0 = idle
+        R0 = [P2 + 0x10] ;              ; amp+0x10: the voice activity word
         CC = R0 == 0 ;
-        IF CC JUMP .done ;              ; idle voice costs nothing
+        IF CC JUMP .idle ;              ; idle: clear the struck flag, write nothing
+        CALL .strike ;                  ; seed the excitation when the flag is clear
         R0 = 1 ;
         [P4] = R0 ;                     ; state+0: gate
 
