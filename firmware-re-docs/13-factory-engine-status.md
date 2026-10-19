@@ -922,3 +922,14 @@ version of this test at note 72 (1.4 against 1.2/1.6). So the multi-note contras
 and adding `1.84` or `0.25` would fit the harness to the metric rather than to the engine. They stay
 uncalibrated until a real pitch measurement (autocorrelation or an f0 tracker) replaces the contrast
 heuristic.
+
+**The f0 tracker is not ready.** Two attempts both fail in the same way. A harmonic product spectrum reports
+`Digital` at 427.7 Hz for a 261.6 Hz request (+851 cents) and 70.5 Hz at note 48; a whitened harmonic-sum
+search over a 1-cent grid reports the same engine at 143.5 Hz (-1039 cents), an octave low, and then gives
+`AnalogA` the same octave-down answer at every note.
+
+The cause is structural: a harmonic series anchored at f/2 contains every harmonic of f, so the sum scores at
+least as well at half the true fundamental unless subharmonics are explicitly penalised. Until that is fixed
+(a subharmonic-aware score, or autocorrelation/YIN on the whitened signal), the contrast test remains the only
+usable metric - which is why the four remaining instruments stay **unjudged** rather than being scored by a
+tracker with a known octave error.
