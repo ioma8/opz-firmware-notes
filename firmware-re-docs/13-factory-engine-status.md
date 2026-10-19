@@ -304,3 +304,13 @@ So **six of the eight factory effects demonstrably process audio** with the vend
 So two of the eight factory effects genuinely process audio in the vendor library. Every attempt in this repository
 used a five-word stack with the buffers last, which is simply the wrong convention; the vendor's is **params and
 frame count first, buffers third and fourth**.
+
+## A loader gap worth fixing
+
+`opzso` maps the library's loadable segments but not its full declared BSS: the third `LOAD` segment declares
+`filesz 0x45a8` and **`memsz 0x18ba661`** at `0x1da3d0`, i.e. a 24 MB BSS, while the mapped image ends around
+`0x1e0000`. Anything above `0x2000000` raises `UcError`, so an engine that uses a large buffer hits a fault that
+looks like an engine bug.
+
+`TapeTwo` still raises `UC_ERR_EXCEPTION` even with that range mapped, so its cause is separate, but the gap is
+real and should be closed before judging any engine that allocates megabytes.
