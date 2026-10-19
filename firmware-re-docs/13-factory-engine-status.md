@@ -1218,3 +1218,17 @@ and the rest) and **`0x08` is never written by either**. The result is identical
 So the entry points the harness calls never compute the playback step limit at all. That puts this engine in the
 same class as the sampler's short loop and `TapeTwo`'s mix path: the behaviour lives on a path the harness does
 not reach, and settling it requires reading the code rather than probing it.
+
+**The port's documented configuration makes the engine sound.** Replicating the sibling port's own test setup
+on the vendor engine - `params` all `0x40000000` with `params[11] = 0x7FFFFFFF` (level), ADSR words
+`(0, 0x40000000, 0, 0x40000000, 1, 0)`, velocity 200, note 36, record pitch `0x2000` - gives **128 of 128
+nonzero samples in every block** (512 across four), where the harness's previous params and ADSR produced
+values at only a handful of frames.
+
+That is a real improvement in how this engine is driven. It does **not** make it track: `state+0x08` (the
+playback step limit) stays 0 with note 36, and the read position never advances past frames 4096-4099. The
+per-octave table at `0x124A7B0` is not the missing input either - it already sits inside `supply()`'s
+`HOST_DATA` range (`0x124A500`-`0x124C400`) and filling it with `0x7FFF` changes nothing.
+
+So: audible under the documented inputs, still not streaming. The gap is specifically where the step limit is
+computed, and that lies below the entries the harness calls.
