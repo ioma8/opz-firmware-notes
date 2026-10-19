@@ -1398,7 +1398,20 @@ class Machine:
 
 
 def call(m, entry, args, stack=(), limit=20_000_000, lenient=False):
-    """Call a function: first three args in R0-R2, the rest pushed in reverse on the stack."""
+    """Call a function: first three args in R0-R2, the rest pushed in reverse on the stack.
+
+    The caller owns the argument words: SP is put back after the call returns, the way a compiled caller
+    does. Leaving them pushed moved the frame down 24 bytes per render, and organ reads unwritten stack
+    words - so every block of a note saw different residue and it rendered one block in five.
+    """
+    sp = m.p[6]
+    try:
+        return _call(m, entry, args, stack, limit, lenient, sp)
+    finally:
+        m.p[6] = sp
+
+
+def _call(m, entry, args, stack, limit, lenient, sp):
     for i, a in enumerate(args[:3]):
         m.r[i] = a
     for a in reversed(stack):

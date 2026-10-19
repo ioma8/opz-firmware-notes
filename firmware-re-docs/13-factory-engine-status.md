@@ -739,3 +739,16 @@ its output from a peak of `1/2^31` to **3,291,556** (51 of 64 samples nonzero) -
 blocks 0 and 2-5 are silent, and its context block is written identically in every block, so what is left
 is organ's own state rather than a missing table. The tally therefore stays 6 of 13 audible, with organ
 recorded as transient-only rather than silent.
+
+### Organ reads its caller's stack, 2026-10-19
+
+`opzsim.call` used to leave the argument words pushed, so every render in a note started 24 bytes lower
+than the last. Organ turned out to be sensitive to exactly that: with the frame drifting, it rendered one
+block in five (`0/51/0/0/1` of 64 samples); with SP restored after the call - the caller owns the argument
+words, as a compiled caller does - the pattern becomes `0/0/1/1/1/0` with peaks up to 11,847,907, i.e.
+single-sample impulses that move as the residue changes.
+
+The reads that differ between a loud block and a silent one are dominated by stack words
+`0x81feffd0-0x81feffdc`, and the gate input is `R2 = [FP+0x40]`, an unwritten frame slot. So organ's
+amplitude and phase come from whatever the previous caller left on the stack - in the real firmware, the
+OS tick - which puts even this last non-faulting engine behind the same ROM-blocked path as the samplers.
