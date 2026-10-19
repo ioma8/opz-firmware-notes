@@ -908,3 +908,17 @@ What is left is not a scale problem. `AnalogA` stays at 0.66-1.00 for every scal
 0.17-0.63 up to x3, so neither has meaningful energy at the request. `Cluster` and `SamplePlayerGain` sit at
 27.49 and 27.81 whatever scale they are given - the signature of a fixed-sample engine, for which the
 neighbour comparison says nothing about pitch tracking.
+
+**Why the remaining four did not get a scale.** Both `AnalogA` and `Organ` can be pushed through the
+neighbour test by choosing an increment:
+
+| engine | best trial | repeats across notes 48/60/72? |
+|---|---|---|
+| `AnalogA` | x1.84: request 34.93 against 1.46/0.68 | 30.7 / 34.0 / 32.3 - yes, but 1.84 is no clean table ratio and x2.0 drops to 1.00 |
+| `Organ` | x0.25: request 51.22 against 0.98/1.92 | 245.4 / 55.2 / **1.7** - collapses at note 72 |
+
+The control decides it: `Digital` at x1 - a scale that is certainly right - **also fails** the three-note
+version of this test at note 72 (1.4 against 1.2/1.6). So the multi-note contrast test is not yet decisive,
+and adding `1.84` or `0.25` would fit the harness to the metric rather than to the engine. They stay
+uncalibrated until a real pitch measurement (autocorrelation or an f0 tracker) replaces the contrast
+heuristic.
