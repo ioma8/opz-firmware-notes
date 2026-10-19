@@ -322,3 +322,30 @@ looks like an engine bug.
 
 `TapeTwo` still raises `UC_ERR_EXCEPTION` even with that range mapped, so its cause is separate, but the gap is
 real and should be closed before judging any engine that allocates megabytes.
+
+## Reproducing the effects result
+
+`toolkit/opzfxcheck.py` runs all eight factory effects from the vendor library under Unicorn and reports, for each,
+how many output samples are non-zero and how many input samples were modified in place:
+
+```
+python3 toolkit/opzfxcheck.py --blocks 60
+```
+
+```
+  Chorus     PROCESSES  out     0/7680 nonzero, input changed  7678/7680
+  Chorus2    PROCESSES  out  6232/7680 nonzero, input changed     0/7680
+  Crush      PROCESSES  out  7645/7680 nonzero, input changed     0/7680
+  Delay      PROCESSES  out  2046/7680 nonzero, input changed     0/7680
+  Dist       PROCESSES  out     7/7680 nonzero, input changed     0/7680
+  FdnReverb  PROCESSES  out  4172/7680 nonzero, input changed     0/7680
+  Reverb     PROCESSES  out  7502/7680 nonzero, input changed     0/7680
+  TapeTwo    silent     out     0/7680 nonzero, input changed     0/7680
+
+  7 of 8 factory effects process audio
+```
+
+`Chorus` shows zero on the output and 7,678 changed inputs because it is an insert effect working in place. `Delay`
+and `FdnReverb` need longer runs to fill their lines (60 blocks is 80 ms; use `--blocks 200` for both). `TapeTwo` is
+the one remaining failure and is still open. The script needs the vendor library and the loader from
+`~/projects/customs/opz-clone/tools/unicorn-harness`; it drives them rather than reimplementing anything.
