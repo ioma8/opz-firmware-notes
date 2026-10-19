@@ -1302,3 +1302,19 @@ recorded sine. Tallies are unchanged - 13 of 13 render audio, 11 of 13 at note 6
 `SamplePlayerGain` is a slice/drum engine: it plays one 96-frame hit per note and then goes silent by design, so
 a 140-block pitched-note test is the wrong instrument for it. What is now verified is stronger and different:
 it plays the material the note selects, and stops exactly where the fixtures say it should.
+
+**The sixth argument is not read either.** The sibling port describes the vendor dispatch as
+`(params, variant, state, out_a, out_b, gain)`, so passing a buffer pointer as `gain` looked like a plausible
+way to zero an effect's output. Tested on `TapeTwo` and on three effects that demonstrably work, with
+`0x7fffffff` in place of the scratch pointer:
+
+| effect | 6th = scratch pointer | 6th = 0x7fffffff |
+|---|---|---|
+| TapeTwo | 0 / 10240 | 0 / 10240 |
+| Chorus2 | 8792 / 10240 | 8792 / 10240 |
+| Crush | 10205 / 10240 | 10205 / 10240 |
+| Dist | 7 / 10240 | 7 / 10240 |
+
+Identical in every case, so the argument is not read on these paths. That closes the last caller-side
+explanation for `TapeTwo` - readiness answer, host `sampleLine` transfer, scratch pointer, dispatch variant and
+all eight exports are each excluded - and leaves the tape-buffer mix inside `renderFX` as the only site.
