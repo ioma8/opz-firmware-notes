@@ -704,13 +704,20 @@ a pamatovat, že `ADSR+0x10` (phase) musí být 5–7 a `iface+0x38` je envelope
 
 ## Aktuální stav cíle „aby hrály všechny tovární enginy" (2026-10-19, konec session)
 
-**20 z 21 továrních enginů hraje.** Všechny brány a všechny čtyři populace vypíše jeden příkaz
-`python3 toolkit/opzstatus.py`; jednotlivě pak:
+**Pozor na rozdíl „vydá zvuk" vs „zahraje zadaný tón".** Vydaný zvuk je slabší kritérium než
+správná výška tónu, a čísla se liší:
 
 ```
-python3 toolkit/opzinstcheck.py --blocks 20   # 13 z 13 nástrojů
-python3 toolkit/opzfxcheck.py   --blocks 60   #  7 z 8 efektů (TapeTwo mlčí)
+python3 toolkit/opzinstcheck.py --blocks 20                        # 13 z 13 nástrojů vydá zvuk
+python3 toolkit/opzinstcheck.py --blocks 140 --note-check          # 11 z 13 zahraje tón na note 60
+python3 toolkit/opzinstcheck.py --blocks 140 --note-check --note 57   # 11 z 13
+python3 toolkit/opzinstcheck.py --blocks 140 --note-check --note 72   # 10 z 13
+python3 toolkit/opzfxcheck.py   --blocks 60                        #  7 z 8 efektů (TapeTwo mlčí)
 ```
+
+**Ve všech třech tóninách projde 9 z 13 nástrojů** (AnalogA, Chord, Digital, EP, Electric, Fm003b,
+MiniStringShort, Saw013a, Volt). To je obhajitelné číslo pro „hraje správně"; 13 z 13 platí jen pro
+„vydá zvuk". Všechny brány vypíše `python3 toolkit/opzstatus.py`.
 
 ### Co se v této session opravilo (a co se už nemusí znovu hledat)
 
@@ -762,6 +769,12 @@ i blackfinové `.engine` moduly, a ty se měří zvlášť. Aby se to už nemuse
 | vendor ARM64 efekty | `python3 toolkit/opzfxcheck.py --blocks 60` | **7 z 8** (TapeTwo mlčí konstrukčně) |
 | Blackfin `.engine`, vydá jakýkoli zvuk | `python3 toolkit/opzfactoryaudible.py` | **6 z 13** |
 | Blackfin `.engine`, zahraje zadaný tón | `python3 toolkit/opzfactorycheck.py` | 2 z 13 |
+| Blackfin `.engine` efekty, vydá zvuk | `python3 toolkit/opzfactoryaudible.py` | **0 z 8** (měřeno jen tímto harnessem, viz níž) |
+
+Poznámka k efektům: `render_clip` volá tovární efekt pěti argumenty, o jeden méně než vendor signatura
+`renderFX(params, frames, state, in, out, scratch)`, takže nula u `.engine` efektů je zatím míra
+harnessu, ne důkaz ticha. `dist.engine` bere ukazatel na scratch z vlastního globálu `module+0x554`
+(init ho vynuluje) a výstupní buffer z dalšího pole, které plní OS.
 
 ### Proč blackfinové enginy nejdou dál: čipová L2 ROM
 
