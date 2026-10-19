@@ -1062,3 +1062,19 @@ whatever advances the playback position, and that is engine state rather than an
 
 `SamplePlayerGain` and `Cluster` therefore stay **out of the tally**: they cannot pass a note test until the
 position advances.
+
+**Which state words the sampler's per-frame loop uses.** Hooking every read inside `SamplePlayerGain`'s 4 KB
+state block for one block at note 60, ranked by count, leaves only two per-frame fields:
+
+| offset | size | value | reads |
+|---|---|---|---|
+| `state+0x010` | 4 | 0 | 66 |
+| `state+0x018` | 8 | 0 | 65 |
+
+everything else (`0x058`, `0x06a`, `0x024`, `0x02c`, `0x00c`, `0x03c`, `0x040`, `0x000`, `0x064`, `0x067`) is
+touched once or twice per block. So the per-frame position work is driven from **two zeroed state words**,
+which is consistent with the frozen read position, while the two-frame fragment at index 2038 must come from
+inside the mix loop itself.
+
+The next step is therefore to read that loop, not to test another host field: every field the harness can set
+has now been excluded.
