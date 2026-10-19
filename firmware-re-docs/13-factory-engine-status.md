@@ -1175,3 +1175,26 @@ What remains is a decompile of `render`'s loop setup that resolves `w11`, `w14` 
 What remains unresolved is how that loop relates to the four 16-bit taps: 256 reads at four fixed frames means
 64 iterations over one position, and this register picture does not say which of the two loops produced them.
 Settling it requires decompiling the whole 4,056-byte `render`, not another register dump.
+
+**The state layout, from the sibling port rather than from guessing.** `~/projects/customs/opz-clone` contains a
+Rust port of this engine whose header documents exactly the words the harness has been poking at:
+
+| word | meaning |
+|---|---|
+| `0x08` | playback step limit, set by `onNoteOn` from the semitone table and the slice pitch |
+| `0x0c` | read position inside the sample, Q10 frames |
+| `0x10` | slice length in frames |
+| `0x3c` / `0x40` / `0x44` | slice region start / end / tail |
+| `0x50` | slice pitch, refreshed every render |
+| `0x5c` / `0x60` | crossfade path: position increment / position total |
+| `0x64` | `0xffff` = the slice needs setup |
+
+Dumping the harness's state after `onNoteOn` gives `0x08=0`, `0x0c=4210688` (4112 frames), `0x10=8192`,
+`0x3c=5135`, `0x40=6669`, `0x44=8191`, `0x50=4096`, `0x64=0x6500ff`.
+
+**`0x08` is zero, and that is why nothing advances.** It is the playback step limit, and it is zero because the
+record's pitch field holds `increment_for(60)` - a value the engine never expected there; the port's
+neighbouring field is a slice pitch on the order of `0x2000`, with `params[0]` carrying the semitone index.
+
+This is the concrete next step: feed the record and `params[0]` the values the port documents, rather than
+searching further by hand.
