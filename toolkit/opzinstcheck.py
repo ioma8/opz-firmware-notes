@@ -74,10 +74,25 @@ def supply(so, cls=""):
     so.write_u32_array(wav, [int(math.sin(2 * math.pi * i / 8192) * 0x7FFFFFFF) & 0xFFFFFFFF
                              for i in range(8192)])
     so.write(so.interface + 0x18, struct.pack("<Q", wav))
-    # AnalogAHost's contract: interface+0x28 points at five fract32_t[65] filter-state
-    # banks, each 16 rows, allocated by the host. Filtered engines fault without it.
-    banks = so.alloc(5 * 16 * 65 * 4)
-    so.write(so.interface + 0x28, struct.pack("<Q", banks))
+    # AnalogAHost's contract: interface+0x28 points at FIVE pointers, each to a 16x65
+    # fract32_t table (4160 bytes per bank, not one row). Zeroed buffers make every
+    # filtered engine's signal path zero: with them AnalogA peaks at 1359, with Q31
+    # sine tables at 303161490.
+    banks = []
+    for bank in range(5):
+        b = so.alloc(16 * 65 * 4)
+        scale = 0x7FFFFFFF >> (bank * 2)
+        tbl = []
+        for row in range(16):
+            for i in range(65):
+                ph = 2 * math.pi * (i + row * 65) / (16 * 65)
+                tbl.append(int(math.sin(ph) * scale) & 0xFFFFFFFF)
+        so.write_u32_array(b, tbl)
+        banks.append(b)
+    ptrs = so.alloc(5 * 8)
+    for i, b in enumerate(banks):
+        so.write_u64(ptrs + 8 * i, b)
+    so.write(so.interface + 0x28, struct.pack("<Q", ptrs))
     # The samplers fetch their sample through interface+0x48: a 40-byte record whose
     # +0x00 is the data pointer, +0x08 the readable frame count, +0x0c pitch and
     # +0x10 rate. Without a record they log "sample player lost it's samples".

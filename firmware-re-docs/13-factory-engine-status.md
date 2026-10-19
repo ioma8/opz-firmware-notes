@@ -485,3 +485,28 @@ Honest scoring of the objective, therefore:
 So **16 of 21 factory engines play at audio level, 18 of 21 render nonzero samples**, and three do
 not render at all. The instrument verifier counts any nonzero sample, which is why it prints 11 of 13
 rather than 9 of 13 - read its peaks, not just its count.
+
+## All 13 instruments and 7 of 8 effects play (2026-10-19)
+
+`python3 toolkit/opzinstcheck.py --blocks 20` now reports **13 of 13**:
+
+```
+AnalogA          2560/2560 nonzero, peak 820311746      Chord            2558/2560  peak 768872591
+Cluster          2558/2560 nonzero, peak 848755646      Digital          2558/2560  peak 424056965
+EP               2558/2560 nonzero, peak 531507774      Electric         2558/2560  peak 674760214
+Fm003b           2558/2560 nonzero, peak 833080925      MiniStringShort  2560/2560  peak 838415524
+Organ            2558/2560 nonzero, peak 345724693      SamplePlayerGain 2560/2560  peak  28114945
+Saw013a          2556/2560 nonzero, peak 848755649      SynthSampler     2558/2560  peak 748155463
+Volt             2560/2560 nonzero, peak 848755646
+13 of 13 factory instruments render audio
+```
+
+The supply that turns the last three on is the filter banks: `interface+0x28` must point at
+**five pointers**, each to a 16 x 65 `fract32_t` table (4160 bytes, not one row) filled with a Q31
+sine scaled per bank by `0x7FFFFFFF >> (bank * 2)`. `render` hands these to `_RFilter_fetch` and the
+voice's signal path runs through them, so a zeroed buffer silences the engine however correct the
+rest of the host is. With it `AnalogA` goes from peak 533 to 820311746, and `Fm003b` and `Saw013a`
+from silence to 833080925 and 848755649.
+
+**Tally: 13 of 13 instruments + 7 of 8 effects = 20 of 21 factory engines playing**, with `TapeTwo`
+the only one left.
