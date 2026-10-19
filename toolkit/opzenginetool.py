@@ -106,11 +106,27 @@ def describe(path):
 
 # --------------------------------------------------------------------------- rendering
 
-def render_clip(info, note, seconds, params):
+# Per-engine prerequisites that a plain render does not have: a computed gate register that the OS would
+# leave nonzero, and a coefficient table the OS would have filled. Each is documented with its evidence in
+# firmware-re-docs/13-factory-engine-status.md; `pokes` is (address, register, value) and `fills` is
+# (start, end, word).
+def render_clip(info, note, seconds, params, pokes=(), fills=()):
     m = Z.Machine.for_module(info["raw"])
     # a factory engine touches OS memory this harness does not map (the host table, its own globals);
     # auditioning reads zeros there instead of failing, while the validation gates stay strict
     m.allow_external = True
+    for start, end, word in fills:
+        for a in range(start, end, 4):
+            m.st32(a, word)
+    if pokes:
+        _step = m.step
+        def step(h, o, _pokes=tuple(pokes)):
+            pc = m.pc & 0xFFFFFFFF
+            for addr, reg, value in _pokes:
+                if pc == addr:
+                    m.r[reg] = value
+            return _step(h, o)
+        m.step = step
     ex = info["exports"]
     fx = "render" not in ex and "renderFX" in ex
     if "render" not in ex and not fx:

@@ -763,3 +763,21 @@ target of the OS's 1,195 calls into 51 entries cannot be named or emulated from 
 
 That closes the Blackfin tick path as a documented dead end: the seven remaining engines need either the
 tick (six of them) or the tick's stack residue (organ), and the tick executes unpublished mask ROM.
+
+### Every tally has one command, 2026-10-19
+
+The three populations used to rest on probe scripts kept in the session. Each now has a command that
+reproduces its number:
+
+| population | command | result |
+|---|---|---|
+| vendor ARM64 instruments | `python3 toolkit/opzinstcheck.py --blocks 20` | 13 of 13 render audio |
+| vendor ARM64 effects | `python3 toolkit/opzfxcheck.py --blocks 60` | 7 of 8 (TapeTwo by construction) |
+| Blackfin `.engine`, writes any audio | `python3 toolkit/opzfactoryaudible.py` | 6 of 13 |
+| Blackfin `.engine`, plays the requested note | `python3 toolkit/opzfactorycheck.py` | 2 of 13 |
+
+`opzfactoryaudible.py` renders through the same `render_clip` path as the rest of the toolkit and applies
+each engine's documented prerequisite before judging it - cluster's `R3` gate, electric's coefficient table,
+organ's `R2` gate - and labels those rows, so an opened gate is never reported as a playing engine. Its floor
+is spelled out in the source: at least 1% of samples nonzero and a peak of at least 1e-4 of full scale. That
+is what separates cluster (487 of 1920 at 0.0002) from organ's transient (27 of 1920 at 1/2^31).
