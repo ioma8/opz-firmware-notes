@@ -1271,3 +1271,10 @@ python3 toolkit/opzsim.py selftest    # the interpreter, 519,370 steps
 ```
 
 So a `serial` import error says nothing about the engines, and should not be read as a broken deliverable.
+
+**The status command now reports the strict figure too.** `python3 toolkit/opzstatus.py` prints only the fast
+gates - "renders audio" and the population tallies - which on its own overstates what is verified.
+`python3 toolkit/opzstatus.py --full` adds the 140-block note test on the vendor instruments and prints
+`plays the requested note (beats both neighbours): 11 of 13`. The fast run now says explicitly that the note
+figure was not measured and how to get it, so the single status command cannot be read as claiming more than
+was checked.

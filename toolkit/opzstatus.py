@@ -6,7 +6,8 @@ script. This runs them all, prints the line that carries the number, and fails i
 "20 of 21" is something a reader can reproduce in one step instead of trusting a summary.
 
 Usage:
-    python3 toolkit/opzstatus.py
+    python3 toolkit/opzstatus.py           # fast gates: audio, populations, docs
+    python3 toolkit/opzstatus.py --full    # also the 140-block note test on the vendor instruments
 """
 import pathlib, re, subprocess, sys
 
@@ -28,7 +29,8 @@ GATES = (
 )
 
 
-def main():
+def main(argv):
+    full = "--full" in argv
     failed = []
     for label, argv, pattern, known in GATES:
         p = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True)
@@ -44,6 +46,19 @@ def main():
             print(f"  {label:24s} {'ok' if ok else 'FAILED'} (no summary line)")
         if not ok:
             failed.append(label)
+    if full:
+        # The strict question - does an engine play the requested note - is slow (140 blocks per engine),
+        # so it is opt-in; reporting only "renders audio" would overstate what is verified.
+        for label, argv2 in (("ARM64 plays the note", [sys.executable, str(TK / "opzinstcheck.py"),
+                                                       "--blocks", "140", "--note-check"]),):
+            p2 = subprocess.run(argv2, cwd=ROOT, capture_output=True, text=True)
+            hits = re.findall(r"plays the requested note.*", p2.stdout)
+            for hit in hits:
+                print(f"  {label:24s} {hit.strip()}")
+            if p2.returncode != 0:
+                failed.append(label)
+    else:
+        print(f"  {'ARM64 plays the note':24s} not measured (pass --full: 140 blocks per engine)")
     rows = sum(1 for _ in (ROOT / "HYPOTHESES.csv").read_text().splitlines()) - 1
     print(f"  {'ledger rows':24s} {rows}")
     if failed:
@@ -54,4 +69,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
