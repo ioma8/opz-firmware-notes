@@ -692,3 +692,33 @@ Still outstanding, with measured causes:
   and a stand-in was tested and disproved.
 * `analoga`, `fm003b`, `ministringshort`, `saw013a` - run 18,000-34,000 steps and then spin inside OS
   services on that same unbuilt context.
+
+### Why the OS voice tick cannot run, measured 2026-10-19
+
+The four engines that fault in the engine-only machine do not fault in the OS machine. Under
+`opzos.build` - the whole 4 GB sparse space, the engine at its own load base - `analoga`,
+`ministringshort` and `saw013a` finish init and the OS note-start `0x8012E0A4` in 719, 1,210 and 771
+steps respectively. Their earlier "pc left the module" and "null function pointer" verdicts were
+artifacts of a machine that maps only the engine.
+
+What stops them, and the two samplers behind them, is the tick `0x8012E2C0`, and it stops in the same
+place for all three: after 68 steps, an absolute `CALL.A` at **0x8011aa8c** whose target is
+**0x04020a70**.
+
+That address is not in the firmware. `opz.ldr`'s 164 segments cover only `0x11A` (L1), `0x08` (L2 SRAM)
+and `0x80` (main image), `bootloader.ldr` adds nothing below `0x118`, and the literal never appears in
+either file. The ADSP-BF70x datasheet lists a 512 kB **on-chip L2 ROM**, and `0x04000000` is where the
+processor map puts it, so the OS calls mask ROM. It is not an isolated call either: scanning the loaded
+image for `Jump32` absolute calls finds **1,195 sites naming 51 distinct ROM entries**, led by
+`0x04022ea8` with 249 sites.
+
+So the seven remaining silent Blackfin engines are not waiting on a pointer, a table or a gate. Six of
+them need the OS voice path, and the OS voice path needs ROM the harness cannot have. The honest tally
+stays 6 of 13 audible, and the remaining route is porting 51 mask-ROM routines from the HRM - not a
+harness fix.
+
+The same work added three guards to `opzsim.call`, all found by running this path: `RETS 0` is no longer
+treated as a usable return address (`_off(0)` is inside the window arithmetically in the 4 GB machine,
+which ping-ponged forever), a call through a zero word is capped by `NULL_CALL_LIMIT` because it consumes
+no step budget, and `check_coverage` makes a jump into unloaded memory report its address instead of
+marching through 200,000 NOPs.

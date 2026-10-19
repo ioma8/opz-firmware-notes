@@ -1411,16 +1411,30 @@ def call(m, entry, args, stack=(), limit=20_000_000, lenient=False):
     m.pc = entry
     depth = m.steps
     hosts = 0
+    nulls = 0
     while m.steps - depth < limit:
         m.pc &= 0xFFFFFFFF                     # registers hold signed 32-bit values; addresses are not
         if m.pc == 0xDEAD0000:                 # RTS brought us back to the harness
             return m.r[0]
+        if getattr(m, "check_coverage", 0) and m.pc and not m.mem.mapped(m.pc, 2):
+            # Only the whole-address-space machine sets this: there _off() accepts every address, so a jump
+            # into unloaded memory executes zeros and reports itself as a slow call instead of a wrong turn.
+            if 0x04000000 <= m.pc < 0x04040000:
+                raise RuntimeError(f"execution at 0x{m.pc:08x}: the chip's boot ROM, which no LDR image contains")
+            raise RuntimeError(f"execution at 0x{m.pc:08x}, which no LDR segment covers")
         if m.pc == 0:
             # A call through a zero pointer. When the return address is real, this is an OS callback the
             # harness cannot supply: answer it with 0 and let the engine carry on, the same treatment an
             # in-window host call gets. When it is not, something returned through a zeroed RETS and the
             # engine is beyond recovery - say so rather than spinning.
-            if m._off(m.rets, 2) is not None:
+            if m.rets and m._off(m.rets, 2) is not None:
+                # RETS 0 is not a return address: in the whole-address-space machine _off(0) is inside the
+                # window arithmetically, so a zeroed return address looked valid and ping-ponged forever.
+                if nulls > NULL_CALL_LIMIT:
+                    # The emulated return costs no step, so an engine that keeps calling a zero word
+                    # never advances the budget and the loop below never ends. Count them instead.
+                    raise RuntimeError(f"engine keeps calling a null pointer (from 0x{m.rets & 0xFFFFFFFF:08x})")
+                nulls += 1
                 m.pc = m.rets
                 m.r[0] = 0
                 continue
@@ -1464,6 +1478,10 @@ def call(m, entry, args, stack=(), limit=20_000_000, lenient=False):
 # 64 consecutive such calls used to raise, which reported a looping engine as a hard failure; raise this to
 # let such an engine run on and see whether it converges.
 HOST_CALL_LIMIT = 64
+
+# The same guard for calls through a zero word: those are emulated without executing an instruction, so
+# without a ceiling an engine that keeps calling one spins here without consuming its step budget.
+NULL_CALL_LIMIT = 4096
 
 
 def measure(note=69, seconds=1.0, engine="struck.engine"):

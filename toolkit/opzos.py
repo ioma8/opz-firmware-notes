@@ -46,6 +46,9 @@ def machine_with(image):
     m.mem_base = 0
     m.p[6] = 0x81FF0000                     # stack, below the engine windows
     m.allow_external = True
+    # _off() only knows the arithmetic window, which for this machine is the whole 4 GB space, so an
+    # address no LDR segment loaded looks executable and a wrong turn becomes a 200k-step march of NOPs.
+    m.check_coverage = True
     return m
 
 
