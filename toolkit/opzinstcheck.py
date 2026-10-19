@@ -16,6 +16,7 @@ exits nonzero unless every instrument renders audio.
 import argparse, json, math, struct, sys
 from pathlib import Path
 from unicorn import UC_PROT_ALL
+from unicorn.arm64_const import UC_ARM64_REG_X0
 
 CLONE = Path.home() / "projects/customs/opz-clone"
 sys.path.insert(0, str(CLONE / "tools/unicorn-harness"))
@@ -35,7 +36,6 @@ CLUSTER_BANDS = (0x124A900, 0x124AA00)
 # per-band gain tables. Left zero, every engine renders silence; filled with the
 # i16 unity 0x7FFF they play. This is the single most load-bearing supply.
 HOST_DATA = (0x124A500, 0x124C400)
-
 # Data globals each class's render reads, taken from its decompile and corrected by
 # -0x100000. The four consecutive dwords at the top of each block are the variant
 # gain table, exactly as Digital's 0x124A5D0..0x124A5DC.
@@ -77,6 +77,19 @@ def supply(so, cls=""):
     # banks, each 16 rows, allocated by the host. Filtered engines fault without it.
     banks = so.alloc(5 * 16 * 65 * 4)
     so.write(so.interface + 0x28, struct.pack("<Q", banks))
+    # The samplers fetch their sample through interface+0x48: a 40-byte record whose
+    # +0x00 is the data pointer, +0x08 the readable frame count, +0x0c pitch and
+    # +0x10 rate. Without a record they log "sample player lost it's samples".
+    data = so.alloc(8192 * 4)
+    so.write_u32_array(data, [int(math.sin(2 * math.pi * i / 64) * 0x7FFFFFFF) & 0xFFFFFFFF
+                              for i in range(8192)])
+    rec = so.alloc(0x28)
+    so.write(rec + 0x00, struct.pack("<Q", data))
+    so.write_u32(rec + 0x08, 8192)
+    so.write_u32(rec + 0x0C, phase_increment(60))
+    so.write_u32(rec + 0x10, 1 << 12)
+    so.stub("samp", lambda s, n: s.reg_write(UC_ARM64_REG_X0, rec))
+    so.write(so.interface + 0x48, struct.pack("<Q", so.stub_address("samp")))
 
 
 from opzso import OpzSo, phase_increment  # noqa: E402  (needs CLONE on sys.path)
