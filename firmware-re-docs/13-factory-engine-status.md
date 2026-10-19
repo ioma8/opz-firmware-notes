@@ -781,3 +781,24 @@ each engine's documented prerequisite before judging it - cluster's `R3` gate, e
 organ's `R2` gate - and labels those rows, so an opened gate is never reported as a playing engine. Its floor
 is spelled out in the source: at least 1% of samples nonzero and a peak of at least 1e-4 of full scale. That
 is what separates cluster (487 of 1920 at 0.0002) from organ's transient (27 of 1920 at 1/2^31).
+
+### The device-side effect modules, added to the tally 2026-10-19
+
+The tally above covered the vendor ARM64 library for effects, but the device also ships eight effect
+`.engine` modules - `chorus`, `chorus2`, `crush`, `delay`, `dist`, `fdnreverb`, `reverb`, `tapetwo` - and none
+of them had ever been measured here. `toolkit/opzfactoryaudible.py` now reports both kinds, so the checklist
+covers all 21 shipped `.engine` modules:
+
+```
+instruments: 6 of 13 write any audio
+effects:     0 of 8 write any audio
+```
+
+`chorus`, `chorus2`, `crush`, `delay` and `dist` run and write zeros; `fdnreverb` and `tapetwo` stop on a null
+function pointer, `reverb` on a host-call loop.
+
+**Read the 0 of 8 as provisional.** `render_clip` calls a factory effect with `(ctx, freq, state)` in
+registers and `(inp, out)` on the stack, which is one argument short of the vendor signature
+`renderFX(params, frames, state, in, out, scratch)` that `opzfxcheck` drives. Until that convention is
+established for the `.engine` effects, the zeros may be a harness mismatch rather than engine silence - so the
+number is recorded as measured-with-this-harness, not as a verdict on the engines.

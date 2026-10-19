@@ -34,13 +34,13 @@ def main():
         if "engines-official" not in str(p):
             continue
         info = T.describe(p)
-        if info["kind"] != "instrument":
+        if info["kind"] not in ("instrument", "effect"):
             continue
         why, pokes, fills = PREREQ.get(p.name, ("-", [], []))
         try:
             samples, meta = T.render_clip(info, 69, 0.02, params, pokes=pokes, fills=fills)
         except Exception as e:
-            rows.append((p.name, "ERROR", f"{type(e).__name__}: {str(e)[:40]}", "-", why))
+            rows.append((p.name, info["kind"], "ERROR", f"{type(e).__name__}: {str(e)[:40]}", "-", why))
             continue
         nz = sum(1 for v in samples if v)
         # "writes any audio" needs a floor, or a single stray integer counts as playing. 1% of samples
@@ -49,11 +49,16 @@ def main():
         # both, which is the honest verdict for an engine that does not sustain a note.
         ok = nz * 100 >= len(samples) and meta["peak"] >= 1e-4
         audible += ok
-        rows.append((p.name, "AUDIBLE" if ok else "silent", f"{nz}/{len(samples)}", meta["peak"], why))
-    for name, verdict, nz, peak, why in rows:
-        print(f"  {name:20s} {verdict:8s} nz {nz:12s} peak {peak:<10} {why}")
-    print(f"\n{audible} of {len(rows)} factory instrument modules write any audio "
-          f"(rows marked with a prerequisite are judged with that prerequisite in place)")
+        rows.append((p.name, info["kind"], "AUDIBLE" if ok else "silent",
+                     f"{nz}/{len(samples)}", meta["peak"], why))
+    for name, kind, verdict, nz, peak, why in rows:
+        print(f"  {name:20s} {kind:10s} {verdict:8s} nz {nz:12s} peak {peak:<10} {why}")
+    ins = [r for r in rows if r[1] == "instrument"]
+    fx = [r for r in rows if r[1] == "effect"]
+    print(f"\ninstruments: {sum(1 for r in ins if r[2] == 'AUDIBLE')} of {len(ins)} write any audio")
+    print(f"effects:     {sum(1 for r in fx if r[2] == 'AUDIBLE')} of {len(fx)} write any audio")
+    print("rows marked with a prerequisite are judged with that prerequisite in place; "
+          "an effect is judged on its own output, not on its input")
     return 0
 
 
