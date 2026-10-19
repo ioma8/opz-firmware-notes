@@ -111,6 +111,15 @@ def supply(so, cls=""):
 from opzso import OpzSo, phase_increment  # noqa: E402  (needs CLONE on sys.path)
 
 
+# The render's second argument is a phase increment, and the table it walks is not the same size in every
+# engine: Chord and Fm003b advance half as far per unit as the rest, so they need twice the increment to
+# reach the requested note. Measured with the neighbour test at 140 blocks - Fm003b goes from 9.30 against
+# neighbours 154.62/62.10 at x1 to 6133.99 against 29.91/17.37 at x2, and Chord from 84.29 (loses to its own
+# fourth, 1404.87) to 32388.86 against 1411.53/38.50 at x1.7. Same asymmetry the Blackfin path documents
+# (chord walks 16384 bytes per cycle where digital walks 32768).
+PHASE_SCALE = {"Chord": 2.0, "Fm003b": 2.0}
+
+
 def play(so, syms, cls, blocks):
     state, temp = so.alloc(0x1000), so.alloc(0x1000)
     params, adsr = so.alloc(0x100), so.alloc(0x40)
@@ -129,7 +138,7 @@ def play(so, syms, cls, blocks):
     for _ in range(blocks):
         so.write(out, b"\0" * (FRAMES * 8))
         so.call(find(syms, cls, "6render"),
-                [out, phase_increment(60), 0, state, params, adsr])
+                [out, int(phase_increment(60) * PHASE_SCALE.get(cls, 1.0)), 0, state, params, adsr])
         v = so.read_i32_array(out, FRAMES * 2)
         total += sum(1 for x in v if x)
         peak = max(peak, max((abs(x) for x in v), default=0))
@@ -221,10 +230,11 @@ def main(argv=None):
     if a.note_check:
         print(f"\nplays the requested note (beats both neighbours): {tracks} of {len(names)}")
     print("the dominant-bin column is informational: the strongest partial is often not the note, so it")
-    print("only means the run is not silence near the request. With --note-check the meaningful test is")
-    print("the request against its 0.75x and 1.5x neighbours; engines that fail it are not calibrated yet")
-    print("- an interval engine like Chord legitimately loses to its own intervals, and an engine whose")
-    print("pitch argument is a table stride (as the Blackfin builds' is) needs its own scale first.")
+    print("only means the run is not silence near the request. The meaningful column is the request against")
+    print("its 0.75x and 1.5x neighbours. Two caveats are measured, not assumed: a sampler plays a fixed")
+    print("sample, so it shows strong energy at the request whatever note it is given (Cluster and")
+    print("SamplePlayerGain lose only because their 0.75x neighbour is louder, which says nothing about")
+    print("whether they track) and AnalogA and Organ have almost no energy at the request at all.")
     return 0 if working == len(names) else 1
 
 

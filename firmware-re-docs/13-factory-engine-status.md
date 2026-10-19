@@ -892,3 +892,19 @@ request - the pattern of an engine whose pitch argument is not yet scaled the wa
 So the dominant-bin column was misleading and this is the number to quote: **13 of 13 render audio, 7 of 13
 play the requested note under the current convention**, with the other six needing per-engine calibration
 rather than being written off.
+
+**Calibrating the scale moved two engines.** Sweeping the phase increment over 0.25x-4x and re-checking the
+winner at 140 blocks found exactly one scale error, shared by two engines and matching the Blackfin path's
+half-size table:
+
+| engine | at x1 | at the right scale |
+|---|---|---|
+| `Fm003b` | request 9.30, neighbours 154.62/62.10 | **x2: 6133.99**, neighbours 29.91/17.37 |
+| `Chord` | request 84.29, loses to its own fourth (1404.87) | **x2: 34504.93**, neighbours 167.17/97.67 |
+
+Both are now `PHASE_SCALE` entries in `opzinstcheck`, which lifts the tally to **9 of 13**.
+
+What is left is not a scale problem. `AnalogA` stays at 0.66-1.00 for every scale up to x2 and `Organ` at
+0.17-0.63 up to x3, so neither has meaningful energy at the request. `Cluster` and `SamplePlayerGain` sit at
+27.49 and 27.81 whatever scale they are given - the signature of a fixed-sample engine, for which the
+neighbour comparison says nothing about pitch tracking.
