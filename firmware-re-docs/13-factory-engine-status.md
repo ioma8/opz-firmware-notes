@@ -219,3 +219,51 @@ name, and every one of those name-matched substitutes is the **same kind** as th
 - 17 instruments in `engines-family` and 8 effects in `engines-effects`, with no instrument standing in for an
 effect or vice versa. The four extra modules (`bar`, `bell`, `glass`, `pluck`) are descriptive presets rather than
 slot stand-ins.
+
+## The vendor's own engine library is on this machine — and it settles the ABI
+
+Late in this investigation a much better source than the Blackfin modules turned up, reached by way of the
+`origin/work` branch: **`~/.opz-decode/opzso/libSnakePlugin.so`** (1.95 MB, from the companion APK) with
+`~/.opz-decode/opzso/syms.json` (4,699 symbols, 1.29 MB). It is the vendor's ARM64 build of *the same engines*
+with its symbol table intact, so none of the ABI has to be inferred any more:
+
+```
+render(fract32_t *out, unsigned frames, int track, void *state, const unsigned *params, ADSR*)
+initModule(unsigned id, const ModuleCallbackInterface *iface, unsigned *out)
+init(void *state, unsigned a, unsigned b, void *tempBuffer, void *d)
+onNoteOn(int note, unsigned char velocity, void *state, const unsigned *params)
+```
+
+- `out` is **interleaved stereo Q31** and `frames` is the frame count (two samples each).
+- `initModule(0, iface, out)` stores `iface` in the engine's own global; `init` stores its 5th argument as
+  `tempBuffer` and its 3rd at `state+0x20`.
+- **`render` returns immediately when `ADSR+0x10` (phase) is zero.**
+- **`ADSR` is six words**: `+0x00` rate, `+0x04` level, `+0x08` mul, `+0x0c` add, `+0x10` phase, `+0x14` tail
+  (byte `+0x15` re-arm). The engines **gate on `+0x14`**.
+- `iface+0x40` is the host envelope hook; **`iface+0x48(id, note)` returns a 40-byte sample record**
+  (`+0x00` data, `+0x08` readable frames, `+0x0c` pitch, `+0x10` rate); `iface+0x08(8)` is readiness.
+
+**All 21 factory engines are in that library**, by class name: `AnalogA, Chord, Cluster, Digital, EP, Electric,
+Fm003b, MiniStringShort, Organ, SamplePlayerGain, Saw013a, SynthSampler, Volt` and `Chorus, Chorus2, Crush, Delay,
+Dist, FdnReverb, Reverb, TapeTwo`.
+
+### A sibling repository already plays three of them
+
+`~/projects/customs/opz-clone` (branch `work` of this repo is its handoff trail, 171 commits) ports engines from that
+library and verifies each against the original executed under Unicorn:
+
+| engine | verification |
+|---|---|
+| `Digital` | byte-exact on 35 golden cases |
+| `AnalogA` | byte-exact on 20 voices, every block, every filter tap |
+| `Saw013a` | byte-exact on 19 cases, including the whole 26-word state after `onNoteOn` |
+| `SamplePlayerGain`, drums | byte-exact, ten cases, plus a device-traced block |
+
+Its `tools/unicorn-harness/opzso.py` is a general loader that can call *any* entry point in the library, and it
+already has host classes for `Digital`, `AnalogA`, `Saw013a` and `SamplePlayerGain`.
+
+**So the way to finish this objective is to continue that port in `opz-clone`**, one engine at a time, using its
+established method (symbol → Unicorn fixture → port → byte-exact test). This repository's Blackfin route has taken
+2 of 13 instruments as far as it can go; feeding the clone's *device ground truth* for `saw013a` to our Blackfin
+binary still fails because the engine copies only the first 13 interface entries into its own state, leaving
+`+0x40`/`+0x48` at zero so its host calls go to address 0.
