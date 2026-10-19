@@ -287,13 +287,18 @@ Called that way — `initModule`, `init`, then `renderFX(params, 64, state, in, 
 | `Reverb` | **1868 of 2048**, peak 287,026 |
 | `Chorus2` | **598 of 2048**, peak 218,904 |
 | `Dist` | 7 of 2048, peak 2,284 |
-| `Chorus`, `Delay`, `FdnReverb` | silent |
-| `TapeTwo` | unhandled CPU exception |
+| `Delay` | **19,966 of 25,600 over 200 blocks**, peak 577,536 - first output at block 44 (about 58 ms) |
+| `FdnReverb` | **22,090 of 25,600**, peak 61,692 - first output at block 27 |
+| `Chorus` | silent even over 200 blocks |
+| `TapeTwo` | unhandled CPU exception, jumping to data at `0x11deb4` (an uninitialised callback) |
+
+The two delay-based engines were never broken: their lines simply had not filled. `Delay` needs about **58 ms** of input
+before it emits anything, which is why 16-block runs showed silence.
 
 A **dedicated scratch buffer** matters: `Chorus2` is silent when the output buffer is handed to it as the sixth
 argument and produces 598 nonzero samples when given 256 KB of its own, so the sixth argument is scratch, not output.
 
-So **four of the eight factory effects demonstrably process audio** with the vendor signature - `Crush`, `Reverb`,
+So **six of the eight factory effects demonstrably process audio** with the vendor signature - `Crush`, `Reverb`,
 `Chorus2` and `Dist` - against zero before it was read from the symbol names.
 
 So two of the eight factory effects genuinely process audio in the vendor library. Every attempt in this repository
