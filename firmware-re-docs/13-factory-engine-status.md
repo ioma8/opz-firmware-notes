@@ -1255,3 +1255,19 @@ So the Blackfin effect modules do **not** follow the ARM64 dispatch contract - t
 harness does not have, exactly as the instruments do. The 0-of-8 figure is a real property of these modules in
 an OS-less harness, not only an argument-order mistake, although the harness does still call them in a
 different order than the ARM64 build.
+
+### Which tests are the engine suite, 2026-10-19
+
+The repository root also carries hardware/BLE tooling tests (`test_deliverable.py`, `toolkit/opztest.py`, the
+`opz-firmware-notes/z_firmware_1_2_45.zfw` extractors). Those import `pyserial` and are **not** part of the
+engine work: without `pyserial` installed they stop at `ModuleNotFoundError: No module named 'serial'` before
+touching anything, and with it they would talk to a device. `toolkit/test_pull_paths.py` passes independently.
+
+The engine suite is:
+
+```
+python3 toolkit/opzstatus.py          # every gate and every population
+python3 toolkit/opzsim.py selftest    # the interpreter, 519,370 steps
+```
+
+So a `serial` import error says nothing about the engines, and should not be read as a broken deliverable.
