@@ -116,6 +116,15 @@ def main(argv):
         if works:
             working.append(cls)
     print(f"\n  {len(working)} of {len(EFFECTS)} factory effects process audio: {', '.join(working) or 'none'}")
+    missing = [c for c in EFFECTS if c not in working]
+    if missing:
+        print("  not processing: " + ", ".join(missing))
+        if "TapeTwo" in missing:
+            # Measured, not assumed (see firmware-re-docs/13-factory-engine-status.md and
+            # HYPOTHESES.csv): renderFX stores 128 zero samples into tapeBuffer_z_l/z_r, the very
+            # buffers its mix loop then reads, so its output is zero for every host input.
+            print("  TapeTwo is silent by construction: its renderFX zeroes the buffers it then")
+            print("  reads, and FxManager::render only forwards to it. 7 of 8 is this library's ceiling.")
     return 0 if len(working) == len(EFFECTS) else 1
 
 
