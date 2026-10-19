@@ -354,3 +354,16 @@ python3 toolkit/opzfxcheck.py --blocks 60
 and `FdnReverb` need longer runs to fill their lines (60 blocks is 80 ms; use `--blocks 200` for both). `TapeTwo` is
 the one remaining failure and is still open. The script needs the vendor library and the loader from
 `~/projects/customs/opz-clone/tools/unicorn-harness`; it drives them rather than reimplementing anything.
+
+## The instrument half needs ports, and nothing else
+
+Closing note, so no future session repeats this: **instruments cannot be driven by a generic host.** The evidence is
+`Chord`, deliberately chosen as the easiest case — the smallest unported engine (1,480 bytes of render), and one this
+repository's Blackfin harness already plays. It was given its variant-selected gain global, its render-time global
+`DAT_0134a5e0` (five values), a Q31 wavetable at `interface+0x18`, a 2 MB `init` buffer, `ADSR` phase 5 and
+`onNoteOn`, across variants 0, 4, 5, 6 and 7. Every combination renders **0 of 7,680 samples**.
+
+The same was tried on Organ, Cluster, Electric, EP, MiniStringShort and Volt, and on all thirteen at once. None
+produced a sample. The four instruments that do work in `opz-clone` work because each has a dedicated host class
+supplying exactly the globals its engine reads, plus a translated port with byte-exact fixtures. **Any further
+instrument needs that same treatment; there is no shortcut.**
