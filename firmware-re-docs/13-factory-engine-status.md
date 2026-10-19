@@ -559,3 +559,14 @@ flags all leave it at zero — none of them can matter.
 
 **The effects ceiling with this library is therefore 7 of 8, not 8 of 8.** TapeTwo's audible path is
 in another entry point, not in the `renderFX` that the shared effect harness drives.
+
+### Two different engine populations live in this tree - do not mix their results (2026-10-19)
+
+| verifier | population | result |
+|---|---|---|
+| `toolkit/opzfamilycheck.py` | the **engines-family** modules this repo generates with `build_struck.py` | all 17 PASS with exact octave readings |
+| `toolkit/opzfactorycheck.py` | the vendor's **engines-official** `.engine` binaries, on the Blackfin emulator | **2 of 13** instruments (chord, digital); saw013a, minstringshort and fm003b raise, the rest are silent or note-insensitive |
+| `toolkit/opzinstcheck.py` + `opzfxcheck.py` | the vendor's **ARM64 library** `libSnakePlugin.so`, i.e. the same algorithms as shipped in the app | **13 of 13** instruments, **7 of 8** effects |
+
+`opzfamilycheck` passing everything says nothing about the factory engines: those modules are built here and are known good. The factory tally therefore depends on which build you run, and the honest statement is
+**13 of 13 instruments + 7 of 8 effects through the vendor library, but only 2 of 13 through the Blackfin emulator.**
