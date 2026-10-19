@@ -260,6 +260,11 @@ library and verifies each against the original executed under Unicorn:
 | `SamplePlayerGain` | byte-exact on ten golden cases (`golden_cases_match`) |
 | drums | byte-exact, plus a device-traced block |
 
+Playback through the app is covered too: `cargo test -p opz-core` passes 44 tests including
+`a_note_through_the_ported_chain_makes_sound`, `a_saw_track_plays_through_the_ported_chain`,
+`setting_a_tracks_engine_swaps_its_voices` and `render_audio_integration`, so the four engines are exercised through
+Engine -> track -> mixer -> audio rather than only per-engine.
+
 Verified by `cargo test -p opz-dsp` on 2026-10-19: `digital` 3 tests, `analog_a` 11, `saw013a` 12 (including
 `render_matches_every_golden_case` and `render_matches_the_device`), `sample_player_gain` golden cases - all passing,
 so **four of the thirteen instruments** are byte-exact against the vendor's own code. The clone's
