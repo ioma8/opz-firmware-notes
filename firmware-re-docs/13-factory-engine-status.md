@@ -1050,3 +1050,15 @@ reads never leave that final quarter, so any frequency estimate is reading a fra
 
 The next step is therefore to read `render`'s mix loop directly (including where it takes its output pointer)
 rather than to keep estimating frequency from outside.
+
+**The sampler's read position is frozen.** Logging the sample frame positions `SamplePlayerGain` reads across ten
+consecutive blocks at note 60 gives the same answer every block: **256 reads - two per frame - at exactly frames
+2038, 2039 and 2040**, an advance of two frames across 64 frames of output, and identical in all ten blocks.
+
+So the engine replays a two-frame fragment and its output is essentially constant. That is why every frequency
+estimate returned the same 117 Hz and why no note, parameter, record field or sample content changed it - the
+position never moves. The record and sample are read every block (previous entry), so the missing piece is
+whatever advances the playback position, and that is engine state rather than any host field tested so far.
+
+`SamplePlayerGain` and `Cluster` therefore stay **out of the tally**: they cannot pass a note test until the
+position advances.
