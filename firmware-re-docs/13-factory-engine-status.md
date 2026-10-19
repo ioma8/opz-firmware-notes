@@ -1078,3 +1078,27 @@ inside the mix loop itself.
 
 The next step is therefore to read that loop, not to test another host field: every field the harness can set
 has now been excluded.
+
+**Corrected, from the disassembly.** The earlier claim that both per-frame state words "read zero" was an
+artefact: Unicorn's `UC_HOOK_MEM_READ` does not supply the value, so every read was logged as 0. The mix loop
+at `0x11f778`-`0x11f7b0` says what the two fields actually are:
+
+```
+0x11f778  ldr   w11, [x20, #0x10]      ; read position
+0x11f77c  ldr   x2,  [x20, #0x18]      ; sample base pointer
+0x11f780  lsl   w11, w11, #0xa         ; position << 10, minus an internal offset in w10
+0x11f78c  lsr   w3,  w11, #0xa         ; integer frame index
+0x11f79c  add   x2,  x2, w3, uxtw #1   ; x2 = base + 2 * frame
+0x11f7a0  ldrsh w3,  [x2]              ; four 16-bit taps: 4-point interpolation
+0x11f7a4  ldursh w4, [x2, #-4]
+0x11f7a8  ldursh w6, [x2, #-2]
+0x11f7b0  ldursh w2, [x2, #-6]
+```
+
+Setting `state+0x10` before a block confirms it: `0x2000` reads frames 4077-4080, `0x4000` reads frames
+12269-12272 (`0x1000` reads nothing, because the offset subtraction goes negative). And **`state+0x10` is
+unchanged after the block in every case** - the engine never writes it back.
+
+So the playback position is a **host-supplied field the OS advances per block**. Our harness leaves it static,
+which is why the same four taps replay forever: the engine is not frozen, the harness is. The fix is to advance
+`state+0x10` by the playback rate each block - the concrete next step for these two engines.
