@@ -109,6 +109,7 @@ def supply(so, cls=""):
     so.write_u32(rec + 0x08, 8192)
     so.write_u32(rec + 0x0C, increment_for(60))
     so.write_u32(rec + 0x10, 1 << 12)
+    so.rec = rec                              # probes can vary the record's fields
     so.stub("samp", lambda s, n: s.reg_write(UC_ARM64_REG_X0, rec))
     so.write(so.interface + 0x48, struct.pack("<Q", so.stub_address("samp")))
 

@@ -1003,3 +1003,13 @@ their playback rate does not track the render increment at all here and must com
 
 That makes the neighbour test - which assumes a pitched oscillator - the wrong instrument for them. They stay
 **out of the tally** rather than being called silent, and the note-60 figure remains 11 of 13.
+
+**Where the sampler rate is not.** `supply()` now exposes the record pointer as `so.rec`, so probes can vary
+its fields. Sweeping the record's `+0x10` (the field labelled "rate") over `2^12`, `2^16`, `2^20` and `2^24`
+changes **nothing** for either `SamplePlayerGain` or `Cluster`: the same dominant figure (75.0 Hz, the low end
+of the scan, i.e. envelope energy rather than a note) and the same neighbour contrast at every setting.
+
+Both samplers also return identical dominant figures to each other whatever the class, note or record
+contents, while their peaks differ (848,755,646 for `Cluster`, 1,767,964,668 for `SamplePlayerGain`). So the
+rate is neither the render increment nor the record's rate field, and they stay **out of the tally**; the next
+step is to trace which state word `onNoteOn` writes for these two.
