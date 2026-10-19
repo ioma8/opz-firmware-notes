@@ -683,3 +683,21 @@ Tohle je jediná chybějící věc; všechno ostatní je v repu hotové a ověř
 SamplePlayerGain, **21/21 testů zelených** a tři enginy **byte-exact** proti originálu. Chybí 18 enginů, každý
 potřebuje vlastní host třídu, port, golden fixtury a byte-exact test. `Organ` a `Cluster` už byly zkoušeny
 a ani po třech kolech nedaly ani vzorek zvuku — to je reálná cena jednoho enginu.
+
+## Konečný stav cíle „aby hrály všechny tovární enginy“ (2026-10-19)
+
+**11 z 21 enginů ověřeně funguje**, zbytek ne. Každé číslo je změřené, ne odhadnuté.
+
+| kde | co funguje | jak je to ověřené |
+|---|---|---|
+| `~/.opz-decode/opzso/libSnakePlugin.so` (vendor ARM64 se symboly) | **7 z 8 efektů**: Crush, Reverb, Chorus2, Dist, Delay, FdnReverb, Chorus | přímé volání `renderFX(params, frames, state, in, out, scratch)` a počítání nenulových vzorků; Delay potřebuje ~58 ms (blok 44), FdnReverb blok 27 |
+| `~/projects/customs/opz-clone` (porty, byte-exact) | **4 z 13 nástrojů**: digital, analog_a, saw013a, sample_player_gain | `cargo test -p opz-dsp` – 3 + 11 + 12 testů + golden cases, vše zelené |
+
+**Co je potřeba pro zbytek (10 enginů):** každý nástroj vyžaduje vlastní host třídu – `init` si sám plní
+`g_scratchpads` z host bufferu, takže předplnění nepomůže; Digital potřebuje pět gain globalů, 16prvkovou oktávovou
+tabulku a wavetable, než vůbec vydá vzorek. U efektů zbývá jen `TapeTwo`: po opravě `init` (4. argument musí být
+buffer ≥ 1 MB, jinak si vynuluje vlastní kód na 0x100000) běží, ale zapisuje nuly.
+
+**Metody, které fungovaly** (používat dál): přečíst manglovaný symbol → znát signaturu; decompilovat přes
+`tools/ghidra-scripts/DecompileTo.java`; hookovat zápisy do paměti, aby se zjistilo, kam engine skutečně píše;
+a pamatovat, že `ADSR+0x10` (phase) musí být 5–7 a `iface+0x38` je envelope hook.
