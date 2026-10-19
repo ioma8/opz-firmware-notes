@@ -96,21 +96,59 @@ def supply(so, cls=""):
     # The samplers fetch their sample through interface+0x48: a 40-byte record whose
     # +0x00 is the data pointer, +0x08 the readable frame count, +0x0c pitch and
     # +0x10 rate. Without a record they log "sample player lost it's samples".
-    # The sample must be recorded at the root pitch the record declares, or a sampler transposes from the
-    # wrong rate: this is a 261.63 Hz sine (note 60 at 48 kHz) and the record's pitch field carries note 60
-    # in the same unit the render argument uses. A period-64-table sample declared at the old unit played
-    # 750 Hz and could never reach the requested note.
-    root = 440.0 * 2 ** ((60 - 69) / 12.0)
-    data = so.alloc(8192 * 4)
-    so.write_u32_array(data, [int(math.sin(2 * math.pi * root * i / 48000.0) * 0x7FFFFFFF) & 0xFFFFFFFF
-                              for i in range(8192)])
-    rec = so.alloc(0x28)
-    so.write(rec + 0x00, struct.pack("<Q", data))
-    so.write_u32(rec + 0x08, 8192)
-    so.write_u32(rec + 0x0C, increment_for(60))
-    so.write_u32(rec + 0x10, 1 << 12)
-    so.rec = rec                              # probes can vary the record's fields
-    so.stub("samp", lambda s, n: s.reg_write(UC_ARM64_REG_X0, rec))
+    # Per-engine, because the two kinds of sampler want different hosts. SamplePlayerGain gets exactly the
+    # environment the sibling port's golden fixtures pin for the vendor library (a 2304-frame pack cut into
+    # 24 slices, descriptor {data, frames=2304, pitch=0x2000, detune=0x40000000}, slice = note - 36 clamped
+    # to 0..23, plus the two library globals the app fills). Its own documented behaviour inside that host is
+    # to play notes 36..59 and fall silent from 60, where the last slice's window runs past the buffer.
+    if cls == "SamplePlayerGain":
+        # The sampler environment is the one the sibling port's golden fixtures pin for the vendor library
+        # (crates/opz-dsp/tests/golden/sample_player_gold/README.md), because that is the only documented
+        # host the engine is known to play under: a 2304-frame pack cut into 24 slices of 96 frames, a
+        # descriptor of {data, frames=2304, pitch=0x2000, detune=0x40000000}, slice = note - 36 clamped to
+        # 0..23, and the two library globals the app fills (0x124a5cc = 0x7fffffff, the 16 x i16 table at
+        # 0x124a7b0 all 0x7fff). With this the engine writes 512 of 512 nonzero samples for notes 36 and
+        # 43 and is silent from note 60 on - the last slice's window runs past the buffer, which the port
+        # documents as the original's own behaviour.
+        pack = so.alloc(2304 * 2)
+        s_state = 0x12345678
+        frames = []
+        for _ in range(2304):
+            s_state = (s_state * 1664525 + 1013904223) & 0xFFFFFFFF
+            v = (s_state >> 16) & 0xFFFF
+            frames.append(v - 0x10000 if v & 0x8000 else v)
+        so.write_i16_array(pack, frames)
+        rec = so.alloc(0x28)
+        so.rec = rec
+        so.pack = pack
+        so.note = [60]
+
+        def sample_lookup(s, n):
+            slice_index = min(max(s.note[0] - 36, 0), 23)
+            s.write_u64(rec + 0x00, s.pack + slice_index * 96 * 2)
+            s.reg_write(UC_ARM64_REG_X0, rec)
+
+        so.write_u32(rec + 0x08, 2304)
+        so.write_u32(rec + 0x0C, 0x2000)
+        so.write_u32(rec + 0x10, 0x40000000)
+        so.write_u32(0x124A5CC, 0x7FFFFFFF)
+        so.write(0x124A7B0, struct.pack("<16h", *([0x7FFF] * 16)))
+        so.stub("samp", sample_lookup)
+    else:
+        # Everything else keeps the single recorded sine: SynthSampler reads the same interface slot but
+        # plays a pitched sample rather than a slice table, and the pack host silences it (32 of 17920
+        # samples against 17918).
+        root = 440.0 * 2 ** ((60 - 69) / 12.0)
+        data = so.alloc(8192 * 4)
+        so.write_u32_array(data, [int(math.sin(2 * math.pi * root * i / 48000.0) * 0x7FFFFFFF) & 0xFFFFFFFF
+                                  for i in range(8192)])
+        rec = so.alloc(0x28)
+        so.write(rec + 0x00, struct.pack("<Q", data))
+        so.write_u32(rec + 0x08, 8192)
+        so.write_u32(rec + 0x0C, increment_for(60))
+        so.write_u32(rec + 0x10, 1 << 12)
+        so.rec = rec
+        so.stub("samp", lambda s, n: s.reg_write(UC_ARM64_REG_X0, rec))
     so.write(so.interface + 0x48, struct.pack("<Q", so.stub_address("samp")))
 
 
@@ -179,6 +217,8 @@ def play(so, syms, cls, blocks, note=60, vendor_host=False):
     so.call(find(syms, cls, "4init"), [state, 5, 0, 0, temp])
     on_note = find(syms, cls, "8onNoteOn")
     if on_note:
+        if hasattr(so, "note"):
+            so.note[0] = note
         so.call(on_note, [note, 100, state, params])
     total = peak = 0
     mono, inter = [], []

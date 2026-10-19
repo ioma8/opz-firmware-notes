@@ -1278,3 +1278,27 @@ gates - "renders audio" and the population tallies - which on its own overstates
 `plays the requested note (beats both neighbours): 11 of 13`. The fast run now says explicitly that the note
 figure was not measured and how to get it, so the single status command cannot be read as claiming more than
 was checked.
+
+### The sampler works once it is driven the way the fixtures say, 2026-10-19
+
+Instead of guessing the sampler's host, `opzinstcheck` now uses exactly the environment the sibling port's
+fixture README pins for the vendor library:
+
+* a **2304-frame pack** cut into **24 slices of 96 frames** (the documented LCG generator),
+* descriptor `{data, frames = 2304, pitch = 0x2000, detune = 0x40000000}`,
+* slice selection `slice = note - 36`, clamped to `0..23`, with the descriptor's data pointer recomputed per
+  note,
+* the two library globals the app fills: `0x124a5cc = 0x7fffffff` and the `16 x i16` table at `0x124a7b0`
+  all `0x7fff`.
+
+Result: **512 of 512 nonzero samples across four blocks at notes 36 and 43**, and **0 of 512 at note 60** -
+which is the engine's documented behaviour, not a fault: `60 - 36 = 24` clamps to slice 23, whose window runs
+past the buffer (the fixture README records the same silence for its note-60 case).
+
+The environment is **per engine**: applying it to every sampler silences `SynthSampler` (32 of 17920 samples
+against 17918) and `Cluster`, so only `SamplePlayerGain` takes the pack host while the rest keep the single
+recorded sine. Tallies are unchanged - 13 of 13 render audio, 11 of 13 at note 60.
+
+`SamplePlayerGain` is a slice/drum engine: it plays one 96-frame hit per note and then goes silent by design, so
+a 140-block pitched-note test is the wrong instrument for it. What is now verified is stronger and different:
+it plays the material the note selects, and stops exactly where the fixtures say it should.
