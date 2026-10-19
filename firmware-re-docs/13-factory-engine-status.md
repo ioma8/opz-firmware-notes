@@ -665,3 +665,30 @@ explains this session's remaining firmware failures:
 The firmware image is present in the repository but is **not loaded into the engine machines**. The next
 step is therefore a genuine integration rather than a probe: map `opz.ldr` into the same `Machine` so
 those host addresses execute instead of returning zero.
+
+### Final tally at the end of this work (2026-10-19)
+
+| path | result | how to check |
+|---|---|---|
+| vendor ARM64 library (the code as shipped in the app) - instruments | **13 of 13** | `python3 toolkit/opzinstcheck.py --blocks 20` |
+| vendor ARM64 library - effects | **7 of 8** | `python3 toolkit/opzfxcheck.py --blocks 60` |
+| vendor `.engine` binaries on the Blackfin emulator - instruments | **6 of 13** audible | `python3 toolkit/opzfactorycheck.py` (stricter: 2 of 13 play the requested note) |
+
+The instrument half went from 4 to 13 on the shipped-code path, through three harness defects rather than
+engine unknowns: engine globals were being written at their **Ghidra addresses, 0x100000 too high**; the
+host-data region **0x124A500-0x124C400** was left zero; and **`interface+0x28`** must point at *five*
+pointers to 16x65 Q31-sine tables rather than one zeroed buffer. The firmware path went from 2 to 6
+audible through the **six-stack-word calling convention**, the **`CC = R == 0` gate** immediately before
+the shared epilogue, and per-engine **coefficient tables**.
+
+Still outstanding, with measured causes:
+
+* `TapeTwo` (effect) - its `renderFX` zeroes `tapeBuffer_z_l/z_r` over `0..0x7e` and then `ldrh`s and
+  multiplies those same bytes, so it is silent by construction in this build.
+* `organ` - gated open it runs 55,419 steps but its output is a constant near zero whatever `R2`, the
+  envelope, the table fill or the parameters hold.
+* `sampleplayergain`, `synthsampler` - with the OS image mapped they pass `ctx` to host entry [9]
+  (`0x80100e64`), which follows a pointer inside it and spins; the OS expects a context it built itself,
+  and a stand-in was tested and disproved.
+* `analoga`, `fm003b`, `ministringshort`, `saw013a` - run 18,000-34,000 steps and then spin inside OS
+  services on that same unbuilt context.
