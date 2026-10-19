@@ -701,3 +701,44 @@ buffer ≥ 1 MB, jinak si vynuluje vlastní kód na 0x100000) běží, ale zapis
 **Metody, které fungovaly** (používat dál): přečíst manglovaný symbol → znát signaturu; decompilovat přes
 `tools/ghidra-scripts/DecompileTo.java`; hookovat zápisy do paměti, aby se zjistilo, kam engine skutečně píše;
 a pamatovat, že `ADSR+0x10` (phase) musí být 5–7 a `iface+0x38` je envelope hook.
+
+## Aktuální stav cíle „aby hrály všechny tovární enginy" (2026-10-19, konec session)
+
+**20 z 21 továrních enginů hraje.** Obě poloviny se ověřují jedním příkazem:
+
+```
+python3 toolkit/opzinstcheck.py --blocks 20   # 13 z 13 nástrojů
+python3 toolkit/opzfxcheck.py   --blocks 60   #  7 z 8 efektů (TapeTwo mlčí)
+```
+
+### Co se v této session opravilo (a co se už nemusí znovu hledat)
+
+Instrumenty šly ze 4 na 13. Příčinou nebyly chybějící znalosti o enginech, ale **tři chyby
+v mém vlastním harnessu**, každá doložená měřením:
+
+1. **Globály enginů se zapisovaly na Ghidra adresy**, tedy o `0x100000` výš, než jsou skutečné.
+   Každý pokus dodat hostitelská data proto skončil v nepoužité paměti a engine četl nuly.
+   Správně je `Ghidra adresa − 0x100000` (např. gainy na `0x124A5CC`…`0x124A5DC`).
+2. **Oblast `0x124A500`–`0x124C400` zůstávala nulová.** Jsou v ní tabulky envelope-rate křivek
+   a oktávových/pásmových gainů; dokud jsou nulové, je ticho i u enginu, který je jinak
+   nastavený správně. Vyplnit i16 `0x7FFF`.
+3. **`interface+0x28` musí ukazovat na PĚT ukazatelů**, každý na tabulku 16×65 `fract32_t`
+   (4160 B, ne jeden řádek) naplněnou Q31 sinusem škálovaným `0x7FFFFFFF >> (bank*2)`.
+   S jedním vynulovaným bufferem je signálová cesta nulová — tato jediná oprava rozsvítila
+   `AnalogA`, `Fm003b` a `Saw013a`.
+
+Dále: vzorkovníky (`SamplePlayerGain`, `SynthSampler`) potřebují 40bajtový záznam vzorku
+přes `interface+0x48` (data, počet rámců, pitch, rate), a knihovna importuje jen
+`__stack_chk_fail, clock, free, malloc, memcpy, memset` — všechny je potřeba stubovat.
+
+### TapeTwo — jediný engine, který nehraje, a proč
+
+`TapeTwo::renderFX` se změřením chová takto: při kladné odpovědi na readiness dotaz
+(`vtable[0x08](5)`) **správně nahrává** — 64 zápisů za blok do `sampleLine`, kde je přesně
+vstupní vzorek — ale pak **vynuluje svůj přehrávací buffer (`tapeBuffer_z`) a čte právě ten
+vynulovaný**, takže všech 128 zápisů do `out` je nula. Přes 300 bloků `tapeBuffer_z_l`
+nikdy není nenulový a `updateTapeStop` ve čtyřech režimech to nemění. Chybí tedy hostitelský
+převod `sampleLine → tapeBuffer_z`, který tato builda v `renderFX` neprovádí.
+
+**Pozor na past:** ukazatele do pásek jsou 64bitové (`0x200000531000`). Kdo je čte po 4 bajtech,
+dostane zkrácenou hodnotu a háčky pak hlásí „žádné zápisy", což je artefakt, ne chování enginu.
