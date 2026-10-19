@@ -1023,3 +1023,15 @@ So the note reaches neither `onNoteOn` state, nor the render arguments, nor the 
 output is **note-invariant** in this harness, which puts them beyond what a harness-side guess can fix: judging
 them needs a read of `SamplePlayerGain::render` itself. They stay out of the tally, and the shipped-code
 figures stay at 11 of 13 at note 60 and 9 of 13 at every tested note.
+
+**And the 117 Hz is not the sample either.** Changing the recorded sample's own frequency to 130.81 Hz, 261.63
+Hz or 523.25 Hz gives **the same 117.2 Hz** dominant output from `SamplePlayerGain`, and `Cluster` returns that
+identical figure throughout. Varying `params[0]` (the octave shift), `params[1]`, `params[2]` and the record's
+`+0x0c` pitch between its two plausible units changes nothing; only `1<<24`/`1<<28` there silence it, and
+`params all zero` silences both.
+
+So the record **is** read - changing its pitch unit earlier moved `SamplePlayerGain`'s peak from 28,114,945 to
+1,767,964,668 - but the audible component is engine-internal, not sample playback. In this harness these two
+are not playing the sample at all, which is why every harness-reachable knob left the note test unchanged. They
+stay out of the tally; judging them needs a per-engine read of `SamplePlayerGain::render`, including where it
+takes its output buffer.
