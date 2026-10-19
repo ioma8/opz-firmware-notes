@@ -909,33 +909,52 @@ class Machine:
                 return True
             raise RuntimeError(f"ProgCtrl opc={opc:#x} at 0x{self.pc:08x}")
 
-        if (h & 0xE000) == 0xA000:
-            w = (h >> 12) & 1
-            cls = (h >> 10) & 3
-            disp = ((h >> 6) & 0xF) * 4
-            ptr, reg = (h >> 3) & 7, h & 7
-            if cls == 2:
-                # frame-relative form: [FP - n], with a signed 6-bit displacement/4 at bits 4-9. The
-                # three samples recovered from factory engines are all spills of an argument
-                # ([FP - 0x3c], [FP - 0x7c], [FP - 0x8]); bits 11-13 read 0b111 (FP) in every one, so
-                # the guard below keeps this honest instead of pretending the field is general.
-                # every sample recovered reads FP here; two engines encode 5 instead, and treating that
-                # as a different base would be a guess, so the form stays FP-relative and the deviation
-                # is left visible in this comment rather than silently reinterpreted
-                field = (h >> 4) & 0x3F
-                if field & 0x20:
-                    field -= 0x40
-                addr = s32(self.p[7] + field * 4)
+        # LdStIIFP (instr16/23-LdStIIFP.sinc) is the frame-slot form and MUST be tested before the
+        # LdStII field split below: it shares bits 13-10 with LdStII's op=2/w=1 combination, and the two
+        # have different layouts. Fields as the SLEIGH declares them: sig 0b101110 at bits 10-15, w
+        # (store) at bit 9, the offset at bits 4-8, g (pointer register) at bit 3, register at 0-2, with
+        # the address being FP - (0x80 - off*4), i.e. always below FP, 4..0x7c bytes.
+        # Reading bit 9 as part of the offset (the earlier decode) put every load at FP + off*4 instead
+        # of FP - 0x80 + off*4 and turned every frame-slot STORE into a load, so compiled spills read
+        # the wrong word and their stores vanished. Ghidra disassembles 0xba12 in analoga as
+        # '[FP - 0x7c] = R2', which is the layout implemented here.
+        if (h & 0xFC00) == 0xB800:
+            w = (h >> 9) & 1
+            addr = s32(self.p[7] - (0x80 - ((h >> 4) & 0x1F) * 4))
+            if (h >> 3) & 1:
+                reg = h & 7
+                if w:
+                    self.st32(addr, self.p[reg])
+                else:
+                    self.p[reg] = self.ld32(addr)
+            else:
+                reg = h & 7
                 if w:
                     self.st32(addr, self.r[reg])
                 else:
                     self.r[reg] = self.ld32(addr)
+            self.pc = nxt
+            return True
+        if (h & 0xE000) == 0xA000:
+            w = (h >> 12) & 1
+            cls = (h >> 10) & 3
+            ptr, reg = (h >> 3) & 7, h & 7
+            if cls in (1, 2):
+                # The 16-bit forms of the same class: op 1 is W[P + imm] (Z) and its store, op 2 is (X),
+                # and the offset is in HALF-WORDS (lsImm2), not words. The earlier decode folded op 2
+                # into the FP-relative class, so compiled half-word loads read a wrong address instead of
+                # failing - which is why nothing noticed the gap until the FP fix stopped matching them.
+                addr16 = s32(self.p[ptr] + ((h >> 6) & 0xF) * 2)
+                if w:
+                    if cls != 1:
+                        raise RuntimeError(f"LdStII store cls={cls} at 0x{self.pc:08x}")
+                    self._wr16(addr16, self.r[reg] & 0xFFFF)
+                else:
+                    v = self._rd16(addr16)
+                    self.r[reg] = v if cls == 1 else (v - 0x10000 if v & 0x8000 else v)
                 self.pc = nxt
                 return True
-            if cls == 1:
-                cls = 0                                        # same fields, data-register form
-            if cls not in (0, 3):
-                raise RuntimeError(f"displacement LdSt class {cls} at 0x{self.pc:08x}")
+            disp = ((h >> 6) & 0xF) * 4
             addr = s32(self.p[ptr] + disp)
             if cls == 3:
                 if w:

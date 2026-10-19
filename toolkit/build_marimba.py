@@ -1,466 +1,217 @@
 #!/usr/bin/env python3
-"""build_marimba.py - emit the "marimba body" .engine module.
+"""build_marimba.py - the marimba engine, written with toolkit/opzsdk.py (no assembly).
 
-Assembles the modal resonator with toolkit/opzasm.py (every encoding verified against factory bytes),
-builds the 56-byte module header and the segment list, and writes a loadable `.engine`.
+A struck wooden bar: six damped partials at the bar's inharmonic ratios, excited by a strike comb and
+left to ring. Every choice below is the one the measurements in doc 11 justify; the DSP is unchanged
+from the hand-written engine, only the way it is expressed is.
 
-Design, and why each choice was forced:
+Voice contract (doc 11 section 11.9): the OS note-start path calls init then render, never onNoteOn, so
+a voice comes alive from render's own arguments - pitch is argument 2 in Q16 Hz, and the amp object's
+state word (argument 6, +0x10) says whether the OS still wants this voice. N voice records therefore
+sound N notes. onNoteOn exists because the loader requires it and only asks for a re-strike.
 
-* **Per-voice state, in the context the OS passes in.** The first build kept state in module globals, which
-  is wrong the moment the OS runs more than one voice: every voice would play the same note. All state now
-  lives in the context handed to `init` (arg 1), `onNoteOn` (arg 3) and `render` (arg 4):
+Context layout, shared with the other authored engines:
 
-      +0x00 gate          +0x10 state[6][2]  (y1, y2 per mode)
-      +0x04 note          ...
-      +0x08 coefficient row pointer (saved so it can be rewound each block)
-      +0x0c reserved
+    +0x00 struck flag      +0x04 note (bookkeeping)
+    +0x08 reserved         +0x0c reserved
+    +0x10 .. +0x3f  six (y1, y2) oscillator states
+    +0x40 .. +0x6f  six (c, s) coefficients copied from the table for this block
+    +0x70           the block's combined gain
 
-  Only the coefficient and gain tables stay in module data, where they are read-only and shared.
-* **A 128-entry coefficient table indexed directly by MIDI note.** The table is computed at build time
-  by toolkit/opzmarimba.py, so the engine contains no transcendentals at all - a note is an index, not
-  a computation - and no clamping is needed for the legal 0..127 range.
-* **Only verified instruction forms.** opzasm raises `Unsupported` rather than guessing, so a mistake
-  fails the build instead of producing a module that loads and misbehaves.
-* **The excitation law is the reference model's, not a guess.** Seeds are
-  `0.5 * (0.42**m)**0.5 / (1+0.3m) * cos(pi(m+1)*0.30)` — the same tilt `opzmarimba.Marimba.strike` uses,
-  which is what puts the tuned 4x partial where the ear reads "wood". The first build used `0.42**m` with a
-  0.22 strike point, which left it 24.5 dB down instead of 16.4 dB and made the engine a sine with a click.
-* **Volatile registers only, plus the verified push/pop pair** for the registers render() must borrow.
-* **A voice comes alive from render's own arguments**, never from `onNoteOn`: pitch is argument 2, and
-  the amp object's state word (argument 6, +0x10) says whether the OS still wants this voice. The strike
-  is seeded when that state goes from idle to active. `onNoteOn` is still exported - the loader requires
-  it - but it only asks for a re-strike. This is what makes the engine polyphonic: every voice record the
-  OS ticks has its own context, pitch and amp, so N records sound N notes.
-
-Known limitations, stated rather than hidden:
-  - the decay macro is read from params[PARAM_DECAY], and that index is still not confirmed on hardware.
-    params[2] is the wrong place for it: doc `11` §11.9 shows `chord` passing params[2..5] to the OS
-    parameter-smoothing service (host_table[7]), so those four are the amp/envelope arguments, not
-    engine knobs, while the sibling port's param map records params[0] and params[1] as the two
-    entries every ported engine reads. The mechanism is right (argument 5 is a stack argument, walked
-    with post-increment loads because the encoder has no displacement load) and the mapping is accurate
-    - buckets land within 1% of their target T60 - but which knob the OS binds to params[1] is still an
-    assumption;
-  - the strike position (0.30) and brightness (0.5) are baked into the seed table, not live macros: the
-    fourth and fifth entries of params[] are amp arguments on this ABI (doc `11` §11.9), so they cannot
-    drive them;
-  - pitch comes from render's argument 2 (Q16 Hz) and the row is the NEAREST semitone, found with a
-    seven-step binary search over the build-time frequency table. The OS derives that argument from its
-    own semitone table, so for every real note the match is exact; during a pitch glide the row quantises
-    to the nearest semitone (up to 50 cents) and `bend`, argument 3, is ignored. Interpolating between
-    adjacent rows would remove that, and is the next thing to do if glides ever matter;
-  - `mul32` emits the (T) extraction, and that extraction is `>> 32` rather than the `>> 31` of a Q31
-    fractional multiply (SLEIGH's `rounding(..., 4)` clears four bytes). Every multiply therefore
-    returns half scale and each mode output is doubled with one add, mirroring `frac_q31()` in
-    opzmarimba.py, which implements the same arithmetic and passes its measurement checks;
-  - the engine has no level control beyond the amp gate. Host entry 7 is the OS parameter-smoothing
-    service that fills the amp object's current value (doc `11` §11.9), and `chord` calls it every block;
-    this engine does not, so velocity, track volume and the envelope's own level are not applied here.
-    Calling into the OS is exactly what a harness cannot verify, so the gap is stated rather than guessed
-    - and `params[11]`, which the sibling port treats as level, is deliberately not multiplied in, because
-    a wrong guess there would silence the engine;
-  - the per-block decay factor is one module word (`D_G`), written and read inside a single render call.
-    That is safe only because the OS ticks voices sequentially; a re-entrant or threaded caller would see
-    another voice's gain. Moving it into the context costs sixteen pointer increments per block, which is
-    why it is documented instead of paid for.
+Known limits, stated rather than hidden: `params[1]` is the decay knob and its unit is not settled by
+any source, so both conventions are accepted (a word below 256 is a byte knob, otherwise Q31 with the
+index masked to 7); the strike position and brightness are baked into the seed table because
+`params[2..5]` are amp arguments on this ABI; pitch comes from render's argument 2 and the row is the
+nearest semitone, so `bend` (argument 3) is ignored and a glide quantises to at most 50 cents. There is
+no level control beyond the OS envelope and amp gain, and nothing here has been auditioned on hardware.
 """
-import math, pathlib, sys
+import math
+import pathlib
+import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-import opzasm as A
-import opzengine as E
-import opzmarimba as S
+import opzsdk as S
+import opzmarimba as M
 
-# Placement is derived, not guessed. In the factory set the slot -> address rule is linear over
-# slots 59..89 (every one of the fourteen engines in that range fits base = 0x81be4c00 +
-# (slot-61)*0x1400), and the arena is a grid of 0x1400-byte slots. Slot 63 is unused and its three
-# slots end exactly where reverb (slot 66) begins, so the engine lands in a real gap:
-#   0x81be7400 .. 0x81be9cc8   (digital ends at 0x81be6a80, reverb starts at 0x81beb000)
-MOD_BASE   = 0x81BE7400  # memoryslot 63
-CODE_BASE  = MOD_BASE + 0x38
-CODE_RESERVE = 0x1000                    # code area kept fixed so the data address never moves
-SLOT_SPAN  = 0x1400 * 3                  # slots 63-65: the three the module is linked into
-DATA_BASE  = CODE_BASE + CODE_RESERVE
-FS        = S.FS
+FS = M.FS
+MODES = 6
+T60_LONG = 8.0
+PARAM_DECAY = 1
+STRIKE_POS = 0.30
+BRIGHTNESS = 0.5
+RATIOS = M.MARIMBA
+T60 = M.MARIMBA_T60
 
-D_STRIKE = DATA_BASE + 0x10         # 6 per-mode excitation seeds (the strike comb)
-D_G      = DATA_BASE + 0x2C         # the block's decay factor; see the note in render
-D_TABLE  = DATA_BASE + 0x60         # 128 notes x 6 modes x (c, s)
-D_GAINS  = DATA_BASE + 0x1860       # 8 per-block decay factors, selected by the decay macro
-D_FREQ   = DATA_BASE + 0x1880       # 128 notes' frequencies in Q16 Hz, the pitch search's index
-T60_LONG = 8.0                      # the table's own damping; the macro shortens from here
-PARAM_DECAY = 1                     # params[1]: read by every ported engine, unlike params[2..5]
-N_MODES = 6
-STRIKE_POS = 0.30                   # the strike point the reference model's measurements validated
-BRIGHTNESS = 0.5                    # fixed: params[2..5] are amp arguments, so brightness is not live
+# ------------------------------------------------------------------------------- tables
 
+def strike_seeds():
+    """Per-mode excitation: 0.5 * (0.42**m)**(1-b) / (1+0.3m) * cos(pi(m+1)*position).
 
-def strike_seeds(position=STRIKE_POS, brightness=BRIGHTNESS):
-    """Per-mode excitation, the same law as opzmarimba.Marimba.strike.
-
-    This is what decides whether the engine sounds like wood or like a sine. The first build used
-    `0.125 * cos(...) * 0.42**m`, and `0.42**m` is far too steep a tilt: with the model's own partial
-    ratios it left the tuned 4x partial 24 dB under the fundamental, where the reference puts it 4 dB
-    under - i.e. audible exactly where the ear reads "wood". Measured against `opzmarimba.render`, the
-    old law was 18-21 dB down on modes 1, 2 and 3. The exponent is applied to the *gain*, so the tilt is
-    sqrt(0.42) per mode, plus the model's 1/(1+0.3m) roll-off.
+    This is what decides whether the engine sounds like wood or like a sine. A steeper tilt than this
+    leaves the tuned 4x partial ~20 dB down instead of the 15 dB the reference model puts it at, and
+    the engine becomes a sine with a click on top.
     """
-    seeds = []
-    for m in range(N_MODES):
-        gain = (0.42 ** m) ** (1.0 - brightness) / (1.0 + 0.3 * m)
-        seeds.append(0.5 * gain * math.cos(math.pi * (m + 1) * position))
-    return seeds
+    out = []
+    for m in range(MODES):
+        gain = (0.42 ** m) ** (1.0 - BRIGHTNESS) / (1.0 + 0.3 * m)
+        out.append(0.5 * gain * math.cos(math.pi * (m + 1) * STRIKE_POS))
+    return out
 
 
-def coefficient_table():
-    """(c, s) = r*(cos w, sin w) per MIDI note per mode, straight from opzmarimba's maths."""
+def coefficients():
+    """(c, s) per note per mode, straight from opzmarimba's maths, flattened row-major."""
     rows = []
     for note in range(128):
         f0 = 440.0 * 2 ** ((note - 69) / 12.0)
-        for m in range(N_MODES):
-            f = f0 * S.MARIMBA[m]
+        for m in range(MODES):
+            f = f0 * RATIOS[m]
             if f > FS * 0.45:
-                rows.append((0, 0))
+                rows += [0, 0]                       # above Nyquist: this partial is muted
                 continue
             w = 2.0 * math.pi * f / FS
-            # Mode 0's radius stays 1.0 so the per-block gain owns the whole tail and the decay
-            # buckets stay exact. Every upper mode carries its OWN radius, because a wooden bar's
-            # overtones die in a fraction of a second whatever the knob is doing - that quick,
-            # independent decay is what separates a knock from a bell.
-            t60 = S.MARIMBA_T60[m]
+            t60 = T60[m]
             r = 1.0 if t60 == 0.0 else math.exp(-math.log(1000.0) / (t60 * FS))
-            rows.append((S.to_q31(r * math.cos(w)), S.to_q31(r * math.sin(w))))
+            rows += [S.q31(r * math.cos(w)), S.q31(r * math.sin(w))]
     return rows
 
 
-def build():
-    c = A.Code(CODE_BASE)
-
-    # ---------------------------------------------------------- initModule(id, host_table, out)
-    c.label("initModule")
-    c.ins("cmp_eq0", "R0")
-    c.branch("im_fail", cond=False)        # id != 0 -> refuse (the OS passes 0)
-    # The host services table (R1) is deliberately not kept: this engine calls no host service, so a
-    # stored pointer would be dead data. A module that does call one must save it here.
-    c.emit(A.regmv("P0", "R2"))
-    c.ins("ldimm7", "R0", 0)
-    c.emit(A.ldst("P0", "R0", store=True, aop=2))    # *out = 0
-    c.ins("ldimm7", "R0", 1)
-    c.emit(A.rts())
-    c.label("im_fail")
-    c.ins("ldimm7", "R0", 0)
-    c.emit(A.rts())
-
-    # ---------------------------------------------------------- init(ctx, variant)
-    # Every note's state lives in the context the OS passes in, not in module globals: the OS calls
-    # render() once per voice, so global state would make every voice play the same note.
-    c.label("init")
-    c.emit(A.regmv("P0", "R0"))              # ctx is argument 1
-    c.ins("ldimm7", "R1", 0)
-    for _ in range(16):                      # 0x40 bytes: gate, note, rowp, reserved, 12 state words
-        c.emit(A.ldst("P0", "R1", store=True))
-    c.emit(A.rts())
-
-    # ---------------------------------------------------------- onNoteOn(a1, note, ctx, a4)
-    # The note-store and the strike moved into render: on the device this export is not what starts a
-    # note (doc 11 §11.9), so a voice must never depend on having been called. It only asks render to
-    # re-strike, which is what a live keyboard note wants.
-    c.label("onNoteOn")
-    c.emit(A.regmv("P0", "R2"))              # ctx is argument 3
-    c.ins("ldimm7", "R3", 0)
-    c.emit(A.ldst("P0", "R3", store=True))   # +0x00 = 0: not struck yet
-    c.emit(A.ldst("P0", "R1", store=True))   # +0x04 the note, bookkeeping only
-    c.emit(A.rts())
-
-    # ---------------------------------------------------------- onNoteOff(a1, ctx)
-    # Which register carries ctx here is NOT established: doc 11 §11.16 documents the per-voice state map and
-    # the note-on path, and says nothing about this export's arguments. R1 is the best guess, so the pointer
-    # is range-checked first: a wrong guess then writes nothing instead of 64 bytes at whatever integer R1
-    # held. A no-op here is harmless - render's amp gate still ends the voice.
-    c.label("onNoteOff")
-    c.emit(A.logic32("R3", "R1", "R1", "|")) # R3 = the context candidate
-    c.ins("ldimm32", "R2", 0x10000000)       # nothing below the image/L1 regions is a pointer
-    c.emit(A.comp_lt("R3", "R2"))
-    c.branch("off_ret", cond=True)
-    c.emit(A.regmv("P0", "R1"))
-    c.ins("ldimm7", "R2", 1)
-    c.emit(A.ldst("P0", "R2", store=True))   # +0x00 = 1: struck, so render will not restart the note
-    c.ins("ldimm7", "R2", 0)
-    for _ in range(15):                      # +0x04 .. +0x3f: zero the state, so the voice is silent
-        c.emit(A.ldst("P0", "R2", store=True))
-    c.label("off_ret")
-    c.emit(A.rts())
-
-    # ---------------------------------------------------------- render(out, freq, off, ctx, params, env)
-    c.label("render")
-    c.emit(A.push_r7_p5())
-    c.emit(A.regmv("P5", "R0"))              # out: interleaved stereo, 64 frames
-    c.emit(A.logic32("R6", "R1", "R1", "|")) # R6 = arg2, the pitch in Q16 Hz (R1 is volatile-only)
-
-    # Arguments 4 and 5 are stack arguments and only the arguments are on the stack - the OS pushes no
-    # extra frame word, so arg4 sits exactly where the callee's SP starts. The seven saved registers above
-    # are 28 bytes, so seven discarded post-increment loads land on arg4 and the next read takes arg5.
-    c.emit(A.regmv("P0", "SP"))
-    for _ in range(7):
-        c.emit(A.ldst("P0", "R0"))
-    c.emit(A.ldst("P0", "R2"))               # R2 = ctx
-    c.emit(A.regmv("P3", "R2"))              # ctx in P3; the push saved it
-    c.emit(A.ldst("P0", "R1"))               # R1 = params
-    c.emit(A.ldst("P0", "R5"))               # R5 = the amp object; the decay block below reuses R2
-
-    # ---- decay macro: params[PARAM_DECAY] -> one of eight per-block gain buckets
-    c.ins("cmp_eq0", "R1")
-    c.branch("no_params", cond=True)         # a null pointer must not fault the whole device
-    c.emit(A.regmv("P0", "R1"))
-    for _ in range(PARAM_DECAY):
-        c.emit(A.ldst("P0", "R2"))
-    c.emit(A.ldst("P0", "R2"))
-    # The knob's unit is not settled in the sources: the plug presets store eighteen values in 0..255, the
-    # sibling port's parameter map records a byte baseline of 128, and its fixtures pass Q31 words. Reading
-    # only the top bits is right for Q31 and permanently bucket 0 for a byte, i.e. a dead decay knob. So a
-    # word below 256 is treated as a byte knob and normalised, and a Q31 word takes the old path unchanged.
-    c.ins("ldimm32", "R4", 256)
-    c.emit(A.comp_lt("R2", "R4"))            # CC = value < 256, unsigned
-    c.branch("p_q31", cond=False)            # 256 and above: Q31, leave it alone
-    c.emit(A.shr("R2", "R2", 5))             # byte knob 0..255 -> bucket 0..7, exact
-    c.jump("p_bucket")
-    c.label("p_q31")
-    c.emit(A.shr("R2", "R2", 28))            # top four bits...
-    c.ins("ldimm32", "R4", 7)
-    c.emit(A.logic32("R2", "R2", "R4", "&")) # ...masked to three, or a negative word indexes past the table
-    c.label("p_bucket")
-    c.emit(A.shl("R3", "R2", 2))             # *4, the word stride of the gain table
-    c.ins("ldimm32", "R4", D_GAINS)
-    c.emit(A.addsub32("R4", "R4", "R3", "+"))
-    c.emit(A.regmv("P0", "R4"))
-    c.emit(A.ldst("P0", "R3"))
-    c.jump("have_gain")
-    c.label("no_params")
-    c.ins("ldimm32", "R3", 0x7FFFFFFF)       # gain 1.0: apply no extra damping
-    c.label("have_gain")
-    c.ins("ldimm32", "R4", D_G)
-    c.emit(A.regmv("P0", "R4"))
-    c.emit(A.ldst("P0", "R3", store=True))
-
-    # ---- amp object (argument 6). Every factory instrument render tests amp+0x10 first and returns when
-    # it is zero (doc `11` §11.9), because the OS owns the voice: a released voice must cost nothing and
-    # must not keep writing into the mix. A null pointer still renders, so a caller that passes only the
-    # three register words behaves as it did before.
-    c.ins("cmp_eq0", "R5")
-    c.branch("amp_ok", cond=False)           # amp != 0 -> test its state word
-    c.jump("vstart")
-    c.label("amp_ok")
-    c.emit(A.regmv("P0", "R5"))
-    for _ in range(4):
-        c.emit(A.ldst("P0", "R0"))
-    c.emit(A.ldst("P0", "R0", aop=2))        # amp+0x10: the amp state machine, 0 = idle
-    c.ins("cmp_eq0", "R0")
-    c.branch("vstart", cond=False)           # active -> go and play
-    # Idle means the OS released or has not yet started this voice. Clear "struck" so the next active
-    # tick seeds the strike, then leave: an idle voice costs nothing and writes nothing.
-    c.emit(A.regmv("P0", "P3"))
-    c.ins("ldimm7", "R1", 0)
-    c.emit(A.ldst("P0", "R1", store=True, aop=2))   # ctx+0x00 = 0
-    c.jump("done")
-
-    # ---- voice start. This is what makes the engine polyphonic: every voice record the OS renders has
-    # its own context, its own pitch argument and its own amp object, and a strike is seeded from those
-    # alone - so N records sound N notes without anything having to call onNoteOn per voice (doc 11
-    # §11.9: the sequencer's note-start path calls init and render, not onNoteOn). The first build kept
-    # the gate and the note in here and only onNoteOn ever set them, so a voice the OS started itself
-    # stayed silent and the engine behaved monophonically.
-    c.label("vstart")
-    c.emit(A.regmv("P0", "P3"))
-    c.emit(A.ldst("P0", "R0", aop=2))        # ctx+0x00: 0 = needs a strike
-    c.ins("cmp_eq0", "R0")
-    c.branch("playing", cond=False)          # already struck -> leave the ringing state alone
-    c.emit(A.regmv("P0", "P3"))
-    c.ins("ldimm7", "R1", 1)
-    c.emit(A.ldst("P0", "R1", store=True))   # +0x00 = 1 (struck)
-    for _ in range(3):                       # +0x04 note and +0x08 row are render's to fill, +0x0c reserved
-        c.emit(A.ldst("P0", "R0"))           # P0 = ctx+0x10
-    c.ins("ldimm32", "R0", D_STRIKE)         # the strike comb: a per-mode seed, not one seed for all
-    c.emit(A.regmv("P1", "R0"))
-    for _ in range(N_MODES):
-        c.emit(A.ldst("P1", "R0"))           # seed for this mode
-        c.emit(A.ldst("P0", "R0", store=True))   # y1 = seed
-        c.emit(A.ldst("P0", "R1", store=True))   # y2 = 0
-    c.label("playing")
-
-    # ---- row pointer from the PITCH ARGUMENT, saved into the context so it can be rewound each frame.
-    # A binary search over the 128 Q16-Hz thresholds: seven iterations whatever the note, no logarithm and
-    # no state. The OS builds its pitch from its own semitone table, so the nearest row is the exact note
-    # even though only the frequency is passed.
-    # A zero pitch is "the OS has not set one yet", not "note 0": row 0 is 8.18 Hz, which would come out
-    # as a sub-audio thump at full amplitude rather than as nothing.
-    c.ins("cmp_eq0", "R6")
-    c.branch("idle_pitch", cond=True)
-    # A negative pitch argument compares as an enormous unsigned number, so the search would clamp to row
-    # 127 - a full-scale 12.5 kHz note instead of silence. Anything past the table's range is no pitch.
-    c.ins("ldimm32", "R4", 0x40000000)      # 16384 Hz in Q16, above the highest row's 12544 Hz
-    c.emit(A.comp_lt("R6", "R4"))
-    c.branch("idle_pitch", cond=False)
-    c.ins("ldimm7", "R5", 0)                 # lo
-    c.ins("ldimm32", "R2", 127)              # hi
-    c.ins("ldimm32", "R3", D_FREQ)           # base, untouched across the loop
-    c.label("psearch")
-    c.emit(A.addsub32("R0", "R2", "R5", "-"))    # hi - lo
-    c.ins("ldimm7", "R1", 1)
-    c.emit(A.addsub32("R0", "R0", "R1", "-"))    # 0 -> lo and hi are adjacent
-    c.ins("cmp_eq0", "R0")
-    c.branch("found", cond=True)
-    c.emit(A.addsub32("R0", "R5", "R2", "+"))
-    c.emit(A.shr("R0", "R0", 1))             # R0 = mid
-    c.emit(A.shl("R1", "R0", 2))
-    c.emit(A.addsub32("R4", "R3", "R1", "+"))    # &FREQ[mid]
-    c.emit(A.regmv("P0", "R4"))
-    c.emit(A.ldst("P0", "R1", aop=2))        # FREQ[mid]
-    c.emit(A.comp_lt("R6", "R1"))            # CC = pitch < FREQ[mid], unsigned
-    c.branch("ps_hi", cond=True)
-    c.emit(A.logic32("R5", "R0", "R0", "|"))    # lo = mid
-    c.jump("psearch")
-    c.label("ps_hi")
-    c.emit(A.logic32("R2", "R0", "R0", "|"))    # hi = mid
-    c.jump("psearch")
-    c.label("found")
-    c.emit(A.shl("R2", "R5", 4))             # index * 16
-    c.emit(A.shl("R3", "R5", 5))             # index * 32; together index * 48 without a multiply,
-    c.emit(A.addsub32("R5", "R2", "R3", "+"))# since mul32 is a FRACTIONAL multiply
-    c.ins("ldimm32", "R4", D_TABLE)
-    c.emit(A.addsub32("R5", "R4", "R5", "+"))    # R5 = the coefficient row
-
-    c.emit(A.regmv("P0", "P3"))
-    c.emit(A.ldst("P0", "R0"))               # skip +0x00, P0 = ctx+0x04
-    c.emit(A.ldst("P0", "R0"))               # skip +0x04 (the note), P0 = ctx+0x08
-    c.emit(A.ldst("P0", "R5", store=True))   # ctx+0x08 = row, P0 = ctx+0x0c
-    c.emit(A.ldst("P0", "R0"))               # skip reserved, P0 = ctx+0x10
-    c.emit(A.regmv("P2", "P0"))              # writer trails the reader
-    c.emit(A.regmv("P1", "R5"))              # P1 walks the coefficient row
-    c.ins("ldimm32", "R6", 64)               # 64 frames per block
-
-    c.label("frame")
-    c.ins("ldimm7", "R7", 0)                 # accumulator
-    for _ in range(N_MODES):
-        c.emit(A.ldst("P0", "R0"))           # y1
-        c.emit(A.ldst("P0", "R1"))           # y2
-        c.emit(A.ldst("P1", "R2"))           # c
-        c.emit(A.ldst("P1", "R3"))           # s
-        c.emit(A.mul32("R4", "R2", "R0"))    # c*y1
-        c.emit(A.mul32("R5", "R3", "R1"))    # s*y2
-        c.emit(A.addsub32("R4", "R4", "R5", "-"))
-        c.emit(A.addsub32("R4", "R4", "R4", "+"))   # >>32 extraction, doubled back into Q31
-        c.emit(A.ldst("P2", "R4", store=True))
-        c.emit(A.addsub32("R7", "R7", "R4", "+"))
-        c.emit(A.mul32("R4", "R3", "R0"))    # s*y1
-        c.emit(A.mul32("R5", "R2", "R1"))    # c*y2
-        c.emit(A.addsub32("R4", "R4", "R5", "+"))
-        c.emit(A.addsub32("R4", "R4", "R4", "+"))
-        c.emit(A.ldst("P2", "R4", store=True))
-    c.emit(A.ldst("P5", "R7", store=True))   # left
-    c.emit(A.ldst("P5", "R7", store=True))   # right
-    c.ins("ldimm7", "R0", 1)
-    c.emit(A.addsub32("R6", "R6", "R0", "-"))
-
-    # Rewind the per-frame walks. Order matters: reading the saved row pointer advances its pointer
-    # by one word, so the state pointers must be set AFTER that read, not before it - getting this
-    # backwards leaves P0 one word short of the state and the next frame reads the reserved word as
-    # y1, which collapses the output within two blocks.
-    c.emit(A.regmv("P0", "P3"))
-    for _ in range(2):
-        c.emit(A.ldst("P0", "R0"))           # skip gate and note, P0 = ctx+0x08
-    c.emit(A.ldst("P0", "R1"))               # ctx+0x08 = the saved row pointer
-    c.emit(A.regmv("P1", "R1"))
-    c.emit(A.regmv("P0", "P3"))
-    for _ in range(4):
-        c.emit(A.ldst("P0", "R0"))           # P0 = ctx+0x10, the first state word
-    c.emit(A.regmv("P2", "P0"))
-    c.ins("cmp_eq0", "R6")
-    c.branch("frame", cond=False)
-
-    # The decay factor belongs to a BLOCK, not a sample: applying it inside the 64-sample loop made
-    # it act 64 times per block (0.99885^64 = 0.929, a 7% collapse - measured, see doc 11 section 11.14).
-    c.ins("ldimm32", "R0", D_G)
-    c.emit(A.regmv("P4", "R0"))
-    c.emit(A.ldst("P4", "R5"))               # R5 = gain
-    c.emit(A.regmv("P0", "P3"))
-    for _ in range(4):
-        c.emit(A.ldst("P0", "R0"))
-    c.emit(A.regmv("P2", "P0"))
-    for _ in range(N_MODES * 2):
-        c.emit(A.ldst("P0", "R0"))
-        c.emit(A.mul32("R1", "R0", "R5"))
-        c.emit(A.addsub32("R1", "R1", "R1", "+"))
-        c.emit(A.ldst("P2", "R1", store=True))
-
-    c.label("done")
-    c.emit(A.pop_r7_p5())
-    c.emit(A.rts())
-
-    # After the epilogue, not before it: this block clears the struck flag, and falling into it on the way
-    # to `done` would clear it every block - the voice would then re-strike from the same seeds forever
-    # and its state would never advance (a constant per block, a 750 Hz block-rate spectrum).
-    c.label("idle_pitch")
-    c.emit(A.regmv("P0", "P3"))
-    c.ins("ldimm7", "R1", 0)
-    c.emit(A.ldst("P0", "R1", store=True, aop=2))   # ctx+0x00 = 0: a real note will strike
-    c.jump("done")
-
-    # names, in the code segment after the code
-    names = {}
-    for nm in ("initModule", "init", "render", "onNoteOn", "onNoteOff"):
-        names[nm] = c.pos()
-        c.emit(nm.encode() + b"\x00")
-    code = c.finish()
-    assert len(code) <= CODE_RESERVE, f"code grew past its reserved area: {len(code)} > {CODE_RESERVE}"
-
-    hdr = bytearray()
-    hdr += (0xFEED0AD1).to_bytes(4, "little")
-    hdr += (0xAD1FACEF).to_bytes(4, "little")
-    for nm in ("initModule", "init", "render", "onNoteOn", "onNoteOff"):
-        hdr += names[nm].to_bytes(4, "little")
-        hdr += c.labels[nm].to_bytes(4, "little")
-    hdr += b"\x00" * 8          # the factory header is 56 B: five pairs end at 0x30, then two zero words
-    assert len(hdr) == 56, len(hdr)
-
-    data = bytearray(0x60)
-    for m, seed in enumerate(strike_seeds()):
-        data[0x10 + 4 * m:0x14 + 4 * m] = (S.to_q31(seed) & 0xFFFFFFFF).to_bytes(4, "little")
-    for cc, ss in coefficient_table():
-        data += (cc & 0xFFFFFFFF).to_bytes(4, "little")
-        data += (ss & 0xFFFFFFFF).to_bytes(4, "little")
-    # eight buckets: per-block factor for a target T60, longest last so the top bucket barely damps
+def gain_buckets():
+    """Per-block decay factors: eight target T60s, longest last so the top bucket barely damps."""
+    out = []
     for t60 in (0.1, 0.2, 0.4, 0.8, 1.6, 3.0, 5.0, T60_LONG):
-        g = 10 ** (-3.0 * S.BLOCK / (t60 * FS))
-        data += int(round(g * 2 ** 31)).to_bytes(4, "little")
-    # The pitch argument is Q16 Hz (doc 11 §11.9), and the OS derives it from its own semitone table, so a
-    # search over these thresholds lands exactly on a row for every real note. One row per semitone.
-    for note in range(128):
-        data += int(round(440.0 * 2 ** ((note - 69) / 12.0) * 65536)).to_bytes(4, "little")
+        g = 10 ** (-3.0 * M.BLOCK / (t60 * FS))
+        out.append(int(round(g * 2 ** 31)))
+    return out
 
-    payload = len(hdr) + len(code) + len(data)
-    # Nothing else checks this: a table that grew past the slot would overwrite reverb's module at
-    # 0x81beb000 instead of failing the build.
-    assert payload <= SLOT_SPAN, f"module is {payload} B, past its {SLOT_SPAN} B slot span"
-    segs = [
-        (0x5000, 0x11A00000, 0, payload, b""),
-        (0x0000, MOD_BASE,   len(hdr),  0, bytes(hdr)),
-        (0x0000, CODE_BASE,  len(code), 0, code),
-        (0x0000, DATA_BASE,  len(data), 0, bytes(data)),
-        (0x8000, 0x11A00000, 0, 0, b""),
-    ]
-    return E.pack(segs), c, len(hdr), len(code), len(data)
+
+e = S.Engine("marimba", slot=63)
+STRIKE = e.words("STRIKE", [S.q31(x) for x in strike_seeds()])
+COEF = e.words("COEF", coefficients(), stride=MODES * 8)
+GAINS = e.words("GAINS", gain_buckets())
+FREQ = e.words("FREQ", [S.hz_q16(n) for n in range(128)])
+
+# ------------------------------------------------------------------------------- exports
+
+@e.fn("initModule", ["idv", "host", "out"])
+def initModule(idv, host, out):
+    with S.if_(S.nz(idv)):
+        S.ret(0)                                     # the OS passes 0; refuse anything else
+    S.ptr(out)[0].set(0)
+    S.ret(1)
+
+
+@e.fn("init", ["ctx", "variant"])
+def init(ctx, variant):
+    c = S.pin(S.ptr(ctx))
+    with S.repeat(16):                               # gate, note, reserved words, six states
+        c.put(0)
+    S.unpin(c)
+
+
+@e.fn("onNoteOn", ["a1", "note", "ctx", "a4"])
+def onNoteOn(a1, note, ctx, a4):
+    v = S.ptr(ctx)
+    v[0x00].set(0)                                   # ask render to re-strike
+    v[0x04].set(note)
+
+
+@e.fn("onNoteOff", ["a1", "ctx"])
+def onNoteOff(a1, ctx):
+    # Which register carries ctx here is NOT established: doc 11 documents the state map and the
+    # note-on path and says nothing about this export, so the pointer is range-checked first. A wrong
+    # guess then writes nothing instead of 64 bytes at whatever integer arrived, and a no-op is
+    # harmless because render's amp gate still ends the voice.
+    with S.if_(ctx < 0x10000000):                     # unsigned: every real pointer is above this
+        S.ret()
+    c = S.pin(S.ptr(ctx))
+    c.put(1)                                         # +0x00 = 1: struck, so render will not restart
+    with S.repeat(15):                               # +0x04 .. +0x3f: silence the voice
+        c.put(0)
+    S.unpin(c)
+
+
+@e.fn("render", ["out", "pitch", "bend", "ctx", "params", "amp"])
+def render(out, pitch, bend, ctx, params, amp):
+    o = S.pin(S.ptr(out))                            # 64 interleaved stereo frames
+    c = S.pin(S.ptr(ctx))
+    k = S.pin(S.ptr(ctx).at(0x40))                   # the block's coefficients, at static offsets
+    gain = S.var("gain")
+    acc = S.var("acc", hot=True)
+    y1 = S.var("y1")
+    y2 = S.var("y2")
+    cc = S.var("cc")
+    ss = S.var("ss")
+    row = S.var("row")
+
+    # ---- the amp object (argument 6). Every factory instrument tests amp+0x10 first and returns when it
+    # is zero: the OS owns the voice, so a released one must cost nothing and write nothing. A null
+    # pointer still renders, so a caller that passes only the three register words behaves as before.
+    with S.if_(S.nz(amp)):
+        with S.if_(S.zero(S.ptr(amp)[0x10])):
+            c[0x00].set(0)                           # idle: the next active tick re-strikes
+            S.ret()
+
+    # ---- a pitch outside the table is not a note: row 0 is 8 Hz, which would be a sub-audio thump at
+    # full amplitude. The test runs before anything derives from the pitch. Unsigned, so a negative
+    # pitch - which the search would read as an enormous positive and clamp to the top row - is caught.
+    with S.if_(S.zero(pitch)):
+        c[0x00].set(0)
+        S.ret()
+    with S.if_(pitch < 0x40000000):                   # 16384 Hz in Q16, above the top row's 12544
+        pass
+    with S.else_():
+        c[0x00].set(0)
+        S.ret()
+
+    # ---- strike: seed the six modes from the table, at rest
+    with S.if_(S.zero(c[0x00])):
+        c[0x00].set(1)
+        for m in range(MODES):
+            c[0x10 + 8 * m].set(STRIKE[m])
+            c[0x14 + 8 * m].set(0)
+
+    # ---- the row for this note, then its twelve coefficients, copied into the voice's own scratch so
+    # the frame loop addresses them with static offsets and never rewinds a pointer.
+    row.set(S.find_row(pitch, FREQ))
+    for m in range(MODES):
+        k[8 * m].set(COEF.row(row)[8 * m])
+        k[8 * m + 4].set(COEF.row(row)[8 * m + 4])
+
+    # ---- the decay macro: params[PARAM_DECAY] picks one of eight per-block factors. A word below 256 is
+    # a byte knob (the presets store 0..255), anything else is Q31 and masked to three bits so a negative
+    # word cannot index past the table; a null pointer applies no extra damping.
+    gain.set(0x7FFFFFFF)
+    with S.if_(S.nz(params)):
+        with S.if_(S.ptr(params)[4 * PARAM_DECAY] < 256):
+            row.set(S.ptr(params)[4 * PARAM_DECAY] >> 5)
+        with S.else_():
+            row.set((S.ptr(params)[4 * PARAM_DECAY] >> 28) & 7)
+        gain.set(GAINS[row])
+
+    # ---- 64 frames: each mode is a norm-preserving rotation, so only the block gain damps the voice.
+    # Both new states are computed from the OLD pair: storing y1 first and then reading it back for y2
+    # turns the rotation into something that grows, which is how this engine first came out at twice the
+    # intended level.
+    with S.repeat(64):
+        acc.set(0)
+        for m in range(MODES):
+            y1.set(c[0x10 + 8 * m])
+            y2.set(c[0x14 + 8 * m])
+            cc.set(k[8 * m])
+            ss.set(k[8 * m + 4])
+            c[0x10 + 8 * m].set(S.qmul(cc, y1) - S.qmul(ss, y2))
+            c[0x14 + 8 * m].set(S.qmul(ss, y1) + S.qmul(cc, y2))
+            acc.set(acc + c[0x10 + 8 * m])
+        y1.set(S.qmul(acc, gain))
+        o.put(y1)
+        o.put(y1)
+
+    # ---- the decay factor belongs to a BLOCK, not a sample: applying it inside the 64-frame loop made it
+    # act 64 times per block (0.99885^64 = 0.929, a 7% collapse - measured, doc 11 section 11.14).
+    for w in range(2 * MODES):
+        c[0x10 + 4 * w].set(S.qmul(c[0x10 + 4 * w], gain))
 
 
 if __name__ == "__main__":
     out = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "marimba.engine")
-    raw, c, hl, cl, dl = build()
-    out.write_bytes(raw)
-    print(f"wrote {out} ({len(raw)} B)")
-    print(f"  header {hl} B @0x{MOD_BASE:08x}   code {cl} B @0x{CODE_BASE:08x}   data {dl} B @0x{DATA_BASE:08x}")
-    print(f"  module span 0x{MOD_BASE:08x}..0x{MOD_BASE + hl + cl + dl:08x}  (memoryslot 63, three 0x1400 slots)")
-    print("  exports: " + ", ".join(f"{k}=0x{v:08x}" for k, v in c.labels.items()))
-    mod = E.read_module(raw)
-    print("  container round-trip: " + ("parsed OK" if mod else "PARSE FAILED"))
-    if mod:
-        for name, addr in mod["exports"]:
-            print(f"    {name:12s} 0x{addr:08x}")
+    e.write(out)

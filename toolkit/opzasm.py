@@ -87,6 +87,20 @@ def comp_eq(dst, src):
     return _u16(w)
 
 
+def comp(dst, src, op="lt"):
+    """`CC = Rdst < Rsrc` and friends (CCFlag, instr16/08-CCFlag.sinc). The opc field at bits 7-9 is
+    0 ==, 1 signed <, 2 signed <=, 3 unsigned <, 4 unsigned <=, with bit 6 selecting pointer registers.
+    The unsigned forms are what a table search wants (a top-bit-set word is a huge positive); the signed
+    ones are for arithmetic comparisons, e.g. a negative glide target."""
+    codes = {"==": 0, "slt": 1, "sle": 2, "lt": 3, "le": 4}
+    if op not in codes:
+        raise Unsupported(f"compare {op}")
+    w = (0x1 << 11) | (codes[op] << 7)
+    w |= (D_REGS.index(src) & 7) << 3
+    w |= D_REGS.index(dst) & 7
+    return _u16(w)
+
+
 def comp_lt(dst, src):
     """`CC = Rdst < Rsrc`, unsigned (CCFlag opc 3, same field layout as `comp_eq`).
 
@@ -94,10 +108,7 @@ def comp_lt(dst, src):
     misread a top-bit-set word as negative. The interpreter has decoded opc 0-4 since the CCFlag work, so
     this only adds the emitter the builder lacked.
     """
-    w = (0x1 << 11) | (3 << 7) | (0 << 6)
-    w |= (D_REGS.index(src) & 7) << 3
-    w |= D_REGS.index(dst) & 7
-    return _u16(w)
+    return comp(dst, src, "lt")
 
 
 def logic32(dst, src0, src1, op="&"):
@@ -133,6 +144,47 @@ def ldst(ptr, reg, store=False, sz=0, aop=0, z=0):
     w = (0x9 << 12) | (sz << 10) | ((1 if store else 0) << 9) | (aop << 7) | (z << 6)
     w |= (P_REGS.index(ptr) & 7) << 3
     w |= D_REGS.index(reg) & 7
+    return _u16(w)
+
+
+def ldst_disp(ptr, reg, disp=0, store=False, preg=False):
+    """`Rd = [Pp + n]` / `[Pp + n] = Rd` (16-bit LdStII, instr16/22-LdStII.sinc).
+
+    Fields: sig 0b101 at bits 13-15, w (store) at 12, op at 10-11 (3 = pointer register, 0 = data
+    register), the offset at 6-9 in WORD units, ptr at 3-5 and the register at 0-2. Ghidra prints this
+    class as `LdM32bitToDreg R0 = [P0 + 0x8]`, so the offset is a constant 0..0x3c and no pointer moves -
+    which is what an operand like `state+0x10` needs. 3755 sites in the factory set.
+    """
+    if disp % 4 or not 0 <= disp <= 0x3C:
+        raise Unsupported(f"displacement {disp} must be a multiple of 4 below 0x40")
+    w = 0xA000 | ((1 if store else 0) << 12) | ((3 if preg else 0) << 10) | ((disp // 4) << 6)
+    w |= (P_REGS.index(ptr) & 7) << 3
+    w |= (P_REGS if preg else D_REGS).index(reg) & 7
+    return _u16(w)
+
+
+def ldst_fp(reg, imm=4, store=False, preg=False):
+    """`Rd = [FP - n]` / `[FP - n] = Rd` (16-bit LdStIIFP, instr16/23-LdStIIFP.sinc).
+
+    Fields: sig 0b101110 at bits 10-15, w (store) at 9, the offset at 4-8, g (pointer register) at 3
+    and the register at 0-2. The offset is stored so that the address is `FP - (0x80 - n)`, i.e. n is
+    4..0x7c and the sign is always negative: this is the frame slot form, and it is what compiled code
+    uses to spill. Ghidra: `0xba12` is `[FP - 0x7c] = R2` in analoga.
+    """
+    if imm % 4 or not 4 <= imm <= 0x7C:
+        raise Unsupported(f"frame offset {imm} must be a multiple of 4 in 4..0x7c")
+    w = 0xB800 | ((1 if store else 0) << 9) | (((0x80 - imm) // 4) << 4)
+    w |= (1 if preg else 0) << 3
+    w |= (P_REGS if preg else D_REGS).index(reg) & 7
+    return _u16(w)
+
+
+def ptr2op(dst, src, opc):
+    """Pointer arithmetic (16-bit Ptr2op, instr16/13-Ptr2op.sinc): opc 0 dst -= src, 1 dst = src << 2,
+    2 src << 1, 3 src >> 2, 4 src >> 1, 5 dst += src. Used to form `ctx + 0x70` without a multiply."""
+    if opc not in range(6):
+        raise Unsupported(f"ptr2op opc {opc}")
+    w = (0x22 << 9) | (opc << 6) | ((P_REGS.index(src) & 7) << 3) | (P_REGS.index(dst) & 7)
     return _u16(w)
 
 
@@ -290,6 +342,12 @@ SELFTEST = [
     ("R4 = R6 << 16", lambda: shl("R4", "R6", 16), bytes.fromhex("82ce8688"), "chord render 0x81be268a"),
     ("R3 = R3 >>> 6", lambda: shr("R3", "R3", 6), bytes.fromhex("82ced307"), "volt render 0x81bf01e8"),
     ("R3 = R6 >>> 0x1f", lambda: shr("R3", "R6", 31), bytes.fromhex("82ce0e07"), "volt render 0x81bf028c"),
+    # Ghidra's disassembly of analoga (flat image at 0x81b93800) is the ground truth for both
+    # displacement classes and for the frame-slot form.
+    ("R0 = [P0 + 8]", lambda: ldst_disp("P0", "R0", 8), bytes.fromhex("80a0"), "analoga 0x81b93ab0 (LdM32bitToDreg R0 = [P0 + 0x8])"),
+    ("[P1 + 0x10] = R0", lambda: ldst_disp("P1", "R0", 0x10, store=True), bytes.fromhex("08b1"), "analoga 0x81b93ab2 (StDregToM32bit [P1 + 0x10] = R0)"),
+    ("[FP - 0x7c] = R2", lambda: ldst_fp("R2", 0x7C, store=True), bytes.fromhex("12ba"), "analoga 0x81b93ace (StDregToM32bit [FP - 0x7c] = R2)"),
+    ("P3 = [FP + 0x1c]", lambda: ldst_disp("FP", "P3", 0x1C, preg=True), bytes.fromhex("fbad"), "analoga 0x81b93acc (LdM32bitToPreg P3 = [FP + 0x1c])"),
     # CC = R2 < R3 unsigned is the most common compare in the factory set: 0x099a occurs in chord, cluster,
     # delay, digital, electric, fdnreverb, fm003b, ministringshort, saw013a, synctapetwo and volt, and the
     # opc-3 family appears 68 times across 15 modules, so the encoding is taken from real code.

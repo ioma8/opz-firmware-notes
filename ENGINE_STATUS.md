@@ -11,12 +11,26 @@ what is verified, what is not, and why.
 | vendor ARM64 instruments, play the requested note | `python3 toolkit/opzinstcheck.py --blocks 140 --note-check` | **11 of 13** at note 60 |
 | … same, at notes 57 and 72 | `… --note 57` / `--note 72` | 9 of 13 / 10 of 13 |
 | vendor ARM64 effects, process audio | `python3 toolkit/opzfxcheck.py --blocks 60` | **7 of 8** (`TapeTwo` silent) |
-| device `.engine` instruments, emit audio | `python3 toolkit/opzfactoryaudible.py` | **6 of 13** |
+| device `.engine` instruments, emit audio | `python3 toolkit/opzfactoryaudible.py` | **5 of 13** (`analoga`, `electric`, `ep`, `organ`, `volt`) |
 | device `.engine` effects, emit audio | `python3 toolkit/opzfactoryaudible.py` | **0 of 8** (harness-limited) |
+| device `.engine` instruments, play the requested note | `python3 toolkit/opzfactorycheck.py` | **0 of 13** (the OSC-populated state above is what decides it) |
 | everything above plus docs | `python3 toolkit/opzstatus.py --full` | all gates pass |
 
 "Emits audio" is the weak criterion. "Plays the requested note" is the one that matches the goal, and it is
 **9 of 13** across three tested pitches.
+
+The device-instrument figure moved from 6 of 13 to 5 of 13 and the *set* changed when `opzsim` stopped
+mis-executing two instruction classes (see the ledger rows for `LdStIIFP` and the 16-bit `LdStII` forms): the
+old count included engines whose audio came out of reads from the wrong address, so the earlier figure was
+partly an artifact. `analoga` moved the other way, from "keeps calling outside its window" to audible.
+
+## Writing a new engine
+
+`toolkit/opzsdk.py` is the SDK: an engine is written in Python, with no assembly. It supplies the module
+header and segments, argument access, register allocation, frame slots, branch encoding and the table
+symbols; the three authored engines are built on it (`build_marimba.py`, `build_cathedral.py`,
+`build_strings.py`) and are the worked examples. `toolkit/opzsdktest.py` exercises every construct of the
+DSL and checks the results in the interpreter, so a change to the SDK is gated the same way the engines are.
 
 ## What is not working, and where it is stuck
 
