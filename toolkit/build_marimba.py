@@ -66,20 +66,14 @@ CODE_RESERVE = 0x1000                    # code area kept fixed so the data addr
 DATA_BASE  = CODE_BASE + CODE_RESERVE
 FS        = S.FS
 
-D_GATE   = DATA_BASE + 0x00
-D_INDEX  = DATA_BASE + 0x04
-D_HOST   = DATA_BASE + 0x08
 D_STRIKE = DATA_BASE + 0x10         # 6 per-mode excitation seeds (the strike comb)
-D_ROWP   = DATA_BASE + 0x28         # the coefficient row pointer, saved so it can be rewound
-D_G      = DATA_BASE + 0x2C         # the decay factor chosen for this note
-D_STATE  = DATA_BASE + 0x30         # 6 modes x (y1, y2) = 12 words
+D_G      = DATA_BASE + 0x2C         # the block's decay factor; see the note in render
 D_TABLE  = DATA_BASE + 0x60         # 128 notes x 6 modes x (c, s)
 D_GAINS  = DATA_BASE + 0x1860       # 8 per-block decay factors, selected by the decay macro
 D_FREQ   = DATA_BASE + 0x1880       # 128 notes' frequencies in Q16 Hz, the pitch search's index
 T60_LONG = 8.0                      # the table's own damping; the macro shortens from here
 PARAM_DECAY = 1                     # params[1]: read by every ported engine, unlike params[2..5]
 N_MODES = 6
-T60     = 1.2
 STRIKE_POS = 0.22                   # a marimba bar is struck near one end, not at 0.3
 
 
@@ -149,11 +143,9 @@ def build():
     c.label("initModule")
     c.ins("cmp_eq0", "R0")
     c.branch("im_fail", cond=False)        # id != 0 -> refuse (the OS passes 0)
-    c.ins("ldimm32", "R0", D_HOST)
-    c.emit(A.regmv("P0", "R0"))
-    c.emit(A.ldst("P0", "R1", store=True, aop=2))    # save the host services table
+    # The host services table (R1) is deliberately not kept: this engine calls no host service, so a
+    # stored pointer would be dead data. A module that does call one must save it here.
     c.emit(A.regmv("P0", "R2"))
-    c.ins("cmp_eq0", "R0")
     c.ins("ldimm7", "R0", 0)
     c.emit(A.ldst("P0", "R0", store=True, aop=2))    # *out = 0
     c.ins("ldimm7", "R0", 1)
@@ -280,6 +272,10 @@ def build():
     # A binary search over the 128 Q16-Hz thresholds: seven iterations whatever the note, no logarithm and
     # no state. The OS builds its pitch from its own semitone table, so the nearest row is the exact note
     # even though only the frequency is passed.
+    # A zero pitch is "the OS has not set one yet", not "note 0": row 0 is 8.18 Hz, which would come out
+    # as a sub-audio thump at full amplitude rather than as nothing.
+    c.ins("cmp_eq0", "R6")
+    c.branch("idle_pitch", cond=True)
     c.ins("ldimm7", "R5", 0)                 # lo
     c.ins("ldimm32", "R2", 127)              # hi
     c.ins("ldimm32", "R3", D_FREQ)           # base, untouched across the loop
@@ -375,6 +371,15 @@ def build():
     c.label("done")
     c.emit(A.pop_r7_p5())
     c.emit(A.rts())
+
+    # After the epilogue, not before it: this block clears the struck flag, and falling into it on the way
+    # to `done` would clear it every block - the voice would then re-strike from the same seeds forever
+    # and its state would never advance (a constant per block, a 750 Hz block-rate spectrum).
+    c.label("idle_pitch")
+    c.emit(A.regmv("P0", "P3"))
+    c.ins("ldimm7", "R1", 0)
+    c.emit(A.ldst("P0", "R1", store=True, aop=2))   # ctx+0x00 = 0: a real note will strike
+    c.jump("done")
 
     # names, in the code segment after the code
     names = {}

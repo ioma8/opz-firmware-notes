@@ -641,8 +641,8 @@ whichever note was struck last. The marimba-body engine keeps everything in the 
 `init` (arg 1), `onNoteOn` (arg 3), `render` (arg 4):
 
 ```
-ctx+0x00  gate
-ctx+0x04  note
+ctx+0x00  struck (0 = the next active tick seeds a strike, 1 = ringing)
+ctx+0x04  note, bookkeeping only since pitch comes from render's argument 2
 ctx+0x08  coefficient row pointer (saved, because P1 advances past the row within a block)
 ctx+0x0c  reserved
 ctx+0x10  state: six modes x (y1, y2)  -> ends at 0x40

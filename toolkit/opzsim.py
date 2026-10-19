@@ -1611,7 +1611,20 @@ def selftest():
     call(m, exports["render"], [out, hz_to_q16(69), 0], stack=(scratch, params, amp))
     check("amp state 0 -> silence",
           all(m.ld32(out + 4 * j) == 0x11223344 for j in range(2 * S.BLOCK)), "the amp gate is honoured")
-    m.st32(amp + 0x10, 2)                        # the OS would re-arm it for the next tick
+    # ... and the OS re-arming it must give a NEW strike, not the old tail: idle clears the flag
+    m.st32(amp + 0x10, 2)
+    for j in range(2 * S.BLOCK):
+        m.st32(out + 4 * j, 0)
+    call(m, exports["render"], [out, hz_to_q16(69), 0], stack=(scratch, params, amp))
+    rearmed = [m.ld32(out + 4 * j) for j in range(2 * S.BLOCK)]
+    check("amp idle -> active re-strikes", any(rearmed) and m.ld32(scratch) == 1,
+          f"peak {max(abs(v) for v in rearmed) / 2 ** 31:.3f}")
+
+    # a zero pitch argument is silence, not note 0 (row 0 is 8.18 Hz)
+    for j in range(2 * S.BLOCK):
+        m.st32(out + 4 * j, 0)
+    call(m, exports["render"], [out, 0, 0], stack=(scratch, params, amp))
+    check("zero pitch -> silence", not any(m.ld32(out + 4 * j) for j in range(2 * S.BLOCK)), "")
 
     # gate off -> next render must be silent
     call(m, exports["onNoteOff"], [0, scratch])
