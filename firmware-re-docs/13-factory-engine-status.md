@@ -1208,3 +1208,13 @@ So the record is read, but the step limit is not being computed from it by the p
 tells us what the field means and which inputs feed it; it does not explain why this engine leaves it zero
 under `onNoteOn(60, 100, state, params)`. The next place to look is the `init` variant (5 is what the harness
 passes) and where the octave word `s68` comes from.
+
+**Nothing writes the step limit.** Hooking every store into the first `0x80` bytes of state across
+`initModule`, `init` and `onNoteOn`: `init` zeroes the block in 8-byte clears (`0x00, 0x08, 0x10, 0x18, 0x50,
+0x58, 0x60, 0x68`), `onNoteOn` makes 26 writes (`0x0c`, `0x38`, `0x00`, `0x68`, `0x48`, `0x4c`, `0x3c`, `0x40`
+and the rest) and **`0x08` is never written by either**. The result is identical for notes 29, 36, 43 and 60:
+`state+0x08 = 0`, 4 distinct sample frames (4077-4080), peak 698,757,355.
+
+So the entry points the harness calls never compute the playback step limit at all. That puts this engine in the
+same class as the sampler's short loop and `TapeTwo`'s mix path: the behaviour lives on a path the harness does
+not reach, and settling it requires reading the code rather than probing it.
