@@ -1119,3 +1119,18 @@ loses the note test (2,027,291,146 peak, contrast 7.59 against 8.26).
 
 The next target is therefore the loop bound inside that mix loop (`w11`/`w13`/`w23` at `0x11f748`-`0x11f758`),
 not the position field.
+
+**Two code paths, and the harness takes the slow one.** Disassembling `SamplePlayerGain`'s control flow shows:
+
+* a preamble at `0x11f710` that computes a frame count (`w0 = w14 >> 6`), **stores it into `state+0x5c`**
+  together with `w16` (`stp w0, w16, [x20, #0x5c]`), forms `w1 = w11 - (w0 << 6)` and branches to
+  `0x11fa44`;
+* at `0x11fa44` a **strided loop** that advances by `w13` each iteration and reads `[x23, w24]`,
+  `[x23, w26]`, `[x23, w25]` - a real streaming sampler;
+* at `0x11f778` the path our runs actually take: a **fixed** position from `state+0x10` with a 4-tap
+  interpolation, which is why the output is one value per block.
+
+So the sampler is not missing a feature - our harness reaches the short path. Which branch is taken depends on
+`w0` (`cbz w0` at `0x11f758`, `b.lt` at `0x11f75c`), i.e. on the frame count the preamble derives from earlier
+state. Settling it needs a decompile of `render`'s control flow traced against those two branch conditions;
+another black-box probe will not decide it.
