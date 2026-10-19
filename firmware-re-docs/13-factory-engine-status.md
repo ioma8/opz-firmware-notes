@@ -1232,3 +1232,12 @@ per-octave table at `0x124A7B0` is not the missing input either - it already sit
 
 So: audible under the documented inputs, still not streaming. The gap is specifically where the step limit is
 computed, and that lies below the entries the harness calls.
+
+**The port's host configuration, measured as a change of default.** Making it the default wins at note 57
+(11 of 13 against 9) and loses at notes 60 (10 against 11) and 72 (9 against 10), and the strict count -
+engines passing at **all three** notes - falls from **9 to 8** because EP loses its note-72 pass. What it buys
+is that `SamplePlayerGain` writes 128 of 128 nonzero samples per block instead of a handful of frames.
+
+Because the strict count is the defensible metric, the configuration is now an **opt-in** flag
+(`opzinstcheck --vendor-host`) rather than the default; the default keeps 11 of 13 at note 60 and 9 of 13 at
+every tested note.

@@ -156,14 +156,25 @@ def increment_for(note, fs=48000.0):
     return int(round(freq / fs * (1 << 32))) & 0xFFFFFFFF
 
 
-def play(so, syms, cls, blocks, note=60):
+def play(so, syms, cls, blocks, note=60, vendor_host=False):
     state, temp = so.alloc(0x1000), so.alloc(0x1000)
     params, adsr = so.alloc(0x100), so.alloc(0x40)
     out = so.alloc(FRAMES * 2 * 4)
-    so.write_u32_array(params, [0] + [0x40404040] * 17)
-    so.write_u32(adsr + 0x04, 0x7FFFFFFF)
-    so.write_u32(adsr + 0x08, 0x7FFFFFFF)
-    so.write_u32(adsr + 0x10, 3)                 # the state index Digital's host arms
+    if vendor_host:
+        # The sibling port's own SamplePlayerGain test documents this host configuration - params[11] is
+        # the level and the ADSR carries 0x40000000 in its level and increment words. It makes the
+        # sampler write 128 of 128 nonzero samples per block, but it costs EP its note 72 pass, so it is
+        # opt-in rather than the default: 8 engines then pass at all three notes instead of 9.
+        params_words = [0x40000000] * 18
+        params_words[11] = 0x7FFFFFFF
+        so.write_u32_array(params, params_words)
+        for i, v in enumerate((0, 0x40000000, 0, 0x40000000, 1, 0)):
+            so.write_u32(adsr + 4 * i, v)
+    else:
+        so.write_u32_array(params, [0] + [0x40404040] * 17)
+        so.write_u32(adsr + 0x04, 0x7FFFFFFF)
+        so.write_u32(adsr + 0x08, 0x7FFFFFFF)
+        so.write_u32(adsr + 0x10, 3)             # the state index Digital's host arms
     so.call(find(syms, cls, "initModule"), [0, so.interface, so.flags])
     so.call(find(syms, cls, "4init"), [state, 5, 0, 0, temp])
     on_note = find(syms, cls, "8onNoteOn")
@@ -216,6 +227,9 @@ def main(argv=None):
     ap.add_argument("--blocks", type=int, default=40)
     ap.add_argument("--only", nargs="*", default=None)
     ap.add_argument("--note", type=int, default=60, help="MIDI note to play and judge (default 60)")
+    ap.add_argument("--vendor-host", action="store_true",
+                    help="use the sibling port's documented params/ADSR (makes SamplePlayerGain sound, "
+                         "costs EP its note-72 pass)")
     ap.add_argument("--note-check", action="store_true",
                     help="also ask whether the tone stands above its 0.75x and 1.5x neighbours, the same "
                          "test opzfactorycheck applies to the Blackfin engines (needs ~140 blocks)")
@@ -243,7 +257,7 @@ def main(argv=None):
         so.flags = so.alloc(8)
         supply(so, cls)
         try:
-            nz, peak, mono, inter = play(so, syms, cls, a.blocks, a.note)
+            nz, peak, mono, inter = play(so, syms, cls, a.blocks, a.note, a.vendor_host)
         except Exception as e:
             print(f"  {cls:18s} {type(e).__name__}")
             continue
