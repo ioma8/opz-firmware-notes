@@ -22,7 +22,7 @@ import sys
 import opzengine as E
 import opzhost as H
 import opzsim as Z
-import opzstruck as S
+import opzmarimba as S
 import opztime
 
 NOTE, FREQ = 69, 440.0
@@ -55,7 +55,7 @@ def play(mod_path, note=NOTE, freq=FREQ, blocks=BLOCKS):
     Z.call(m, ex["initModule"], [0, table, ctx], limit=60000)
     Z.call(m, ex["init"], [ctx, 0], limit=60000)
     if "onNoteOn" in ex:
-        # the convention that actually plays an engine (the same one opzenginetool uses for struck):
+        # the convention that actually plays an engine (the same one opzenginetool uses for marimba):
         # note and context, with the first word unused
         Z.call(m, ex["onNoteOn"], [0, note, ctx], limit=60000)
     left, first_block = [], None

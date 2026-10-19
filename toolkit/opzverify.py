@@ -20,7 +20,7 @@ import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import opzengine as E
 import opzsim as Z
-import opzstruck as S
+import opzmarimba as S
 
 
 def setup(raw, bucket=4, note=None):
@@ -28,6 +28,8 @@ def setup(raw, bucket=4, note=None):
     exports = dict(E.read_module(raw)["exports"])
     ctx = m.mem_base + Z.Machine.SCRATCH_OFF
     prm = m.mem_base + Z.Machine.PARAM_OFF
+    amp = prm + 0x40
+    m.st32(amp + 0x10, 2)                       # the amp state machine render tests first
     for i in range(8):
         m.st32(prm + 4 * i, bucket << 28)
     out = m.mem_base + Z.Machine.OUT_OFF
@@ -35,21 +37,21 @@ def setup(raw, bucket=4, note=None):
     Z.call(m, exports["init"], [ctx, 0])
     if note is not None:
         Z.call(m, exports["onNoteOn"], [0, note, ctx])
-    return m, exports, ctx, prm, out
+    return m, exports, ctx, prm, amp, out
 
 
-def capture(m, exports, ctx, prm, out, blocks):
+def capture(m, exports, ctx, prm, amp, out, blocks):
     buf = []
     for _ in range(blocks):
         for j in range(2 * S.BLOCK):
             m.st32(out + 4 * j, 0)
-        Z.call(m, exports["render"], [out, 440 << 16, 0], stack=(ctx, prm, 0))
+        Z.call(m, exports["render"], [out, 440 << 16, 0], stack=(ctx, prm, amp))
         buf += [m.ld32(out + 4 * j) for j in range(2 * S.BLOCK)]
     return buf
 
 
 def main(argv):
-    path = pathlib.Path(argv[0]) if argv and not argv[0].startswith("-") else pathlib.Path("struck.engine")
+    path = pathlib.Path(argv[0]) if argv and not argv[0].startswith("-") else pathlib.Path("marimba.engine")
     every = int(argv[argv.index("--every") + 1]) if "--every" in argv else 6
     raw = path.read_bytes()
     if not E.read_module(raw):
@@ -70,8 +72,8 @@ def main(argv):
         # a low note needs a long analysis window, and the capture must be at least that long or the
         # slice is truncated and the estimate drifts (0.8 s of 32.7 Hz once read as 33.4 Hz)
         window = 4096 if want > 200 else 16384
-        m, ex, ctx, prm, out = setup(raw, note=n)
-        buf = capture(m, ex, ctx, prm, out, max(60, window // S.BLOCK + 16))
+        m, ex, ctx, prm, amp, out = setup(raw, note=n)
+        buf = capture(m, ex, ctx, prm, amp, out, max(60, window // S.BLOCK + 16))
         got = S.measure_freq(buf, window=window)
         err = abs(got - want) / want
         peak = max(abs(v) for v in buf) / 2 ** 31
@@ -86,8 +88,8 @@ def main(argv):
     check("audible everywhere", peak_min > 0.001, f"quietest peak {peak_min:.4f}")
 
     # ---- is it a marimba? The tuned 4x partial has to be there and the free-free bar's 2.756x must not
-    m, ex, ctx, prm, out = setup(raw, note=69)
-    buf = capture(m, ex, ctx, prm, out, 120)
+    m, ex, ctx, prm, amp, out = setup(raw, note=69)
+    buf = capture(m, ex, ctx, prm, amp, out, 120)
     f0 = 440.0
     e4 = S.energy_at(buf, f0 * 3.93, window=4096)
     e_bar = S.energy_at(buf, f0 * 2.756, window=4096)
@@ -100,42 +102,53 @@ def main(argv):
 
     # ---- decay macro extremes and the null-params guard
     for bucket, want in ((0, 0.1), (7, 8.0)):
-        m, ex, ctx, prm, out = setup(raw, bucket=bucket, note=69)
+        m, ex, ctx, prm, amp, out = setup(raw, bucket=bucket, note=69)
         blocks = int(S.FS * want * 1.6 / S.BLOCK)
-        t60 = S.measure_decay(capture(m, ex, ctx, prm, out, blocks))
+        t60 = S.measure_decay(capture(m, ex, ctx, prm, amp, out, blocks))
         ok = t60 is not None and abs(t60 - want) / want < 0.2
         check(f"decay bucket {bucket}", ok, f"T60 {t60:.2f} s vs {want} s" if t60 else "not reached")
 
-    m, ex, ctx, prm, out = setup(raw, note=69)
+    # ---- the decay macro rides params[1], not params[2]. Doc 11 §11.9 shows chord handing params[2..5]
+    # to the OS parameter-smoothing service (host_table[7]), so those four are amp arguments; params[0]
+    # and params[1] are the entries every ported engine reads.
+    for idx, want in ((1, 3.0), (2, 0.1)):
+        m, ex, ctx, prm, amp, out = setup(raw, bucket=0, note=69)      # bucket 0 = 0.1 s everywhere
+        m.st32(prm + 4 * idx, 5 << 28)                                # bucket 5 = 3.0 s at this index
+        blocks = int(S.FS * want * 1.6 / S.BLOCK)
+        t60 = S.measure_decay(capture(m, ex, ctx, prm, amp, out, blocks))
+        ok = t60 is not None and abs(t60 - want) / want < 0.2
+        check(f"decay macro rides params[{idx}]", ok, f"T60 {t60:.2f} s, expected {want} s")
+
+    m, ex, ctx, prm, amp, out = setup(raw, note=69)
     for j in range(2 * S.BLOCK):
         m.st32(out + 4 * j, 0)
-    Z.call(m, ex["render"], [out, 440 << 16, 0], stack=(ctx, 0, 0))   # null params
+    Z.call(m, ex["render"], [out, 440 << 16, 0], stack=(ctx, 0, amp))   # null params
     buf = [m.ld32(out + 4 * j) for j in range(2 * S.BLOCK)]
     check("null params survives", any(v != 0 for v in buf), "renders with gain 1.0")
 
     # ---- abuse: gate toggling and re-triggering inside a block
-    m, ex, ctx, prm, out = setup(raw, note=69)
-    capture(m, ex, ctx, prm, out, 2)
+    m, ex, ctx, prm, amp, out = setup(raw, note=69)
+    capture(m, ex, ctx, prm, amp, out, 2)
     for _ in range(8):
         Z.call(m, ex["onNoteOff"], [0, ctx])
         Z.call(m, ex["onNoteOn"], [0, 69, ctx])
-        capture(m, ex, ctx, prm, out, 1)
-    buf = capture(m, ex, ctx, prm, out, 4)
+        capture(m, ex, ctx, prm, amp, out, 1)
+    buf = capture(m, ex, ctx, prm, amp, out, 4)
     check("survives 8 re-triggers", max(abs(v) for v in buf) > 0, "still sounding")
     check("re-trigger keeps pitch", abs(S.measure_freq(buf) - 440) / 440 < 0.03,
           f"{S.measure_freq(buf):.1f} Hz")
 
     # ---- repeated init must not leak state between notes
-    m, ex, ctx, prm, out = setup(raw, note=69)
-    capture(m, ex, ctx, prm, out, 4)
+    m, ex, ctx, prm, amp, out = setup(raw, note=69)
+    capture(m, ex, ctx, prm, amp, out, 4)
     Z.call(m, ex["init"], [ctx, 0])
-    buf = capture(m, ex, ctx, prm, out, 1)
+    buf = capture(m, ex, ctx, prm, amp, out, 1)
     check("init silences the voice", all(v == 0 for v in buf), "gate cleared by init")
 
     # ---- cost: instructions per render call, and the resulting DSP load
-    m, ex, ctx, prm, out = setup(raw, note=69)
+    m, ex, ctx, prm, amp, out = setup(raw, note=69)
     before = m.steps
-    capture(m, ex, ctx, prm, out, 1)
+    capture(m, ex, ctx, prm, amp, out, 1)
     per_call = m.steps - before
     per_second = per_call * (S.FS / S.BLOCK)
     check("render cost", per_call < 20000, f"{per_call:,} instructions/call = {per_second/1e6:.2f} M inst/s per voice")

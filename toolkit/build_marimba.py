@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""build_struck.py - emit the "struck body" .engine module.
+"""build_marimba.py - emit the "marimba body" .engine module.
 
 Assembles the modal resonator with toolkit/opzasm.py (every encoding verified against factory bytes),
 builds the 56-byte module header and the segment list, and writes a loadable `.engine`.
@@ -17,30 +17,38 @@ Design, and why each choice was forced:
 
   Only the coefficient and gain tables stay in module data, where they are read-only and shared.
 * **A 128-entry coefficient table indexed directly by MIDI note.** The table is computed at build time
-  by toolkit/opzstruck.py, so the engine contains no transcendentals at all - a note is an index, not
+  by toolkit/opzmarimba.py, so the engine contains no transcendentals at all - a note is an index, not
   a computation - and no clamping is needed for the legal 0..127 range.
 * **Only verified instruction forms.** opzasm raises `Unsupported` rather than guessing, so a mistake
   fails the build instead of producing a module that loads and misbehaves.
 * **Volatile registers only, plus the verified push/pop pair** for the registers render() must borrow.
 
 Known limitations, stated rather than hidden:
-  - the decay macro is read from params[PARAM_DECAY], an index that has not been confirmed on hardware.
-    The mechanism is right (argument 5 is a stack argument, walked with post-increment loads because the
-    encoder has no displacement load) and the mapping is accurate - buckets land within 1% of their
-    target T60 - but which entry of params[] the OS binds to the decay knob is an assumption. If it is
-    wrong, the knob that moves the tail will be a different one;
+  - the decay macro is read from params[PARAM_DECAY], and that index is still not confirmed on hardware.
+    params[2] is the wrong place for it: doc `11` §11.9 shows `chord` passing params[2..5] to the OS
+    parameter-smoothing service (host_table[7]), so those four are the amp/envelope arguments, not
+    engine knobs, while the sibling port's param map records params[0] and params[1] as the two
+    entries every ported engine reads. The mechanism is right (argument 5 is a stack argument, walked
+    with post-increment loads because the encoder has no displacement load) and the mapping is accurate
+    - buckets land within 1% of their target T60 - but which knob the OS binds to params[1] is still an
+    assumption;
   - the strike position is fixed at 0.22 (baked into the seed table), not a live macro;
+  - pitch comes from the note `onNoteOn` stores, not from render's argument 2, which doc `11` §11.9
+    identifies as a Q16 frequency. The hardware test settles the choice in favour of this build - it
+    measured 440.1 Hz for A4 - but the sequencer's note-start path never calls `onNoteOn` (§11.9), so a
+    voice started by the sequencer alone would read note 0. Switching to argument 2 needs a
+    frequency-to-row conversion, which is a logarithm this build deliberately does not contain;
   - `mul32` emits the (T) extraction, and that extraction is `>> 32` rather than the `>> 31` of a Q31
     fractional multiply (SLEIGH's `rounding(..., 4)` clears four bytes). Every multiply therefore
     returns half scale and each mode output is doubled with one add, mirroring `frac_q31()` in
-    opzstruck.py, which implements the same arithmetic and passes its measurement checks.
+    opzmarimba.py, which implements the same arithmetic and passes its measurement checks.
 """
 import math, pathlib, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import opzasm as A
 import opzengine as E
-import opzstruck as S
+import opzmarimba as S
 
 # Placement is derived, not guessed. In the factory set the slot -> address rule is linear over
 # slots 59..89 (every one of the fourteen engines in that range fits base = 0x81be4c00 +
@@ -63,7 +71,7 @@ D_STATE  = DATA_BASE + 0x30         # 6 modes x (y1, y2) = 12 words
 D_TABLE  = DATA_BASE + 0x60         # 128 notes x 6 modes x (c, s)
 D_GAINS  = DATA_BASE + 0x1860       # 8 per-block decay factors, selected by the decay macro
 T60_LONG = 8.0                      # the table's own damping; the macro shortens from here
-PARAM_DECAY = 2                     # which entry of params[] carries the decay macro (assumption)
+PARAM_DECAY = 1                     # params[1]: read by every ported engine, unlike params[2..5]
 N_MODES = 6
 T60     = 1.2
 STRIKE_POS = 0.22                   # a marimba bar is struck near one end, not at 0.3
@@ -108,7 +116,7 @@ class Code:
 
 
 def coefficient_table():
-    """(c, s) = r*(cos w, sin w) per MIDI note per mode, straight from opzstruck's maths."""
+    """(c, s) = r*(cos w, sin w) per MIDI note per mode, straight from opzmarimba's maths."""
     rows = []
     for note in range(128):
         f0 = 440.0 * 2 ** ((note - 69) / 12.0)
@@ -194,8 +202,9 @@ def build():
     for _ in range(7):
         c.emit(A.ldst("P0", "R0"))
     c.emit(A.ldst("P0", "R2"))               # R2 = ctx
+    c.emit(A.regmv("P3", "R2"))              # ctx in P3; the push saved it
     c.emit(A.ldst("P0", "R1"))               # R1 = params
-    c.emit(A.regmv("P3", "R2"))              # keep ctx in P3; the push saved it
+    c.emit(A.ldst("P0", "R5"))               # R5 = the amp object; the decay block below reuses R2
 
     # ---- decay macro: params[PARAM_DECAY] -> one of eight per-block gain buckets
     c.ins("cmp_eq0", "R1")
@@ -218,7 +227,23 @@ def build():
     c.emit(A.regmv("P0", "R4"))
     c.emit(A.ldst("P0", "R3", store=True))
 
+    # ---- amp object (argument 6). Every factory instrument render tests amp+0x10 first and returns when
+    # it is zero (doc `11` §11.9), because the OS owns the voice: a released voice must cost nothing and
+    # must not keep writing into the mix. A null pointer still renders, so a caller that passes only the
+    # three register words behaves as it did before.
+    c.ins("cmp_eq0", "R5")
+    c.branch("amp_ok", cond=False)           # amp != 0 -> test its state word
+    c.jump("gate")
+    c.label("amp_ok")
+    c.emit(A.regmv("P0", "R5"))
+    for _ in range(4):
+        c.emit(A.ldst("P0", "R0"))
+    c.emit(A.ldst("P0", "R0", aop=2))        # amp+0x10: the amp state machine, 0 = idle
+    c.ins("cmp_eq0", "R0")
+    c.branch("done", cond=True)
+
     # ---- gate
+    c.label("gate")
     c.emit(A.regmv("P0", "P3"))
     c.emit(A.ldst("P0", "R0", aop=2))        # ctx+0x00
     c.ins("cmp_eq0", "R0")
@@ -339,7 +364,7 @@ def build():
 
 
 if __name__ == "__main__":
-    out = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "struck.engine")
+    out = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "marimba.engine")
     raw, c, hl, cl, dl = build()
     out.write_bytes(raw)
     print(f"wrote {out} ({len(raw)} B)")

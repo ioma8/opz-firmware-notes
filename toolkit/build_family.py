@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""build_family.py - emit a family of instrument engines from build_struck.py's verified builder.
+"""build_family.py - emit a family of instrument engines from build_marimba.py's verified builder.
 
 This is the route to "every engine audible and correctly pitched in the app" that does not depend on
 the factory binaries: the same verified code, with different modal ratios, damping and strike position
@@ -7,7 +7,7 @@ per instrument. These are OUR engines. They are not the OP-Z factory engines and
 presented as such - the factory ones still need state the sequencer computes (see
 firmware-re-docs/12-installing-a-new-engine.md).
 
-The builder reads `opzstruck.MARIMBA`, `opzstruck.MARIMBA_T60` and `build_struck.STRIKE_POS` when it
+The builder reads `opzmarimba.MARIMBA`, `opzmarimba.MARIMBA_T60` and `build_marimba.STRIKE_POS` when it
 runs, so a family is a driver rather than a rewrite.
 
 Usage:
@@ -17,8 +17,8 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import build_struck as B                              # noqa: E402
-import opzstruck as S                                 # noqa: E402
+import build_marimba as B                              # noqa: E402
+import opzmarimba as S                                 # noqa: E402
 
 # name -> (mode ratios, per-mode T60 seconds, strike position)
 PRESETS = {

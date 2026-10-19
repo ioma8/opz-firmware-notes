@@ -346,9 +346,9 @@ container; then the one hardware test in §11.9 that settles whether `onNoteOn`'
 None of that can be validated by static analysis alone, which is why §11.9 states the hardware check
 explicitly instead of assuming the answer.
 
-## 11.11 The struck-body DSP, validated as an algorithm
+## 11.11 The marimba-body DSP, validated as an algorithm
 
-`toolkit/opzstruck.py` is the modal resonator written as fixed-point reference code — the same integer
+`toolkit/opzmarimba.py` is the modal resonator written as fixed-point reference code — the same integer
 arithmetic the engine will run — with a self-test that measures the result instead of trusting it:
 
 ```
@@ -429,7 +429,7 @@ eight bits signed or unsigned. The seven modifier strings — `(T)`, `(IS)`, `(N
 The practical consequence: **the engine must pick the variant that performs the Q31 fractional shift, and the
 choice is a decision to be made deliberately and then measured, not copied from whatever the compiler happened
 to allocate.** The factory samples collected here are all the `(T)` form, and their extraction is not the plain
-`(x*y) >> 31` that `toolkit/opzstruck.py` uses — so the reference implementation and the emitted code are not
+`(x*y) >> 31` that `toolkit/opzmarimba.py` uses — so the reference implementation and the emitted code are not
 yet bit-identical, and that difference is the last thing standing between "the algorithm is validated" and
 "the module is validated". It is measurable on the device: a wrong extraction shows up as a level error or
 as truncation noise, and the self-test's pitch and decay measurements would fail the same way they did when
@@ -437,11 +437,11 @@ the Q31 coefficient overflowed.
 
 ## 11.13 The engine builds
 
-`toolkit/build_struck.py` assembles the module and writes a loadable `.engine`:
+`toolkit/build_marimba.py` assembles the module and writes a loadable `.engine`:
 
 ```
-$ python3 toolkit/build_struck.py struck.engine
-wrote struck.engine (6848 B)
+$ python3 toolkit/build_marimba.py marimba.engine
+wrote marimba.engine (6848 B)
   header 56 B @0x81c0a000   code 504 B @0x81c0a038   data 6208 B @0x81c0b000
   container round-trip: parsed OK
     initModule   0x81c0a038
@@ -458,14 +458,30 @@ addresses (`R0 = -0x7e3f4ff8` is `0x81c0b008`, the host-table slot).
 
 Design as built: monophonic, six inharmonic modes, state in the module's data segment so `render` reads only
 R0 and R1 and never touches stack arguments; a 128-entry coefficient table computed at build time by
-`opzstruck.py` so the engine contains no transcendentals — a note is an index. Registers render needs beyond
+`opzmarimba.py` so the engine contains no transcendentals — a note is an index. Registers render needs beyond
 the volatile set are saved with the verified push/pop pair.
 
-**Stated assumption, not a hidden one:** the decay macro is read from `params[2]`. The mechanism is right —
-argument 5 is a *stack* argument, reached with nine discarded post-increment loads because the encoder has no
-displacement load — and the mapping is accurate, with buckets landing within 1 % of their target T60. But
-*which* entry of `params[]` the OS binds to the decay knob has not been confirmed on hardware. If it is the
-wrong index, then a different knob will move the tail.
+**The decay macro is read from `params[1]`, and `params[2]` was wrong.** The first build used `params[2]` on
+the reasoning that the third knob is the obvious place for decay. Doc `11` §11.9 rules that out: `chord` passes
+`params[2]`, `params[3]`, `params[4]` and `params[5]` to the OS parameter-smoothing service (`host_table[7]`),
+so those four are the amp/envelope arguments, not engine knobs, while the sibling port's parameter map records
+`params[0]` and `params[1]` as the two entries every ported engine reads. The mechanism is unchanged — argument 5
+is a *stack* argument, reached with post-increment loads because the encoder has no displacement load — and the
+mapping is accurate, with buckets landing within 1 % of their target T60. `opzverify.py` now pins the choice
+discriminatingly: bucket 5 written **only** into `params[1]` gives a 3.0 s tail, and written only into
+`params[2]` leaves the 0.1 s tail untouched. Which knob the OS binds to `params[1]` is still unconfirmed on
+hardware.
+
+**The sixth argument is an amp object, and the first build ignored it.** Render is
+`render(out, freq_q16, bend, ctx, params, amp)`, and every factory instrument tests `amp+0x10` first and returns
+when it is zero, because the OS owns the voice and a released voice must cost nothing (§11.9). The engine now
+reads that word from the stack and returns early on zero, which is what makes `onNoteOff` unnecessary for a
+voice the OS has already reclaimed. A null `amp` pointer still renders, so a caller that passes only three
+stack words behaves exactly as before — and all four harness call sites now pass a live object
+(`amp+0x10 = 2`) instead.
+
+Code and claim were re-measured together: `opzsim.py selftest` passes 25 checks including a new
+"amp state 0 -> silence", and `opzverify.py marimba.engine` passes 14, including the two decay-index checks.
 
 The coefficient table itself carries **no** damping: `r = 1.0`, so the rotation is exactly norm-preserving and
 the entire tail comes from a per-block gain. That separation is what makes the macro map to an absolute T60
@@ -481,7 +497,7 @@ Resolved from the SLEIGH source rather than from hardware. With `(T)` the modifi
 fractional multiply needs. Compiled factory code therefore returns **half scale**, and an engine that ignores
 this loses 6 dB per sample and goes silent almost immediately.
 
-The fix costs one add per mode output: double the result back into Q31 (`R4 = R4 + R4`). `opzstruck.py` now
+The fix costs one add per mode output: double the result back into Q31 (`R4 = R4 + R4`). `opzmarimba.py` now
 implements exactly that arithmetic — `frac()` is `(a*b) >> 32` with saturation, and the rotation uses
 `frac_q31()` = two extra adds — and **still passes all nine measurement checks**, including pitch within 0.5 %
 and the doubling of T60 across the decay macro. So the reference and the emitted instruction stream now
@@ -567,7 +583,7 @@ of 0x1400 slots with at least two allocation regions, and only the 59–89 regio
 
 That is enough to place a new engine *by rule* instead of by guess. Slot 63 is unused, and its three slots
 (`0x81be7400`, `0x81be8800`, `0x81be9c00`) end exactly where reverb begins at `0x81beb000` — a real gap between
-digital (ends `0x81be6a80`) and reverb. The struck-body module is built for that base and occupies
+digital (ends `0x81be6a80`) and reverb. The marimba-body module is built for that base and occupies
 `0x81be7400`–`0x81be8fdc`, comfortably inside its three slots. A mis-chosen slot would be caught by the
 loader's own `Bad address` check rather than by corrupting a neighbour.
 
@@ -588,12 +604,12 @@ mis-loads on a unit whose engines were replaced, so this file is the mechanism t
 a plug even though `settings/plugs.json` is app-owned. `tracks` is 0-based: `[4,5,6,7]` are the four synth
 tracks.
 
-`toolkit/install_struck.py` builds the engine, appends one entry (memoryslot 63, plug id 160, tracks 4–7),
+`toolkit/install_marimba.py` builds the engine, appends one entry (memoryslot 63, plug id 160, tracks 4–7),
 and writes a `ZIP_STORED` payload containing
 
 ```
-../user/engines/struck.engine
-../system/content/engines/struck.engine
+../user/engines/marimba.engine
+../system/content/engines/marimba.engine
 ../system/content/settings/plugs_patch.json
 ```
 
@@ -604,7 +620,7 @@ procedure. What remains after that is hands on the device, not code.
 
 An engine that keeps its state in module globals is wrong the moment the OS runs more than one voice:
 `render` is called per voice, so every voice would read and write the same state and they would all play
-whichever note was struck last. The struck-body engine keeps everything in the context the OS passes in —
+whichever note was struck last. The marimba-body engine keeps everything in the context the OS passes in —
 `init` (arg 1), `onNoteOn` (arg 3), `render` (arg 4):
 
 ```
@@ -641,12 +657,12 @@ because the two failures each answered a question that reading code had left ope
 
 ### Route 1 - copy the .engine onto the content disk: refused by name, not by content
 
-`struck.engine` placed at `samplepacks/6-lead/08/` produced:
+`marimba.engine` placed at `samplepacks/6-lead/08/` produced:
 
 ```
 [IMPORT STARTED]
 Reading content disk...SUCCESS
-  rejecting invalid engine : /samplepacks/6-lead/08/struck.engine
+  rejecting invalid engine : /samplepacks/6-lead/08/marimba.engine
 ```
 
 The obvious reading - "my module is malformed" - is wrong, and one control experiment disproves it: a
@@ -680,7 +696,7 @@ os.version,bootloader.version}`, `firmware/nordic/bin/{nrf52832_opz.bin,nrf52832
 ### Route 3 - the whole firmware tree plus the engine: works
 
 Repacking the unit's own 1.2.45 tree (32 entries, `ZIP_STORED`, per-entry CRCs correct) with the engine added
-at `firmware/blackfin/system/content/engines/struck.engine` and `plugs_patch.json` carrying six `auto_import`
+at `firmware/blackfin/system/content/engines/marimba.engine` and `plugs_patch.json` carrying six `auto_import`
 entries was accepted, and the device recorded the plug by writing its own markers:
 
 ```
@@ -689,8 +705,8 @@ samplepacks/7-arpeggio/09/~160.engine   samplepacks/8-chord/07/~160.engine
 ```
 
 Four 0-byte `~160.engine` files, one per synth track, matching the `tracks: [4,5,6,7]` of the registry entry -
-which is the device's own statement that plug id 160 "struck" is registered and assigned. Installing through
-`toolkit/install_struck.py --full`, which builds this payload, is therefore the reproducible route.
+which is the device's own statement that plug id 160 "marimba" is registered and assigned. Installing through
+`toolkit/install_marimba.py --full`, which builds this payload, is therefore the reproducible route.
 
 Two traps found along the way, both about *where* rather than *what*:
 
@@ -762,7 +778,7 @@ Both facts are now gates rather than comments: `toolkit/opzverify.py` asserts th
 stands at least 20 dB above the free-free 2.756x one, and that the 9.24x overtone falls more than 20 dB in
 150 ms. The first would fail on the old ratios, the second on the old single-radius table.
 
-One test needed repairing at the same time: `opzstruck`'s "inharmonicity changes the spectrum but not the
+One test needed repairing at the same time: `opzmarimba`'s "inharmonicity changes the spectrum but not the
 pitch" check compared two renders and passed **vacuously**, because woody tuning ignores `inharmonicity`
 altogether - both renders were identical. It now asks for `woody=False` explicitly and additionally asserts
 that the woody and free-free tunings differ, so the marimba ratios cannot silently stop being used.

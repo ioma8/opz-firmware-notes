@@ -1,4 +1,4 @@
-; struck.s - "struck body": a modal resonator engine for the OP-Z.
+; marimba.s - "marimba body": a modal resonator engine for the OP-Z.
 ;
 ; This is the implementation as source. It is written against the ABI in doc `11` §11.9:
 ;
@@ -30,9 +30,16 @@
 ;
 ; Macros (the eight the plug exposes, from doc `11` §11.4):
 ;   params[0] tune          params[4] strike position
-;   params[1] inharmonicity params[5] mallet hardness
-;   params[2] decay         params[6] drive
+;   params[1] decay         params[5] mallet hardness
+;   params[2] --            params[6] drive
 ;   params[3] brightness    params[7] body / level
+;
+; params[2..5] are the amp arguments the OS smoothes (doc `11` §11.9), so params[1] is where the decay
+; macro is read; params[4] and [5] above are therefore not live knobs in this build.
+;
+; render also takes a sixth argument, the amp object. amp+0x10 is the amp state machine and zero there
+; means the OS released the voice, so the render returns before touching the mix - the same early return
+; every factory instrument starts with.
 
         .section code, "ax"
 
@@ -92,7 +99,7 @@ render:
         P5 = R0 ;                       ; output buffer
         P4 = [SP + 0x1c] ;              ; args 4..6 are on the stack
         P3 = [SP + 0x20] ;
-        P2 = [SP + 0x24] ;
+        P2 = [SP + 0x24] ;              ; the amp object
         R0 = [P2 + 0x10] ;              ; env+0x10: amp state machine, 0 = idle
         CC = R0 == 0 ;
         IF CC JUMP .done ;              ; idle voice costs nothing
@@ -116,7 +123,7 @@ render:
 ; ---------------------------------------------------------------------------- helpers
 ; .setup  - compute per-mode c = r*cos(w), s = r*sin(w) from the note and the macros.
 ;           Contains the note->frequency exponential, the inharmonicity blend and the per-mode
-;           damping. Implemented in toolkit/opzstruck.py (validated, 9/9 measurement checks) and
+;           damping. Implemented in toolkit/opzmarimba.py (validated, 9/9 measurement checks) and
 ;           to be transcribed here once the shift and branch encodings are in place.
 .setup:
         RTS ;

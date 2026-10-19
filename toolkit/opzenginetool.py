@@ -21,7 +21,7 @@ What works, measured rather than assumed:
     the displacement and frame-relative load/store forms, CallA, LSETUP hardware loops, the CCFlag/CCMV/
     CC2Dreg/CC2Stat conditional machinery, PushPopMult and single-register push/pop, the Dsp32 Mac/Alu/
     Shift families including pack/extract/signbits/popcount/divide-step, ALU2op, Logi2Op, Ptr2op, NOP32);
-  * modules built by toolkit/build_struck.py render audio through this harness, and are the intended use:
+  * modules built by toolkit/build_marimba.py render audio through this harness, and are the intended use:
     a change to the engine is audible in seconds instead of a flash cycle;
   * factory engines are SILENT here. They run to completion but write nothing to the output buffer,
     because they read voice and envelope state that the operating system maintains - the amp object's
@@ -41,7 +41,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import opzengine as E
 import opzsim as Z
-import opzstruck as S
+import opzmarimba as S
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 CACHE = pathlib.Path(os.path.expanduser("~/.cache/opzenginetool"))
@@ -152,12 +152,14 @@ def render_clip(info, note, seconds, params, pokes=(), fills=()):
     if "onNoteOn" in ex:
         Z.call(m, ex["onNoteOn"], [0, note, ctx])
     amp = ctx + 0x1000
+    # the amp state machine (amp+0x10) is what every instrument render tests first; own engines get a
+    # live one too, so a released voice stops here exactly as it does on the device
+    m.st32(amp + 0x10, 2)
     if factory:
         # the OS fills this object before every tick; leaving it zero is why factory engines read as silent
         m.st32(amp + 0x04, 0x40000000)
         m.st32(amp + 0x08, 0x7F000000)
         m.st32(amp + 0x0C, -0x40000000 & 0xFFFFFFFF)
-        m.st32(amp + 0x10, 2)
     hz = 440.0 * 2 ** ((note - 69) / 12.0)
     # The pitch argument is a byte stride into the engine's own wave table, and the table size differs per
     # engine: digital walks 32768 bytes per cycle, chord 16384. Measured by sweeping the argument and finding
@@ -169,7 +171,7 @@ def render_clip(info, note, seconds, params, pokes=(), fills=()):
     # an effect has nothing to process without an input: feed it a short burst of a decaying sine at the
     # note's frequency, so the effect's own character comes through instead of silence
     # the input buffer must NOT land on SCRATCH_OFF, which is where an instrument's context lives:
-    # writing there silenced struck.engine until this was spotted (measured pitch fell to the search floor)
+    # writing there silenced marimba.engine until this was spotted (measured pitch fell to the search floor)
     inp = m.mem_base + Z.Machine.PARAM_OFF + 0x8000
     state = m.mem_base + Z.Machine.PARAM_OFF + 0x9000
     if fx:
@@ -193,7 +195,7 @@ def render_clip(info, note, seconds, params, pokes=(), fills=()):
                 Z.call(m, ex["render"], [out, freq_q16, 0],
                        stack=(out, freq_q16, 0, ctx, prm, amp))
             else:
-                Z.call(m, ex["render"], [out, freq_q16, 0], stack=(ctx, prm, 0))
+                Z.call(m, ex["render"], [out, freq_q16, 0], stack=(ctx, prm, amp))
         blk = [m.ld32(out + 4 * j) for j in range(2 * BLOCK)]
         samples.extend(blk)
         envelope.append(max((abs(v) for v in blk), default=0) / 2 ** 31)
@@ -282,7 +284,7 @@ PAGE = """<!doctype html>
     <canvas id="plot" width="1200" height="260"></canvas>
     <audio id="au" controls></audio>
     <div id="status">ready</div>
-    <div class="hint">params[] are the eight knob values the OS passes to render(). For struck, p2 is the
+    <div class="hint">params[] are the eight knob values the OS passes to render(). For marimba, p2 is the
       decay macro. Rendering takes a few seconds the first time (the interpreter is ~0.23x realtime); repeat
       plays of the same setting come from the cache instantly.</div>
   </section>
@@ -307,8 +309,8 @@ async function init() {
     list.appendChild(d);
   });
   drawParams();
-  const struck = engines.find(e => e.name === 'struck.engine');
-  if (struck) [...document.querySelectorAll('.eng')][engines.indexOf(struck)].click();
+  const marimba = engines.find(e => e.name === 'marimba.engine');
+  if (marimba) [...document.querySelectorAll('.eng')][engines.indexOf(marimba)].click();
 }
 
 function drawParams() {
@@ -463,7 +465,7 @@ def serve(port):
 
 def main(argv):
     if "--selfcheck" in argv:
-        engines = [p for p in find_engines() if p.name == "struck.engine"] or find_engines()[:1]
+        engines = [p for p in find_engines() if p.name == "marimba.engine"] or find_engines()[:1]
         if not engines:
             raise SystemExit("no .engine found")
         info = describe(engines[0])

@@ -13,11 +13,11 @@ Keys (terminal in raw mode, no Enter needed):
     space                 all notes off
     q                     quit
 
-Each key press triggers a voice; the note is released after --hold seconds, which suits struck and percussive
+Each key press triggers a voice; the note is released after --hold seconds, which suits marimba and percussive
 engines. Sustained playing is a matter of raising --hold.
 
 Usage:
-    python3 toolkit/opzplay.py                       # plays ./struck.engine
+    python3 toolkit/opzplay.py                       # plays ./marimba.engine
     python3 toolkit/opzplay.py --engine path.engine  # any translated module
     python3 toolkit/opzplay.py --selftest            # render + measure, no keyboard, no device
 """
@@ -27,7 +27,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import opzengine as E
 import opzjit as J
 import opzhost as H
-import opzstruck as S
+import opzmarimba as S
 
 TOOLKIT = pathlib.Path(__file__).parent
 SINK_C = TOOLKIT / "audiosink.c"
@@ -70,6 +70,7 @@ class Engine:
         # words, and the OS fills an amp object before every tick
         self.factory = "engines-official" in str(path)
         self.amp = base + J.SCRATCH_OFF + 0x2000
+        ctypes.c_uint32.from_address(self._host(self.amp + 0x10)).value = 2   # amp state: live voice
         if self.factory:
             for off, val in ((0x04, 0x40000000), (0x08, 0x7F000000),
                              (0x0C, -0x40000000 & 0xFFFFFFFF), (0x10, 2)):
@@ -140,7 +141,7 @@ class Engine:
                 self.call("render", [self.out, freq, 0],
                           (self.out, freq, 0, v["ctx"], self.prm, self.amp))
             else:
-                self.call("render", [self.out, freq, 0], (v["ctx"], self.prm, 0))
+                self.call("render", [self.out, freq, 0], (v["ctx"], self.prm, self.amp))
             src = ctypes.cast(self._host(self.out), ctypes.POINTER(ctypes.c_int32))
             for i in range(2 * BLOCK):
                 acc[i] = max(-2 ** 31, min(2 ** 31 - 1, acc[i] + src[i]))
@@ -251,7 +252,7 @@ def selftest(engine_path, seconds=1.0):
 
 def main(argv):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--engine", default="struck.engine")
+    ap.add_argument("--engine", default="marimba.engine")
     ap.add_argument("--voices", type=int, default=4)
     ap.add_argument("--hold", type=float, default=1.0)
     ap.add_argument("--selftest", action="store_true")

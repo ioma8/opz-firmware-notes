@@ -9,17 +9,17 @@ so the output can be measured.
 It is not a Blackfin emulator. It implements the forms this engine uses and refuses anything else, so a
 mis-encoded instruction shows up as a hard stop rather than as plausible silence. The multiply uses the `(T)`
 extraction as the SLEIGH source defines it — `(a*b) >> 32`, saturating — which is the arithmetic the reference
-implementation in opzstruck.py mirrors.
+implementation in opzmarimba.py mirrors.
 
 Usage:
-    python3 opzsim.py struck.engine            # note A4, measure pitch and decay
-    python3 opzsim.py struck.engine 69 2.0     # note, seconds
+    python3 opzsim.py marimba.engine            # note A4, measure pitch and decay
+    python3 opzsim.py marimba.engine 69 2.0     # note, seconds
 """
 import math, pathlib, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import opzengine as E
-import opzstruck as S
+import opzmarimba as S
 
 REGS_D = ["R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7"]
 REGS_P = ["P0", "P1", "P2", "P3", "P4", "P5", "SP", "FP"]
@@ -777,7 +777,7 @@ class Machine:
         # address is how a module reaches its own globals, which is what a factory engine does first.
         # Displacement load/store, 16-bit: h = 1 0 1 | w | class(2) | disp/4 (4 bits) | ptr (3) | reg (3).
         # This is the form a factory engine uses to read its arguments off the frame ([FP + 0x14],
-        # [SP + 0x30]) and it had no catalogue entry here because the engine built by build_struck.py
+        # [SP + 0x30]) and it had no catalogue entry here because the engine built by build_marimba.py
         # reaches its arguments by counting post-increment loads instead. The field layout is fitted
         # from 194 instructions decoded by Ghidra across two factory engines, with every sample agreeing:
         # pointer at bits 3-5, disp/4 at bits 6-9, class 0b00 = data register and 0b11 = pointer register,
@@ -1143,8 +1143,8 @@ class Machine:
                 # instr32/26-Dsp32Mult.sinc selects the scaling with the modifier field (dxMmod, bits 5-8):
                 # dxM32M/U/I all zero is the FRACTIONAL form, which builds res = (src0 * src1) << 1 before
                 # bits 63:32 are taken (a shift of 31), and any of those bits set is the INTEGER form, which
-                # takes the product directly (a shift of 32). chord uses mmod=1 and `struck` uses the same,
-                # which is why a class-wide >>31 broke struck while a class-wide >>32 left the fractional
+                # takes the product directly (a shift of 32). chord uses mmod=1 and `marimba` uses the same,
+                # which is why a class-wide >>31 broke marimba while a class-wide >>32 left the fractional
                 # form untested.
                 mmod = (h >> 5) & 0xF
                 prod = self.r[src0] * self.r[src1]
@@ -1497,7 +1497,7 @@ HOST_CALL_LIMIT = 64
 NULL_CALL_LIMIT = 4096
 
 
-def measure(note=69, seconds=1.0, engine="struck.engine"):
+def measure(note=69, seconds=1.0, engine="marimba.engine"):
     raw = pathlib.Path(engine).read_bytes()
     mod = E.read_module(raw)
     if not mod:
@@ -1533,10 +1533,10 @@ def selftest():
         fails += 0 if ok else 1
         print(f"  {'PASS' if ok else 'FAIL'}  {name:26s} {detail}")
 
-    raw = pathlib.Path("struck.engine")
+    raw = pathlib.Path("marimba.engine")
     if not raw.exists():
-        import build_struck
-        pathlib.Path("struck.engine").write_bytes(build_struck.build()[0])
+        import build_marimba
+        pathlib.Path("marimba.engine").write_bytes(build_marimba.build()[0])
     raw = raw.read_bytes()
     mod = E.read_module(raw)
     exports = dict(mod["exports"])
@@ -1547,6 +1547,8 @@ def selftest():
 
     scratch = m.mem_base + Machine.SCRATCH_OFF
     params = m.mem_base + Machine.PARAM_OFF
+    amp = params + 0x40                          # the amp object render reads as its sixth argument
+    m.st32(amp + 0x10, 2)                        # nonzero state = the voice is live
     for i in range(8):
         m.st32(params + 4 * i, 4 << 28)          # decay bucket 4 (target 1.6 s)
     call(m, exports["initModule"], [0, 0x81003850, scratch])
@@ -1557,7 +1559,7 @@ def selftest():
     out = m.mem_base + Machine.OUT_OFF
     for i in range(8192):
         m.st32(out + 4 * i, 0)
-    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, 0))
+    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, amp))
     # the buffer is interleaved stereo: two consecutive 32-bit words per frame, so words are 4 bytes
     # apart. Stepping by 8 would read only one channel and make the channel check meaningless.
     first = [m.ld32(out + 4 * j) for j in range(2 * S.BLOCK)]
@@ -1565,7 +1567,7 @@ def selftest():
     check("stereo channels equal", all(first[2 * i] == first[2 * i + 1] for i in range(S.BLOCK)), "")
 
     # run a second block: the state must have advanced, so the output must differ
-    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, 0))
+    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, amp))
     second = [m.ld32(out + 4 * j) for j in range(2 * S.BLOCK)]
     check("state advances", first != second, "")
     # energy, not peak: a single 64-frame block is 1.3 ms, so the waveform's phase moves the peak
@@ -1577,17 +1579,27 @@ def selftest():
     for _ in range(72):
         for j in range(2 * S.BLOCK):
             m.st32(out + 4 * j, 0)
-        call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, 0))
+        call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, amp))
         energies.append(sum(m.ld32(out + 4 * j) ** 2 for j in range(2 * S.BLOCK)))
     head = sum(energies[:24]) / 24
     tail = sum(energies[-24:]) / 24
     check("energy decays over 72 blocks", tail < head * 0.95, f"{head:.3e} -> {tail:.3e}")
 
+    # the amp object's state machine is what the OS drives, and every factory instrument returns early
+    # when it reads zero there. Proven while the gate is still ON, so it isolates this check from onNoteOff.
+    m.st32(amp + 0x10, 0)
+    for j in range(2 * S.BLOCK):
+        m.st32(out + 4 * j, 0x11223344)
+    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, amp))
+    check("amp state 0 -> silence",
+          all(m.ld32(out + 4 * j) == 0x11223344 for j in range(2 * S.BLOCK)), "the amp gate is honoured")
+    m.st32(amp + 0x10, 2)                        # the OS would re-arm it for the next tick
+
     # gate off -> next render must be silent
     call(m, exports["onNoteOff"], [0, scratch])
     for i in range(512):
         m.st32(out + 4 * i, 0x11223344)
-    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, 0))
+    call(m, exports["render"], [out, 440 << 16, 0], stack=(scratch, params, amp))
     check("gate off -> silence",
           all(m.ld32(out + 4 * j) == 0x11223344 for j in range(2 * S.BLOCK)), "gate respected")
 
@@ -1595,8 +1607,10 @@ def selftest():
     def capture(note, blocks, machine, bucket=4):
         sc = machine.mem_base + Machine.SCRATCH_OFF
         params = machine.mem_base + Machine.PARAM_OFF
+        amp = params + 0x40
+        machine.st32(amp + 0x10, 2)
         for i in range(8):
-            machine.st32(params + 4 * i, bucket << 28)   # the decay macro sits in params[2]
+            machine.st32(params + 4 * i, bucket << 28)   # the decay macro sits in params[1]
         call(machine, exports["initModule"], [0, 0x81003850, sc])
         call(machine, exports["init"], [sc, 0])
         call(machine, exports["onNoteOn"], [0, note, sc])
@@ -1605,7 +1619,7 @@ def selftest():
         for _ in range(blocks):
             for j in range(2 * S.BLOCK):
                 machine.st32(o + 4 * j, 0)
-            call(machine, exports["render"], [o, 440 << 16, 0], stack=(sc, params, 0))
+            call(machine, exports["render"], [o, 440 << 16, 0], stack=(sc, params, amp))
             buf += [machine.ld32(o + 4 * j) for j in range(2 * S.BLOCK)]
         return buf
 
@@ -1636,6 +1650,8 @@ def selftest():
     mp = Machine.for_module(raw)
     ctx_a, ctx_b = mp.mem_base + Machine.SCRATCH_OFF, mp.mem_base + Machine.SCRATCH_OFF + 0x400
     prm = mp.mem_base + Machine.PARAM_OFF
+    amp = prm + 0x40
+    mp.st32(amp + 0x10, 2)
     for i in range(8):
         mp.st32(prm + 4 * i, 4 << 28)
     call(mp, exports["initModule"], [0, 0x81003850, ctx_a])
@@ -1651,7 +1667,7 @@ def selftest():
         for _ in range(blocks):
             for j in range(2 * S.BLOCK):
                 machine.st32(o + 4 * j, 0)
-            call(machine, exports["render"], [o, 440 << 16, 0], stack=(ctx, prm, 0))
+            call(machine, exports["render"], [o, 440 << 16, 0], stack=(ctx, prm, amp))
         return [machine.ld32(o + 4 * j) for j in range(2 * S.BLOCK)]
 
     render_into(mp, ctx_a, 2)
@@ -1664,6 +1680,7 @@ def selftest():
     buf_a = []
     mp2 = Machine.for_module(raw)
     ctx = mp2.mem_base + Machine.SCRATCH_OFF
+    mp2.st32(mp2.mem_base + Machine.PARAM_OFF + 0x50, 2)   # amp+0x10
     for i in range(8):
         mp2.st32(mp2.mem_base + Machine.PARAM_OFF + 4 * i, 4 << 28)
     call(mp2, exports["initModule"], [0, 0x81003850, ctx])
@@ -1673,7 +1690,7 @@ def selftest():
         for j in range(2 * S.BLOCK):
             mp2.st32(mp2.mem_base + Machine.OUT_OFF + 4 * j, 0)
         call(mp2, exports["render"], [mp2.mem_base + Machine.OUT_OFF, 440 << 16, 0],
-             stack=(ctx, mp2.mem_base + Machine.PARAM_OFF, 0))
+             stack=(ctx, mp2.mem_base + Machine.PARAM_OFF, mp2.mem_base + Machine.PARAM_OFF + 0x40))
         buf_a += [mp2.ld32(mp2.mem_base + Machine.OUT_OFF + 4 * j) for j in range(2 * S.BLOCK)]
     f = S.measure_freq(buf_a)
     check("per-voice pitch (note 81 alone)", abs(f - 880) / 880 < 0.02, f"{f:.1f} Hz vs 880")

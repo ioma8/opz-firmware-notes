@@ -16,7 +16,7 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import build_struck as B                              # noqa: E402
+import build_marimba as B                              # noqa: E402
 import opzasm as A                                    # noqa: E402
 import opzengine as E                                 # noqa: E402
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""opzstruck.py - the "struck body" modal resonator, as fixed-point reference code.
+"""opzmarimba.py - the "marimba body" modal resonator, as fixed-point reference code.
 
 This is the algorithm an OP-Z `.engine` would run, written so that it can be *measured* rather than
 merely admired: it renders audio with the same integer arithmetic the Blackfin+ core will use, then
@@ -7,7 +7,7 @@ checks the result against theory (pitch, decay time, level) and writes a WAV to 
 
 Design (the parameters are the eight macros from doc `11`):
 
-  a struck body is a bank of two-pole resonators. Mode m has angular frequency w_m and a decay
+  a marimba body is a bank of two-pole resonators. Mode m has angular frequency w_m and a decay
   radius r_m, and it is written in the *coupled* (rotation) form rather than direct form II:
 
       y1' =  r*cos(w)*y1 - r*sin(w)*y2
@@ -29,8 +29,8 @@ saturates explicitly so that a gain mistake shows up as a saturation count inste
 wrap-around.
 
 Usage:
-    python3 opzstruck.py selftest      # measure pitch/decay/level against theory
-    python3 opzstruck.py render out.wav --freq 220 --decay 1.0
+    python3 opzmarimba.py selftest      # measure pitch/decay/level against theory
+    python3 opzmarimba.py render out.wav --freq 220 --decay 1.0
 """
 import math, struct, sys, wave
 
@@ -83,8 +83,8 @@ class Mode:
         self.gain = ONE
 
 
-class Struck:
-    """One voice of the struck-body engine."""
+class Marimba:
+    """One voice of the marimba-body engine."""
 
     def __init__(self, modes=6):
         self.modes = [Mode() for _ in range(modes)]
@@ -140,7 +140,7 @@ class Struck:
 
 
 def render(freq=220.0, decay=1.0, inharmonicity=0.75, brightness=0.5, seconds=2.0, **kw):
-    v = Struck()
+    v = Marimba()
     v.coefficients(freq, inharmonicity, decay, brightness, **kw)
     v.strike()
     out = []
@@ -288,7 +288,7 @@ def selftest():
 
 
 if __name__ == "__main__":
-    import opztime; opztime.watch("struck engine")
+    import opztime; opztime.watch("marimba engine")
     if len(sys.argv) > 1 and sys.argv[1] == "selftest":
         sys.exit(selftest())
     if len(sys.argv) > 2 and sys.argv[1] == "render":

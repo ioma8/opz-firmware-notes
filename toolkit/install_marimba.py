@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""install_struck.py - package the struck-body engine for installation on an OP-Z.
+"""install_marimba.py - package the marimba-body engine for installation on an OP-Z.
 
 Builds the engine, registers it as a plug in the OS's own `plugs_patch.json` auto_import list, and writes
 a ZIP_STORED payload whose entry paths escape to the device's real locations. Staging is then the ordinary
@@ -18,16 +18,16 @@ What is still an assumption, stated plainly:
     free number rather than a reserved one.
 
 Usage:
-    python3 toolkit/install_struck.py --dry-run         # show the payload without writing it
-    python3 toolkit/install_struck.py -o payload.zip
+    python3 toolkit/install_marimba.py --dry-run         # show the payload without writing it
+    python3 toolkit/install_marimba.py -o payload.zip
 """
 import json, pathlib, sys, zipfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-import build_struck
+import build_marimba
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-ENGINE_NAME = "struck"
+ENGINE_NAME = "marimba"
 PLUG_ID = 160
 MEMORYSLOT = 63                     # the slot the module is linked for: base 0x81be7400
 TARGET_TRACKS = [4, 5, 6, 7]        # the synth tracks a plug can occupy
@@ -96,13 +96,13 @@ def build_full_payload(tree, engine_bytes, plugs_json):
 
 def main(argv):
     dry = "--dry-run" in argv
-    out = pathlib.Path(argv[argv.index("-o") + 1]) if "-o" in argv else pathlib.Path("struck_payload.zip")
+    out = pathlib.Path(argv[argv.index("-o") + 1]) if "-o" in argv else pathlib.Path("marimba_payload.zip")
 
-    engine, code, hl, cl, dl = build_struck.build()
-    print(f"engine   {len(engine)} B   header 0x{build_struck.MOD_BASE:08x} "
-          f"code {cl} B @0x{build_struck.CODE_BASE:08x} data {dl} B @0x{build_struck.DATA_BASE:08x}")
-    print(f"         memoryslot {MEMORYSLOT}, span 0x{build_struck.MOD_BASE:08x}"
-          f"..0x{build_struck.MOD_BASE + hl + cl + dl:08x}")
+    engine, code, hl, cl, dl = build_marimba.build()
+    print(f"engine   {len(engine)} B   header 0x{build_marimba.MOD_BASE:08x} "
+          f"code {cl} B @0x{build_marimba.CODE_BASE:08x} data {dl} B @0x{build_marimba.DATA_BASE:08x}")
+    print(f"         memoryslot {MEMORYSLOT}, span 0x{build_marimba.MOD_BASE:08x}"
+          f"..0x{build_marimba.MOD_BASE + hl + cl + dl:08x}")
 
     firmware_patch = REPO / "from-sergey/firmware/blackfin/system/content/settings/plugs_patch.json"
     plugs = patch_plugs(firmware_patch, dry)

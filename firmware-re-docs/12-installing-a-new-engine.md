@@ -5,8 +5,8 @@ a physical OP-Z and made to play. It is written as a procedure with its evidence
 was executed, every claim marked *verified* was read back out of the device or its logs, and the two routes
 that failed are kept because their failure messages are the most useful part.
 
-The engine used as the vehicle is `struck`, a six-mode modal resonator built for slot 63; the install machinery
-is `toolkit/install_struck.py`. Nothing in the procedure depends on that particular engine except the file
+The engine used as the vehicle is `marimba`, a six-mode modal resonator built for slot 63; the install machinery
+is `toolkit/install_marimba.py`. Nothing in the procedure depends on that particular engine except the file
 name and the plug id.
 
 ## 12.1 What "installed" actually means
@@ -33,15 +33,15 @@ rather than to disassembly.
 ### Attempt 1: copy the file onto the content disk — refused, and not for the expected reason
 
 Content mode exposes `/yaffs2/user/` as a FAT volume with `samplepacks/`, `config/`, `projects/`, `bounces/`
-and `rejected/`. The obvious move is to drop the engine into a sample-pack slot. `samplepacks/6-lead/08/struck.engine`
+and `rejected/`. The obvious move is to drop the engine into a sample-pack slot. `samplepacks/6-lead/08/marimba.engine`
 produced, in `/Volumes/OP-Z/import.log`:
 
 ```
 [IMPORT STARTED]
 Reading content disk...SUCCESS
-  rejecting invalid engine : /samplepacks/6-lead/08/struck.engine
+  rejecting invalid engine : /samplepacks/6-lead/08/marimba.engine
 Calculating used sample space...0.8/24.0 MB
-  rejecting invalid engine : /samplepacks/6-lead/08/struck.engine
+  rejecting invalid engine : /samplepacks/6-lead/08/marimba.engine
 ```
 
 The natural reading — "my module is malformed" — is wrong, and the error message alone cannot distinguish the
@@ -101,7 +101,7 @@ Repacking the unit's own 1.2.45 tree with the engine added was accepted. The pay
 two places:
 
 ```
-firmware/blackfin/system/content/engines/struck.engine              7,136 B
+firmware/blackfin/system/content/engines/marimba.engine              7,136 B
 firmware/blackfin/system/content/settings/plugs_patch.json          1,924 B  (6 auto_import entries)
 ```
 
@@ -122,7 +122,7 @@ detailed in §12.5.
 
 ```bash
 # 1. build the engine and the payload (--full uses the unit's own firmware tree as the base)
-python3 toolkit/install_struck.py -o /tmp/payload.zip --full
+python3 toolkit/install_marimba.py -o /tmp/payload.zip --full
 
 # 2. put the unit in UPDATE mode (the volume must show systeminfo/ and nothing else)
 
@@ -141,9 +141,9 @@ appear on the content disk as in §12.2.
 The registry entry it writes, appended after the five factory patches so none of them are lost:
 
 ```json
-{"engine": {"memoryslot": 63, "path": "engines/struck.engine", "version": 1},
- "plug": {"engine": "engines/struck.engine", "flags": 0, "id": 160,
-          "memoryslot": 63, "name": "struck", "samples": "", "version": 1},
+{"engine": {"memoryslot": 63, "path": "engines/marimba.engine", "version": 1},
+ "plug": {"engine": "engines/marimba.engine", "flags": 0, "id": 160,
+          "memoryslot": 63, "name": "marimba", "samples": "", "version": 1},
  "tracks": [4, 5, 6, 7]}
 ```
 
@@ -187,7 +187,7 @@ are a handy baseline for "the log is from a real boot".
 | silence for every note | the module loaded but the gate or the note path is wrong — check the boot log first |
 | sound but wrong pitch, or a fixed pitch | the coefficient row indexing is wrong; compare against the table dump |
 
-For `struck` all three passed: the plug is assigned on four tracks, the module loads, and it plays in tune.
+For `marimba` all three passed: the plug is assigned on four tracks, the module loads, and it plays in tune.
 
 ## 12.6 What was still unproven at that point
 
@@ -256,7 +256,7 @@ tool: the multi-register push encodes the **lowest** register of the group and t
 (`(R7:4)` encodes as 4), and the pointer group tops out at **P5**, not P7. Emulating it with a downward range
 pushed five pointer registers instead of three, which shifted the entire argument frame by two words and made
 `render` read a garbage `params` pointer. The engine's own argument walk is order-independent (it counts
-words), so the fix was invisible to `struck` - and would have been invisible to any engine that only ever
+words), so the fix was invisible to `marimba` - and would have been invisible to any engine that only ever
 reads its arguments by counting.
 
 ## 12.9 Playing a module live, and why the native path exists
@@ -326,7 +326,7 @@ Three things, and they are now named rather than suspected, which is the useful 
    because that is how a decompiler models them - treating it as the hardware stack behaviour is wrong, and
    it is why the interpreter has to keep a separate `RETS` register rather than relying on its own push.
    Engines reached from the OS still see one word above their arguments, so the OS's dispatcher evidently
-   supplies its own frame word; that is the only way to reconcile `struck` reading its arguments through a
+   supplies its own frame word; that is the only way to reconcile `marimba` reading its arguments through a
    pushed word on real hardware with the leaf-function scratch use above.
 
 4. **They need an accurate DSP accumulator, and this is the real remaining gap.** `chord`'s arithmetic helper
@@ -459,7 +459,7 @@ So `toolkit/opzenginesweep.py` judges an engine only when tail RMS (energy *afte
 
 Those numbers only became trustworthy after two harness fixes, and the earlier table they replace was
 **confounded by a wrong call layout**: the sweep was passing five stack words (`0, 0, ctx, prm, amp`) while the
-harness that actually plays an engine (`opzenginetool.render_clip`, verified on `struck`) passes three,
+harness that actually plays an engine (`opzenginetool.render_clip`, verified on `marimba`) passes three,
 `(ctx, prm, amp)`, and calls `onNoteOn(0, note, ctx)` rather than `onNoteOn(ctx, note, velocity)`. With the
 padded layout several engines errored or ran off the rails, and I read that as missing OS state. With the
 correct layout all thirteen instruments execute and return cleanly and simply write zeros - which is much
@@ -694,11 +694,11 @@ It was caught by asking the engine rather than the emulator: after each change, 
 the fix those read `0`, `0`, `0`; after it they read `0x81bd2048`, `0x81bc2000`, `0x81bd2030` - exactly the
 context, parameters and amp. That check is cheap, unambiguous, and worth repeating for any engine.
 
-Fixing it meant retuning `struck`, whose own argument walk was written against the wrong layout (eight
+Fixing it meant retuning `marimba`, whose own argument walk was written against the wrong layout (eight
 discarded post-increment loads became seven: seven saved registers are 28 bytes, so seven discards land on the
 first stack argument). The JIT needed the same treatment - it now carries a `rets` variable and sets it in
 every call form instead of pushing a return address - and after both changes interpreter and JIT are
-bit-identical again over 384 samples with `struck` measuring 440.1 Hz.
+bit-identical again over 384 samples with `marimba` measuring 440.1 Hz.
 
 ### Chord's return-address damage, traced to the instruction
 
@@ -772,7 +772,7 @@ twice.
 Resolved: `dxMmod` (bits 5-8) selects the scaling. When `dxM32M`, `dxM32U` and `dxM32I` are all zero the
 multiply is the **fractional** form - `res = (src0 * src1) << 1`, then bits 63:32, i.e. a shift of 31. When
 any of them is set it is the **integer** form and the product is taken directly, a shift of 32. chord's
-multiply is `mmod = 1`, the integer form, which is why a class-wide `>> 31` broke `struck` (also `mmod = 1`)
+multiply is `mmod = 1`, the integer form, which is why a class-wide `>> 31` broke `marimba` (also `mmod = 1`)
 while changing nothing for chord. Both forms are implemented now, and the earlier split evidence makes sense:
 the fractional shift belongs to a form neither engine actually uses.
 
@@ -786,13 +786,13 @@ The two readings disagree, and the evidence is split in a way that rules out a c
 
 * with `>> 31`, `crush` gets louder and more distinct (peak 0.014 → 0.026, 12 distinct values), and chord's
   products stop vanishing;
-* with `>> 31`, **`struck` fails ten tests** - pitch 2304 Hz where 440 was asked, decay buckets never reaching
+* with `>> 31`, **`marimba` fails ten tests** - pitch 2304 Hz where 440 was asked, decay buckets never reaching
   T60 - while with `>> 32` it passes all ten and matches the hardware behaviour it was validated against on the
   device (110/220/440/880 Hz, measured within 0.01%).
 
 An engine that sounds correct on real silicon is the strongest evidence available here, so the shift stays at
 32 and the hypothesis is recorded as *need more info*: the scaling must be selected by the per-instruction
-modifier field (`dxMmod`), with the fractional forms shifting by 31 and the form `struck` emits shifting by 32.
+modifier field (`dxMmod`), with the fractional forms shifting by 31 and the form `marimba` emits shifting by 32.
 Splitting them is the next step, and it needs chord's modifier decoded rather than a class-wide constant.
 
 ### The amp object carries the voice gain, and the harness leaves it zero
@@ -1038,7 +1038,7 @@ address 0 on the first dispatch.
 After the fix: the firmware's L1 startup code at `0x11900000` executes 4,932 steps (it previously did not
 run at all), and the factory-engine sweep changes again to **2 detuned, 2 flat, 3 loops, 4 needs-state,
 10 silent** — chord 6040 Hz at peak 0.050, digital unchanged at 0.0725 tail-rms, crush and volt now flat.
-All gates stay green: simulator suite (519,370 steps), `struck`, the player, 34/34 encodings and 21/21
+All gates stay green: simulator suite (519,370 steps), `marimba`, the player, 34/34 encodings and 21/21
 containers.
 
 Boot status: `0x80000000` is a vector *dispatcher*, not reset (it takes the vector in R1 and returns for
@@ -1153,9 +1153,9 @@ does not satisfy.
 
 Everything above is about playing the *factory* binaries, which still need state the sequencer computes.
 For an app that must ship working, correctly-pitched instruments today, `toolkit/build_family.py` drives
-the same verified builder (`build_struck.py`) once per preset, changing only the modal ratios, the
-per-mode damping and the strike position - the builder reads `opzstruck.MARIMBA`,
-`opzstruck.MARIMBA_T60` and `build_struck.STRIKE_POS` when it runs, so a family is a driver rather than a
+the same verified builder (`build_marimba.py`) once per preset, changing only the modal ratios, the
+per-mode damping and the strike position - the builder reads `opzmarimba.MARIMBA`,
+`opzmarimba.MARIMBA_T60` and `build_marimba.STRIKE_POS` when it runs, so a family is a driver rather than a
 rewrite.
 
 Measured with `opzenginetool.py --selfcheck` (cache cleared between runs) and a harmonic-centroid check:
@@ -1200,9 +1200,9 @@ and it is right to, for the convention it uses. The two ABIs differ:
 | engine | `render` arguments |
 |---|---|
 | factory | `stack=(out, freq_q16, 0, ctx, params, amp)` - six words, ctx at `[FP+0x14]` |
-| ours (`build_struck.py`) | 7 saved-register words then `ctx`, `params` - i.e. `stack=(ctx, params)` |
+| ours (`build_marimba.py`) | 7 saved-register words then `ctx`, `params` - i.e. `stack=(ctx, params)` |
 
-`build_struck.py`'s render walks its own saved registers (`for _ in range(7)`) before reading arg4, so the
+`build_marimba.py`'s render walks its own saved registers (`for _ in range(7)`) before reading arg4, so the
 six-word factory layout puts `out` where it expects `ctx` and it renders zeros. Consequently **the sweep
 cannot judge our engines and opzenginetool cannot judge the factory ones** - each tool is correct for its
 own convention, and neither verdict should be quoted across the boundary. "Audible in the app" means the
@@ -1219,7 +1219,7 @@ Getting there exposed a genuine assembler defect. `opzasm.unlink()` emitted only
 `volt` render `0x81bf06f6` are `01 e8 00 00`. The short form put the following instruction one halfword
 early, so an `UNLINK` followed by `RTS` executed the RTS' halfword as data and fell into the module's name
 strings. `opzasm.unlink()` now emits four bytes and its self-test expectation was corrected to the factory
-form; `struck.engine` and the whole family were rebuilt.
+form; `marimba.engine` and the whole family were rebuilt.
 
 Two more traps recorded from the same session, both of which produced false readings:
 
@@ -1266,7 +1266,7 @@ And it exposed a third **pointer-group defect, this time in the assembler**: `ld
 the data-register form, so every `Preg = imm32` in a built engine silently wrote a data register - the
 exact bug the interpreter had two rounds ago. `ldimm32` now emits `0xda08|reg` for pointer destinations
 and `0xda00|reg` for data ones. Every module was rebuilt afterwards and all gates pass: 34/34 encodings,
-`struck` selftest, `opzplay` realtime and audible, 440.1 Hz, 21/21 containers round-trip clean.
+`marimba` selftest, `opzplay` realtime and audible, 440.1 Hz, 21/21 containers round-trip clean.
 
 `tapetwo` is the same circular buffer with two taps (`TAP1` 1024 bytes = 256 samples, `TAP2` 3072 bytes =
 768 samples). Verified with an impulse: one `0x40000000` at frame 0, echoes at exactly frame **256** and

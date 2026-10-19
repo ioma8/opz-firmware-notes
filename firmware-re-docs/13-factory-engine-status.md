@@ -564,7 +564,7 @@ in another entry point, not in the `renderFX` that the shared effect harness dri
 
 | verifier | population | result |
 |---|---|---|
-| `toolkit/opzfamilycheck.py` | the **engines-family** modules this repo generates with `build_struck.py` | all 17 PASS with exact octave readings |
+| `toolkit/opzfamilycheck.py` | the **engines-family** modules this repo generates with `build_marimba.py` | all 17 PASS with exact octave readings |
 | `toolkit/opzfactorycheck.py` | the vendor's **engines-official** `.engine` binaries, on the Blackfin emulator | **2 of 13** instruments (chord, digital); saw013a, minstringshort and fm003b raise, the rest are silent or note-insensitive |
 | `toolkit/opzinstcheck.py` + `opzfxcheck.py` | the vendor's **ARM64 library** `libSnakePlugin.so`, i.e. the same algorithms as shipped in the app | **13 of 13** instruments, **7 of 8** effects |
 
