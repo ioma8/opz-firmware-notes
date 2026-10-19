@@ -257,9 +257,13 @@ library and verifies each against the original executed under Unicorn:
 | `Digital` | byte-exact on 35 golden cases |
 | `AnalogA` | byte-exact on 20 voices, every block, every filter tap |
 | `Saw013a` | byte-exact on 19 cases, including the whole 26-word state after `onNoteOn` |
-| `SamplePlayerGain`, drums | byte-exact, ten cases, plus a device-traced block |
+| `SamplePlayerGain` | byte-exact on ten golden cases (`golden_cases_match`) |
+| drums | byte-exact, plus a device-traced block |
 
-Its `tools/unicorn-harness/opzso.py` is a general loader that can call *any* entry point in the library, and it
+Verified by `cargo test -p opz-dsp` on 2026-10-19: `digital` 3 tests, `analog_a` 11, `saw013a` 12 (including
+`render_matches_every_golden_case` and `render_matches_the_device`), `sample_player_gain` golden cases - all passing,
+so **four of the thirteen instruments** are byte-exact against the vendor's own code. The clone's
+`tools/unicorn-harness/opzso.py` is a general loader that can call *any* entry point in the library, and it
 already has host classes for `Digital`, `AnalogA`, `Saw013a` and `SamplePlayerGain`.
 
 **So the way to finish this objective is to continue that port in `opz-clone`**, one engine at a time, using its
