@@ -657,3 +657,29 @@ ho neodstraní. Celkem 152 zaznamenaných hypotéz.
 a v protokolu konzole žádná "read memory" operace není. Pro dump regionu `0x04xxxxxx` a běhových BSS
 (`0x8112b21c`, `0x8156f21c`) je tedy potřeba JTAG/SWD přes BF703 debug port, nebo dopsat do protokolu nový příkaz.
 Tohle je jediná chybějící věc; všechno ostatní je v repu hotové a ověřené.
+
+## Kde to skutečně skončilo (2026-10-19) — a kam jít dál
+
+**Tento repozitář je na svém stropu: 2 z 13 továrních nástrojů.** `digital` (perioda 32768) a `chord`
+(perioda 16384) hrají správně přes osm not, ověřeno přes HTTP API aplikace. Zbylých 11 nástrojů a všech
+8 efektů potřebuje běhový stav firmwaru, který v žádném artefaktu v repu není (166 zaznamenaných hypotéz).
+
+**Klíčový objev:** na stroji je `~/.opz-decode/opzso/libSnakePlugin.so` (1,95 MB) se `syms.json`
+(4 699 symbolů) — vendorova ARM64 stavba **týchž enginů** se symboly. Z ní je ABI čitelné, ne odhadované:
+
+- `render(fract32_t *out, unsigned frames, int track, void *state, const unsigned *params, ADSR*)`
+  — `out` je prokládané stereo Q31, druhý argument je **počet rámců** (ne increment),
+- `initModule(id, iface, out)`, `init(state, a, b, tempBuffer, d)` (5. argument = tempBuffer, 3. do `state+0x20`),
+- **`ADSR` má 6 slov**: `+0x00` rate, `+0x04` level, `+0x08` mul, `+0x0c` add, `+0x10` phase (render okamžitě
+  vrací, je-li 0), `+0x14` tail — enginy na `+0x14` **gateují**,
+- `iface+0x38` je envelope hook, `iface+0x40` updateParametersAHD, **`iface+0x48(id, note)` vrací 40bajtový
+  sample record** (`+0x00` data, `+0x08` frames, `+0x0c` pitch, `+0x10` rate),
+- **všech 21 enginů je v té knihovně** (AnalogA, Chord, Cluster, Digital, EP, Electric, Fm003b, MiniStringShort,
+  Organ, SamplePlayerGain, Saw013a, SynthSampler, Volt + Chorus, Chorus2, Crush, Delay, Dist, FdnReverb,
+  Reverb, TapeTwo).
+
+**Kde dokončit práci:** `~/projects/customs/opz-clone` — má vendor knihovnu, fungující Unicorn loader
+(`tools/unicorn-harness/opzso.py`, lze zavolat kterýkoli entry point), host třídy pro Digital/AnalogA/Saw013a/
+SamplePlayerGain, **21/21 testů zelených** a tři enginy **byte-exact** proti originálu. Chybí 18 enginů, každý
+potřebuje vlastní host třídu, port, golden fixtury a byte-exact test. `Organ` a `Cluster` už byly zkoušeny
+a ani po třech kolech nedaly ani vzorek zvuku — to je reálná cena jednoho enginu.
