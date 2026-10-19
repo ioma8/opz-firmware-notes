@@ -1337,3 +1337,12 @@ band-add engine fed a band table rather than an oscillator.
 So the pitched test is as inapplicable to `Cluster` as it is to a slice sampler, and the engine can only be
 verified against a recorded vendor fixture - which the sibling repository does not carry for it. It stays out of
 the note tally rather than being called broken.
+
+**SynthSampler does respond, but only where our record lines up.** Unlike `Cluster`, it tracks at one tested
+note: **743.27 against 82.67/26.11 at note 48**, while losing at 40 (2107.33 against 4065.70, ratio 0.52), 55
+(26.11 against 42.67, 0.61) and 65 (151.44 against 282.61, 0.54) with the same ~0.55 band signature that
+`Cluster` shows at every note.
+
+The likely reason is our own host data rather than the engine: the record declares a 261.63 Hz sine as note 60,
+and note 48 is the one request that lands on it exactly an octave below. The next thing to vary is the record's
+declared pitch and the sine it describes - the same lever that fixed `SamplePlayerGain`.
