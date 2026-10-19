@@ -283,14 +283,18 @@ Called that way — `initModule`, `init`, then `renderFX(params, 64, state, in, 
 |---|---|
 | `Crush` | **125 of 128 nonzero**, peak 46,551 |
 | `Dist` | 7 of 128 nonzero, peak 2,453 |
-| `Reverb` | **844 of 1024 over eight blocks**, peak 258,813 |
-| `Dist` | 7 of 1024, peak 2,276 |
-| `Chorus`, `Chorus2`, `Delay` | silent |
-| `FdnReverb` | silent even with the `clock` import stubbed |
+| `Crush` | **2013 of 2048 over sixteen blocks**, peak 264,911 |
+| `Reverb` | **1868 of 2048**, peak 287,026 |
+| `Chorus2` | **598 of 2048**, peak 218,904 |
+| `Dist` | 7 of 2048, peak 2,284 |
+| `Chorus`, `Delay`, `FdnReverb` | silent |
 | `TapeTwo` | unhandled CPU exception |
 
-So **two of the eight factory effects now demonstrably process audio** with the vendor signature - `Crush` and `Reverb`
-- against zero before it was read from the symbol names.
+A **dedicated scratch buffer** matters: `Chorus2` is silent when the output buffer is handed to it as the sixth
+argument and produces 598 nonzero samples when given 256 KB of its own, so the sixth argument is scratch, not output.
+
+So **four of the eight factory effects demonstrably process audio** with the vendor signature - `Crush`, `Reverb`,
+`Chorus2` and `Dist` - against zero before it was read from the symbol names.
 
 So two of the eight factory effects genuinely process audio in the vendor library. Every attempt in this repository
 used a five-word stack with the buffers last, which is simply the wrong convention; the vendor's is **params and
