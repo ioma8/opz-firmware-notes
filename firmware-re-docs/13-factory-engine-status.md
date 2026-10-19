@@ -1134,3 +1134,25 @@ So the sampler is not missing a feature - our harness reaches the short path. Wh
 `w0` (`cbz w0` at `0x11f758`, `b.lt` at `0x11f75c`), i.e. on the frame count the preamble derives from earlier
 state. Settling it needs a decompile of `render`'s control flow traced against those two branch conditions;
 another black-box probe will not decide it.
+
+**The branch is decided from engine state.** Disassembling `0x11f6c0`-`0x11f730` gives the chain that selects
+which loop runs:
+
+```
+0x11f6c4  tbnz  w11, #0xf, #0x11f73c    ; bit 15 of w11 -> the multiply path
+0x11f6cc  cmp   w11, #0x3f
+0x11f6d4  b.hi  #0x11fa2c               ; w11 > 63   -> the strided loop
+0x11f6f8  lsl   w14, w14, #0xa
+0x11f6fc  sub   w11, w14, #1, lsl #12
+0x11f700  sub   w14, w11, w10            ; remaining length
+0x11f704  udiv  w2, w14, w16
+0x11f708  cmp   w2, #0x5f
+0x11f70c  b.hi  #0x11f73c               ; long enough -> the other path
+0x11f710  lsr   w0, w14, #6              ; number of 64-frame blocks
+0x11f728  stp   w0, w16, [x20, #0x5c]    ; recorded in state
+```
+
+So **which loop runs is decided by the sample length in `w14`/`w11` and the divisor `w16`, all read from the
+engine's own state** - the harness supplies one static record and therefore lands in the short path on every
+block. Settling this needs a decompile of `render` that maps `w11`, `w14` and `w16` back to record and state
+fields; it is no longer a black-box question.
