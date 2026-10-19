@@ -282,9 +282,14 @@ binary still fails because the engine copies only the first 13 interface entries
 Resolving the effect classes in `libSnakePlugin.so` gives their mangled names, and those carry the signature:
 
 ```
-Crush::renderFX(unsigned const* params, int frames, void* state,
-                fract32_t* in, fract32_t* out, fract32_t* scratch)
+Crush::renderFX(unsigned const* params, int variant, void* state,
+                fract32_t* in, fract32_t* out, fract32_t gain)
 ```
+
+The second argument is the plug's **variant word**, not a frame count: the clone's ported `FxManager`
+(`_ZN9FxManager6renderE7TrackIdPKjP9fract32_tS4_S4_S4_S3_` at `0x13cde4`) tail-calls the plug with
+`(params, *(u32*)(slot + 0xe8), slot + 0x20, a, b, gain)`. Every measurement here passed 64 there, which happens to
+select a default path.
 
 Called that way — `initModule`, `init`, then `renderFX(params, 64, state, in, out, out)` — the effects do work:
 
