@@ -1035,3 +1035,18 @@ So the record **is** read - changing its pitch unit earlier moved `SamplePlayerG
 are not playing the sample at all, which is why every harness-reachable knob left the note test unchanged. They
 stay out of the tally; judging them needs a per-engine read of `SamplePlayerGain::render`, including where it
 takes its output buffer.
+
+**Correction: the sampler does read its record and its sample.** Hooking memory reads inside the record's 0x28
+bytes and inside the 8192-frame sample buffer while `SamplePlayerGain` renders four blocks at note 60 shows:
+
+* **record+0x0c** (pitch) read once per block,
+* **record+0x10** (rate) read once per block,
+* **256 sample words per block** - two per frame - all of them in the buffer's last quarter (byte offsets
+  7168-8191).
+
+So the record and the sample are both consumed every block, and the flat 117 Hz readings earlier are a
+**measurement artefact**, not proof that the sampler ignores its input: across a 60-block run the two-per-frame
+reads never leave that final quarter, so any frequency estimate is reading a fragment.
+
+The next step is therefore to read `render`'s mix loop directly (including where it takes its output pointer)
+rather than to keep estimating frequency from outside.
