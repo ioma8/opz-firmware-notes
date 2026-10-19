@@ -26,11 +26,32 @@ partly an artifact. `analoga` moved the other way, from "keeps calling outside i
 
 ## Writing a new engine
 
-`toolkit/opzsdk.py` is the SDK: an engine is written in Python, with no assembly. It supplies the module
-header and segments, argument access, register allocation, frame slots, branch encoding and the table
-symbols; the three authored engines are built on it (`build_marimba.py`, `build_cathedral.py`,
-`build_strings.py`) and are the worked examples. `toolkit/opzsdktest.py` exercises every construct of the
-DSL and checks the results in the interpreter, so a change to the SDK is gated the same way the engines are.
+Two layers, and the interesting one is the top. `toolkit/opzsynth.py` describes a **sound**, not code:
+
+```python
+K.build("cathedral", slot=74,
+        partials=[(0.5, None), (1.0, None), (2.0, None), (3.0, None), (4.0, None), (6.0, None)],
+        levels=[0.085, 0.145, 0.105, 0.070, 0.050, 0.035],
+        gain="envelope*velocity",
+        pitch="blend")
+```
+
+That is the whole cathedral engine (34 lines with its docstring): six undamped pipe ranks, pitch blended
+between semitone rows, loudness from the OS envelope times the amp object's voice gain. Partials carry
+their own decay time, `knob()` turns a preset knob into an eight-bucket decay control, `banks=` plus
+`detune_cents=` splits a bank detuned and panned for ensemble width, and the voice machinery - the amp gate,
+the strike, the zero/out-of-range pitch guard, the frame loop, the module header - is generated and
+inherited. It refuses to build an engine whose seeds can clip, whose partials are all past Nyquist, or that
+needs more state than the context layout documents.
+
+The three authored engines are now declarations of this shape: `build_marimba.py` (46 lines),
+`build_cathedral.py` (34), `build_strings.py` (36).
+
+`toolkit/opzsdk.py` is the layer underneath, for DSP that is not a bank of rotators (a filter, FM, a sample
+player): statements, registers, frame slots, branches and table symbols, compiled to this chip's
+instructions with no assembly and no allocator to get wrong. It is the same DSL the generator emits, so the
+two compose. `toolkit/opzsdktest.py` exercises every construct of both layers and checks the results in the
+interpreter, so a change to either is gated the same way the engines are.
 
 ## What is not working, and where it is stuck
 

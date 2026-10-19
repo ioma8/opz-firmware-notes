@@ -118,6 +118,11 @@ if __name__ == "__main__":
     amp = params + 0x40
     bad = []
 
+    def checkok(name, ok, detail=""):
+        print(f"  {'PASS' if ok else 'FAIL'}  {name:44s} {detail}")
+        if not ok:
+            bad.append(name)
+
     def check(name, got, want):
         ok = got == want
         if not ok:
@@ -149,6 +154,26 @@ if __name__ == "__main__":
     # +8 from the loop = 449; + TAB[5]=60 = 509.
     check("render computes 509 and walks the cursor", got, [509] * 5)
     check("a stack argument was readable", m.ld32(scratch + 0x3C) & 0xFFFFFFFF, amp & 0xFFFFFFFF)
+
+    # ---- the declarative layer above the DSL: the three authored engines build, and the guards that stop
+    # a silent or clipping engine from being built at all actually fire
+    import opzsynth as K
+    for name in ("marimba", "cathedral", "strings"):
+        mod = __import__("build_" + name)
+        raw = mod.build().build()
+        checkok(f"declared engine builds: {name}", len(raw) > 512, f"{len(raw)} B")
+    guards = {
+        "clipping seeds": dict(partials=[(1.0, None)], levels=[1.5]),
+        "all partials above Nyquist": dict(partials=[(60.0, None)], levels=[0.1]),
+        "too many oscillators": dict(partials=[(1.0, None)] * 12, levels=[0.01] * 12, banks=2),
+        "level count mismatch": dict(partials=[(1.0, None), (2.0, None)], levels=[0.1]),
+    }
+    for what, kw in guards.items():
+        try:
+            K.build("guard", slot=79, **kw)
+            checkok(f"guard: {what}", False, "built an engine it should have refused")
+        except ValueError:
+            checkok(f"guard: {what}", True, "")
 
     print("\n" + ("all SDK checks pass" if not bad else f"{len(bad)} FAILED: {bad}"))
     sys.exit(1 if bad else 0)

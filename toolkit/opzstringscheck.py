@@ -14,6 +14,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import opzengine as E
 import opzsim as Z
 import build_strings as B
+import opzsynth as K
 
 HARMONICS = B.HARMONICS
 
@@ -79,7 +80,7 @@ def main(path="strings.engine"):
     for note in (45, 57, 69, 81):
         blocks, _, _ = render(raw, exports, note)
         left = channel(blocks, 0)
-        want = 440.0 * 2 ** ((note - 69) / 12.0) * B.detune(0)
+        want = 440.0 * 2 ** ((note - 69) / 12.0) * K.bank_detune(0, 2, B.DETUNE_CENTS)
         sweep = [(want * (1 + d / 1000.0), level(left, want * (1 + d / 1000.0)))
                  for d in range(-5, 6)]
         best_hz, best = max(sweep, key=lambda kv: kv[1])
@@ -97,7 +98,7 @@ def main(path="strings.engine"):
           f"tail/head {tail / max(head, 1e-9):.2f}")
 
     # ---- the 1/h harmonic tilt, measured on one bank
-    f0 = 440.0 * B.detune(0)                      # the bank's own frequency, not the equal-tempered one
+    f0 = 440.0 * K.bank_detune(0, 2, B.DETUNE_CENTS)                      # the bank's own frequency, not the equal-tempered one
     fund = level(left, f0)
     for h in range(2, HARMONICS + 1):
         rel = level(left, f0 * h) / max(fund, 1e-12)
