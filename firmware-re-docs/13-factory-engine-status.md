@@ -722,3 +722,20 @@ treated as a usable return address (`_off(0)` is inside the window arithmeticall
 which ping-ponged forever), a call through a zero word is capped by `NULL_CALL_LIMIT` because it consumes
 no step budget, and `check_coverage` makes a jump into unloaded memory report its address instead of
 marching through 200,000 NOPs.
+
+### The ROM answer checked against direct render, 2026-10-19
+
+Before accepting the ROM conclusion, each silent engine was given the best the harness can offer: the whole
+address-space machine, the firmware's own memory (including the real quarter-sine at `0x0800bb48`), the
+OS's host-services table at `0x81003850`, and a direct call to the engine's own `render` with the
+six-stack-word convention.
+
+`fm003b`, `ministringshort` and `saw013a` fail exactly as they did in the engine-only machine - 27,881
+steps to a null function pointer, 200,000 to `call did not return`, 18,583 to a jump at `0xf757a802` - so
+the memory map was never their problem and the tick is their only route, which the ROM closes.
+
+`organ` is the one engine that improves. Forcing its `R2` gate at `0x81b7d1c4` inside that machine takes
+its output from a peak of `1/2^31` to **3,291,556** (51 of 64 samples nonzero) - but only in block 1;
+blocks 0 and 2-5 are silent, and its context block is written identically in every block, so what is left
+is organ's own state rather than a missing table. The tally therefore stays 6 of 13 audible, with organ
+recorded as transient-only rather than silent.
