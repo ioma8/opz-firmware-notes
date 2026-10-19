@@ -539,3 +539,23 @@ all leave it at zero.
 **Conclusion:** the effects ceiling with this library is **7 of 8**, not 8 of 8. `TapeTwo`'s audible
 path is in another entry point (it carries `updateTapeStop`, `TapeTwoGetDucker`, `getAdjustedNote`,
 `onNoteOn` and `onNoteOff`), not in the shared `renderFX` the effect harness drives.
+
+### TapeTwo is silent by construction — verified with 64-bit pointers (2026-10-19)
+
+Earlier checks of TapeTwo's buffers were wrong: the pointers are 64-bit (`z_l = 0x200000531000`,
+`z_r = 0x200000531080`) and comparing their truncated low words made a write hook report that
+nothing was written into them. Reading them at full width gives the decisive fact:
+
+* `z_r` is exactly `z_l + 0x80`.
+* The **clear** loop stores 0 at `lVar25 = 0…0x7e` into **both** buffers, which covers
+  `z_l[0…0xfe]`.
+* The **read** loop then reads `lVar25 = 0…0x7e` from **both** buffers — the same bytes it just cleared.
+
+So `renderFX` multiplies a freshly-zeroed buffer by its counter on every sample and its 128 output
+stores are zero for *every* possible host input. That is why variants 0-16, all six argument
+positions, every buffer, all `params[0]`/`params[1]`, the factory preset, 2,000 blocks, 16-bit input
+encodings, `updateTapeStop`, the crossfade globals, forced write positions and the `+0x308`/`+0x310`
+flags all leave it at zero — none of them can matter.
+
+**The effects ceiling with this library is therefore 7 of 8, not 8 of 8.** TapeTwo's audible path is
+in another entry point, not in the `renderFX` that the shared effect harness drives.
