@@ -802,3 +802,11 @@ registers and `(inp, out)` on the stack, which is one argument short of the vend
 `renderFX(params, frames, state, in, out, scratch)` that `opzfxcheck` drives. Until that convention is
 established for the `.engine` effects, the zeros may be a harness mismatch rather than engine silence - so the
 number is recorded as measured-with-this-harness, not as a verdict on the engines.
+
+**Checked further, same day.** Six plausible call conventions were tried on `dist.engine` - including
+`(out, frames, state)` and `(out, frames)` - and **none writes a single word into the output buffer**; all of
+them store about 1040 words into the zero page instead, and pointing `ctx+0`/`ctx+4` at the buffers changes
+nothing. `dist.engine` reads only `ctx+0` and `ctx+4` (once each, both zero) and stores through a **base
+pointer of zero** at `0x81bfa4b2` while writing its own data page `0x81c3a000`. So the 0 of 8 measures a
+harness mismatch, not silent effects: like the instruments, the effects walk buffer pointers the OS fills
+before a block.
