@@ -828,3 +828,23 @@ So TapeTwo issues six host calls per block - slot 0 with opcodes 1 and 0, slot 1
 `0xa0002` twice - and then zeroes and re-reads the tape buffer inside the block regardless of what the host
 answers. The silence is in the tape buffer's own mix path, not in a missing host conversion, and the
 handover text that said otherwise has been corrected.
+
+### All of it in one command, 2026-10-19
+
+`python3 toolkit/opzstatus.py` runs every engine gate, prints the line that carries each number, and fails if
+anything that should pass does not:
+
+```
+interpreter selftest     all checks passed
+ARM64 instruments        13 of 13 factory instruments render audio
+ARM64 effects            7 of 8 factory effects process audio: Chorus, Chorus2, Crush, Delay, Dist, FdnReverb, Reverb
+ARM64 effects            known gap: not processing: TapeTwo
+Blackfin any audio       instruments: 6 of 13 write any audio
+Blackfin any audio       effects:     0 of 8 write any audio
+Blackfin requested note  plays the requested note: 2 of 13 instrument modules
+docs gate                OK - fences balanced, index table complete, ...
+ledger rows              276
+```
+
+`TapeTwo` is marked a **known gap** rather than a pass, because its silence is documented as structural; the
+tally line still prints so the gap stays visible. Every other population is a plain pass or fail.

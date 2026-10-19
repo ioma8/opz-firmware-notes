@@ -704,7 +704,8 @@ a pamatovat, že `ADSR+0x10` (phase) musí být 5–7 a `iface+0x38` je envelope
 
 ## Aktuální stav cíle „aby hrály všechny tovární enginy" (2026-10-19, konec session)
 
-**20 z 21 továrních enginů hraje.** Obě poloviny se ověřují jedním příkazem:
+**20 z 21 továrních enginů hraje.** Všechny brány a všechny čtyři populace vypíše jeden příkaz
+`python3 toolkit/opzstatus.py`; jednotlivě pak:
 
 ```
 python3 toolkit/opzinstcheck.py --blocks 20   # 13 z 13 nástrojů
