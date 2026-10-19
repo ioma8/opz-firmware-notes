@@ -704,6 +704,9 @@ a pamatovat, že `ADSR+0x10` (phase) musí být 5–7 a `iface+0x38` je envelope
 
 ## Aktuální stav cíle „aby hrály všechny tovární enginy" (2026-10-19, konec session)
 
+**Nejrychlejší vstupní bod je `ENGINE_STATUS.md`** — jedna stránka se všemi ověřenými čísly, čtyřmi
+blokacemi a dvěma možnostmi, jak dál.
+
 **Pozor na rozdíl „vydá zvuk" vs „zahraje zadaný tón".** Vydaný zvuk je slabší kritérium než
 správná výška tónu, a čísla se liší:
 
