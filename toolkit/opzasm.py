@@ -320,3 +320,41 @@ if __name__ == "__main__":
         sys.exit(selftest())
     print(__doc__)
     sys.exit(selftest())
+
+
+class Code:
+    def __init__(self, base):
+        self.base, self.buf, self.labels, self.fixups = base, bytearray(), {}, []
+
+    def label(self, name):
+        self.labels[name] = self.pos()
+
+    def pos(self):
+        return self.base + len(self.buf)
+
+    def emit(self, b):
+        self.buf += b
+
+    def ins(self, name, *a, **k):
+        self.emit(globals()[name](*a, **k))
+
+    def branch(self, label, cond=True):
+        """Conditional branch on CC. Emit a placeholder, patch once every label is known."""
+        self.fixups.append((len(self.buf), label, cond))
+        self.emit(b"\x00\x00")
+
+    def jump(self, label):
+        """Unconditional JUMP.S. `branch()` cannot do this - it always tests CC, so using it for an
+        unconditional jump silently makes the jump depend on whatever flag was set last."""
+        self.fixups.append((len(self.buf), label, "jump"))
+        self.emit(b"\x00\x00")
+
+    def finish(self):
+        for off, label, cond in self.fixups:
+            here = self.base + off
+            if cond == "jump":
+                enc = jump_s(here, self.labels[label])
+            else:
+                enc = brcc(here, self.labels[label], cond)
+            self.buf[off:off + 2] = enc
+        return bytes(self.buf)

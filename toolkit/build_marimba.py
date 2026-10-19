@@ -95,44 +95,6 @@ STRIKE_POS = 0.30                   # the strike point the reference model's mea
 BRIGHTNESS = 0.5                    # fixed: params[2..5] are amp arguments, so brightness is not live
 
 
-class Code:
-    def __init__(self, base):
-        self.base, self.buf, self.labels, self.fixups = base, bytearray(), {}, []
-
-    def label(self, name):
-        self.labels[name] = self.pos()
-
-    def pos(self):
-        return self.base + len(self.buf)
-
-    def emit(self, b):
-        self.buf += b
-
-    def ins(self, name, *a, **k):
-        self.emit(getattr(A, name)(*a, **k))
-
-    def branch(self, label, cond=True):
-        """Conditional branch on CC. Emit a placeholder, patch once every label is known."""
-        self.fixups.append((len(self.buf), label, cond))
-        self.emit(b"\x00\x00")
-
-    def jump(self, label):
-        """Unconditional JUMP.S. `branch()` cannot do this - it always tests CC, so using it for an
-        unconditional jump silently makes the jump depend on whatever flag was set last."""
-        self.fixups.append((len(self.buf), label, "jump"))
-        self.emit(b"\x00\x00")
-
-    def finish(self):
-        for off, label, cond in self.fixups:
-            here = self.base + off
-            if cond == "jump":
-                enc = A.jump_s(here, self.labels[label])
-            else:
-                enc = A.brcc(here, self.labels[label], cond)
-            self.buf[off:off + 2] = enc
-        return bytes(self.buf)
-
-
 def strike_seeds(position=STRIKE_POS, brightness=BRIGHTNESS):
     """Per-mode excitation, the same law as opzmarimba.Marimba.strike.
 
@@ -172,7 +134,7 @@ def coefficient_table():
 
 
 def build():
-    c = Code(CODE_BASE)
+    c = A.Code(CODE_BASE)
 
     # ---------------------------------------------------------- initModule(id, host_table, out)
     c.label("initModule")
