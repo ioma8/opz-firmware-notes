@@ -417,3 +417,20 @@ documents.
 
 The earlier section concluding that instruments need hand-written per-engine hosts is superseded:
 one host reaches nine of them once the addresses and the table region are right.
+
+### Current tally: 18 of 21 factory engines play (2026-10-19)
+
+Both halves now run through one command each:
+
+| half | command | result |
+|---|---|---|
+| effects | `python3 toolkit/opzfxcheck.py --blocks 60` | **7 of 8** (`TapeTwo` silent) |
+| instruments | `python3 toolkit/opzinstcheck.py --blocks 20` | **11 of 13** |
+| **total** | | **18 of 21** |
+
+Instruments rendering: Chord, Cluster, Digital, EP, Electric, MiniStringShort, Organ, Volt,
+SamplePlayerGain and SynthSampler all at 2558-2560 of 2560 nonzero (peaks 0.01-0.40 full scale),
+plus AnalogA nonzero at peak 533 - technically live but inaudible, so it should be counted as
+half-done rather than working. Still silent: **Fm003b** and **Saw013a**. Both reach the host through
+a vtable indirection (`vtable[0x38]` callback, `vtable[0x28]` table) instead of the flat interface
+the other eleven use, and building that indirection has not yet made either sound.
