@@ -848,3 +848,12 @@ ledger rows              276
 
 `TapeTwo` is marked a **known gap** rather than a pass, because its silence is documented as structural; the
 tally line still prints so the gap stays visible. Every other population is a plain pass or fail.
+
+**One step deeper on the effect side.** `dist.engine` loads a null pointer from its own data at `0x81bfa554`
+and stores through it. `init` clears that word on purpose - two stores at `0x81bfa0e2`/`0x81bfa0e4` write
+`0x200` to `module+0x558` and `0x0` to `module+0x554`, and no argument to `init` changes it - so the host is
+expected to fill it before each block. Supplying a buffer there drops the null-area stores from **1040 to
+270**, which confirms the field is the effect's scratch pointer, but the output buffer is still never touched
+and 270 stores still go to low addresses (`0x81bfa1a4`, `0x81bfa1b8`, `0x81bfa1ca` writing to 4, 8, `0x204`).
+So the output base is a second OS-supplied field. The effect population is therefore one step further along
+than "calling-convention mismatch" and still not playable without the OS state.
