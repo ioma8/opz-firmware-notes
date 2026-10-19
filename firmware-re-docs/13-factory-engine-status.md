@@ -618,3 +618,28 @@ the same shape as `TapeTwo`'s on ARM - not a host word.
 
 Any future port therefore starts from a foothold: one known gate address, a known instruction-boundary
 method, and a mapped zero-read list.
+
+### A calling-convention error in the Blackfin probes (2026-10-19)
+
+`opzenginetool.render_clip` drives a factory engine as
+
+```python
+Z.call(m, ex["render"], [out, freq_q16, 0], stack=(out, freq_q16, 0, ctx, prm, amp))
+```
+
+— three words in registers, **six on the stack**. Several probes in this session passed five positional
+arguments instead, which leaves `ctx`, `prm` and `amp` unread, and that is why engines looked silent.
+Repeating the sweep with the correct convention:
+
+| engine | output |
+|---|---|
+| `chord` | 254 of 640 nonzero, peak 68,882,678 |
+| `digital` | 507 of 640 nonzero, peak 233,781,526 |
+| `ep` | 318 of 640 nonzero, peak 133,338,702 |
+| `volt` | 361 of 640 nonzero, peak 2,147,483,647 |
+
+So **4 of 13** Blackfin engines produce audio, not 2. `cluster`, `organ`, `electric`,
+`sampleplayergain` and `synthsampler` still render zero, and `analoga`, `fm003b`,
+`ministringshort` and `saw013a` raise. Note this is a *nonzero output* count:
+`opzfactorycheck` asks the stricter question of whether the requested note is produced, and still
+reports 2 of 13 because `ep` and `volt` do not track the requested pitch.
