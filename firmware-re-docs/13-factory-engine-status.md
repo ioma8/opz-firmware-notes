@@ -290,7 +290,7 @@ Called that way — `initModule`, `init`, then `renderFX(params, 64, state, in, 
 | `Delay` | **19,966 of 25,600 over 200 blocks**, peak 577,536 - first output at block 44 (about 58 ms) |
 | `FdnReverb` | **22,090 of 25,600**, peak 61,692 - first output at block 27 |
 | `Chorus` | **15,358 of 15,360 samples changed over 120 blocks** - it processes **in place**, writing into the input buffer and never into the output one |
-| `TapeTwo` | unhandled CPU exception, jumping to data at `0x11deb4` (an uninitialised callback) |
+| `TapeTwo` | **runs** once `init`'s 4th argument is a >= 1 MB buffer: the engine sets `sampleLine_r = param_4 + 0x100000`, so a null argument made it clear `0x100000` - its own code. It fills its `sampleLines` buffer (512/512) but does not yet write to the output |
 
 The two delay-based engines were never broken: their lines simply had not filled. `Delay` needs about **58 ms** of input
 before it emits anything, which is why 16-block runs showed silence.
