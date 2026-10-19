@@ -742,3 +742,46 @@ převod `sampleLine → tapeBuffer_z`, který tato builda v `renderFX` neprovád
 
 **Pozor na past:** ukazatele do pásek jsou 64bitové (`0x200000531000`). Kdo je čte po 4 bajtech,
 dostane zkrácenou hodnotu a háčky pak hlásí „žádné zápisy", což je artefakt, ne chování enginu.
+
+### Tři populace enginů — každá má jeden příkaz (doplněno 2026-10-19)
+
+Číslo „20 z 21" platí pro **dodaný vendor kód** (`libSnakePlugin.so` z APK). Na zařízení ale běží
+i blackfinové `.engine` moduly, a ty se měří zvlášť. Aby se to už nemuselo dolovat z ad-hoc skriptů:
+
+| populace | příkaz | výsledek |
+|---|---|---|
+| vendor ARM64 nástroje | `python3 toolkit/opzinstcheck.py --blocks 20` | **13 z 13** vydá zvuk |
+| vendor ARM64 efekty | `python3 toolkit/opzfxcheck.py --blocks 60` | **7 z 8** (TapeTwo mlčí konstrukčně) |
+| Blackfin `.engine`, vydá jakýkoli zvuk | `python3 toolkit/opzfactoryaudible.py` | **6 z 13** |
+| Blackfin `.engine`, zahraje zadaný tón | `python3 toolkit/opzfactorycheck.py` | 2 z 13 |
+
+### Proč blackfinové enginy nejdou dál: čipová L2 ROM
+
+Zbylých sedm `.engine` nástrojů (`analoga`, `fm003b`, `ministringshort`, `saw013a`, `organ`,
+`SamplePlayerGain`, `SynthSampler`) už netrpí chybějící pamětí ani gatem:
+
+* všechny čtyři „faultující" enginy v mašině s celým OS image **doběhnou init i OS note-start**
+  (`analoga` 719 kroků, `ministringshort` 1 210, `saw013a` 771) a padají až v ticku;
+* tick `0x8012E2C0` provede po 68 krocích `CALL.A` na **`0x04020a70`**;
+* to je podle `ADSP-BF70x Hardware Reference`, tabulka 11-1, řádek `0x04000000 0x407FFFFF L2 Bank 0
+  ROM (512 KB)` — mask ROM v čipu, kterou žádný dodaný image neobsahuje (v `opz.ldr` jsou jen
+  segmenty `0x11A`, `0x08` a `0x80`; `bootloader.ldr` nic pod `0x118` nepřidá);
+* volání do ní nejsou okrajová: sken image najde **1 195 volání na 51 různých vstupů**, a manuál
+  k ROM žádnou tabulku adres nepublikuje, takže se nedají ani pojmenovat, ani emulovat „podle dokumentace".
+
+`organ` je jediný, který se dá otevřít bez ROM (vynutit `R2` na `0x81b7d1c4`), ale i pak vydá jen
+jeden impuls (51 ze 64 vzorků v bloku 1, zbytek nuly) — jeho hlasitost a fáze jdou z rezidua zásobníku,
+které tam nechává právě ten tick. Doplňování oblastí, které čte jako nuly (`0x81bbfe00–0x81bc0000`),
+výsledek nemění.
+
+**Co to znamená pro cíl:** bez portu 51 rutin mask ROM (a rekonstrukce OS kontextu voice) se zbytek
+.blackfinové populace nerozjede. Rozumné možnosti jsou dvě — přijmout dodaný deliverable
+(13/13 nástrojů, 7/8 efektů) jako splnění cíle, nebo takový port zadat.
+
+### Chyby harnessu opravené v této session (ať se nehledají znovu)
+
+* `opzsim.call` nechával na zásobníku argumenty, takže se frame posouval o 24 B při každém bloku —
+  `organ` proto hrál jeden blok z pěti. Nyní se `SP` po volání vrací (argumenty vlastní volající).
+* `RETS == 0` se považoval za platnou návratovou adresu (`_off(0)` je v 4GB mašině „uvnitř okna"),
+  což zacyklilo běh; volání přes nulové slovo mají strop `NULL_CALL_LIMIT`.
+* S `check_coverage` se skok mimo mapované segmenty ohlásí adresou místo 200 000 NOP kroků.
