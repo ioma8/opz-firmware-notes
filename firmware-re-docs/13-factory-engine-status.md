@@ -874,3 +874,21 @@ So "13 of 13 render audio" is accurate and must not be read as "13 of 13 play th
 column is labelled **informational**: a dominant-bin scan is not a pitch tracker on an engine with several
 partials, so the rest need a per-engine harmonic comparison before any claim about playing the note
 correctly.
+
+**Then the neighbour test, which is the one that means something.** `opzinstcheck --note-check` renders 140
+blocks (8192 samples per channel) and asks the same question `opzfactorycheck` asks the Blackfin engines: does
+the requested note beat its 0.75x and 1.5x neighbours?
+
+```
+7 of 13 beat both neighbours at the current convention
+Digital 11.71 (0.74/1.19)   EP 7.90 (0.71/0.69)   Electric 25.05 (1.24/0.83)
+MiniStringShort 33.41 (1.18/5.10)   Saw013a 26.57 (3.11/1.88)   SynthSampler 153.60 (47.01/64.12)
+Volt 16.32 (5.23/0.84)
+```
+
+The six that lose do so for named reasons: `Chord` legitimately loses to its own fourth (1404.87) and
+`Organ` to a neighbour (2.32), while `AnalogA`, `Cluster`, `SamplePlayerGain` and `Fm003b` peak below the
+request - the pattern of an engine whose pitch argument is not yet scaled the way the harness assumes.
+So the dominant-bin column was misleading and this is the number to quote: **13 of 13 render audio, 7 of 13
+play the requested note under the current convention**, with the other six needing per-engine calibration
+rather than being written off.

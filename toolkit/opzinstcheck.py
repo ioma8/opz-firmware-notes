@@ -125,7 +125,7 @@ def play(so, syms, cls, blocks):
     if note:
         so.call(note, [60, 100, state, params])
     total = peak = 0
-    mono = []
+    mono, inter = [], []
     for _ in range(blocks):
         so.write(out, b"\0" * (FRAMES * 8))
         so.call(find(syms, cls, "6render"),
@@ -134,7 +134,8 @@ def play(so, syms, cls, blocks):
         total += sum(1 for x in v if x)
         peak = max(peak, max((abs(x) for x in v), default=0))
         mono += v[0::2]                       # left channel: some engines write only one
-    return total, peak, mono
+        inter += v                            # interleaved, for the neighbour test below
+    return total, peak, mono, inter
 
 
 def pitch(samples, fs=48000.0, lo=80.0, hi=3000.0):
@@ -166,10 +167,17 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--blocks", type=int, default=40)
     ap.add_argument("--only", nargs="*", default=None)
+    ap.add_argument("--note-check", action="store_true",
+                    help="also ask whether the tone stands above its 0.75x and 1.5x neighbours, the same "
+                         "test opzfactorycheck applies to the Blackfin engines (needs ~140 blocks)")
     a = ap.parse_args(argv)
 
     syms = symbols()
     names = a.only or INSTRUMENTS
+    if a.note_check:
+        a.blocks = max(a.blocks, 140)          # 8192 samples per channel, the window contrast() needs
+    want = 440.0 * 2 ** ((60 - 69) / 12.0)
+    tracks = 0
     working = 0
     for cls in names:
         so = OpzSo()
@@ -186,7 +194,7 @@ def main(argv=None):
         so.flags = so.alloc(8)
         supply(so, cls)
         try:
-            nz, peak, mono = play(so, syms, cls, a.blocks)
+            nz, peak, mono, inter = play(so, syms, cls, a.blocks)
         except Exception as e:
             print(f"  {cls:18s} {type(e).__name__}")
             continue
@@ -199,12 +207,24 @@ def main(argv=None):
         # informational: a dominant-bin scan is not a pitch tracker on an engine with several partials
         verdict = "" if not ok else (f"  dominant ~{hz:6.1f} Hz ({n}x{want:.1f}, {cents:+.0f} cents)"
                                      if n >= 1 else f"  dominant ~{hz:6.1f} Hz, not near {want:.1f}")
-        print(f"  {cls:18s} {nz}/{a.blocks * FRAMES * 2} nonzero, peak {peak}{verdict}"
+        note = ""
+        if a.note_check and ok:
+            from opzfactorycheck import contrast
+            at = contrast(inter, want)
+            lo, hi = contrast(inter, want * 0.75), contrast(inter, want * 1.5)
+            plays = at > max(lo, hi)
+            tracks += plays
+            note = f"  request contrast {at:6.2f} (neighbours {lo:5.2f}/{hi:5.2f}){' PLAYS' if plays else ''}"
+        print(f"  {cls:18s} {nz}/{a.blocks * FRAMES * 2} nonzero, peak {peak}{verdict}{note}"
               f"{'' if ok else '   SILENT'}")
     print(f"\n{working} of {len(names)} factory instruments render audio")
-    print("the dominant-bin column is informational: it only means the run is not silence at the note's")
-    print("frequency. Only Digital lands within a semitone of the requested note; the rest need a")
-    print("per-engine harmonic comparison before anything is claimed about playing the note correctly.")
+    if a.note_check:
+        print(f"\nplays the requested note (beats both neighbours): {tracks} of {len(names)}")
+    print("the dominant-bin column is informational: the strongest partial is often not the note, so it")
+    print("only means the run is not silence near the request. With --note-check the meaningful test is")
+    print("the request against its 0.75x and 1.5x neighbours; engines that fail it are not calibrated yet")
+    print("- an interval engine like Chord legitimately loses to its own intervals, and an engine whose")
+    print("pitch argument is a table stride (as the Blackfin builds' is) needs its own scale first.")
     return 0 if working == len(names) else 1
 
 
