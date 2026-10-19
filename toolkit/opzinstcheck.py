@@ -96,13 +96,18 @@ def supply(so, cls=""):
     # The samplers fetch their sample through interface+0x48: a 40-byte record whose
     # +0x00 is the data pointer, +0x08 the readable frame count, +0x0c pitch and
     # +0x10 rate. Without a record they log "sample player lost it's samples".
+    # The sample must be recorded at the root pitch the record declares, or a sampler transposes from the
+    # wrong rate: this is a 261.63 Hz sine (note 60 at 48 kHz) and the record's pitch field carries note 60
+    # in the same unit the render argument uses. A period-64-table sample declared at the old unit played
+    # 750 Hz and could never reach the requested note.
+    root = 440.0 * 2 ** ((60 - 69) / 12.0)
     data = so.alloc(8192 * 4)
-    so.write_u32_array(data, [int(math.sin(2 * math.pi * i / 64) * 0x7FFFFFFF) & 0xFFFFFFFF
+    so.write_u32_array(data, [int(math.sin(2 * math.pi * root * i / 48000.0) * 0x7FFFFFFF) & 0xFFFFFFFF
                               for i in range(8192)])
     rec = so.alloc(0x28)
     so.write(rec + 0x00, struct.pack("<Q", data))
     so.write_u32(rec + 0x08, 8192)
-    so.write_u32(rec + 0x0C, phase_increment(60))
+    so.write_u32(rec + 0x0C, increment_for(60))
     so.write_u32(rec + 0x10, 1 << 12)
     so.stub("samp", lambda s, n: s.reg_write(UC_ARM64_REG_X0, rec))
     so.write(so.interface + 0x48, struct.pack("<Q", so.stub_address("samp")))

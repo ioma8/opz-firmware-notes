@@ -990,3 +990,16 @@ table.
 Still out: **Cluster** and **SamplePlayerGain** fail at every note (27-39 at the request, but always below
 their own 0.75x neighbour - the fixed-sample signature, for which this test says nothing), **Organ** passes 2
 of 3 (fails 57) and **SynthSampler** 1 of 3 (passes only 60).
+
+**The samplers, after fixing their record.** `supply()` now hands the samplers a sample recorded at the root
+pitch - a 261.63 Hz sine, note 60 at 48 kHz - and declares that pitch in the record's `+0x0c` field in the same
+Q32 unit the render argument uses, rather than a period-64 table declared at the old Q31-at-44.1-kHz value.
+
+The change reaches them: `SamplePlayerGain`'s peak rises from 28,114,945 to **1,767,964,668** and
+`SynthSampler`'s from 1,201,894,485 to 1,553,395,630 (it keeps its note-60 pass, 282.61 against
+26.11/117.92). But both samplers then produce **the same output at notes 57, 60 and 72** - `Cluster`
+848,755,646 and `SamplePlayerGain` 1,767,964,668 at every note, with contrasts identical to two decimals - so
+their playback rate does not track the render increment at all here and must come from another field.
+
+That makes the neighbour test - which assumes a pitched oscillator - the wrong instrument for them. They stay
+**out of the tally** rather than being called silent, and the note-60 figure remains 11 of 13.
