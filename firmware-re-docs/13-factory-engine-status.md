@@ -1013,3 +1013,13 @@ Both samplers also return identical dominant figures to each other whatever the 
 contents, while their peaks differ (848,755,646 for `Cluster`, 1,767,964,668 for `SamplePlayerGain`). So the
 rate is neither the render increment nor the record's rate field, and they stay **out of the tally**; the next
 step is to trace which state word `onNoteOn` writes for these two.
+
+**The samplers ignore the note on every path the harness can reach.** Diffing the whole 1 KB state block
+after `onNoteOn` at notes 60 and 72 gives **0 differing words** for both `SamplePlayerGain` and `Cluster`, and
+passing the note as `render`'s **third argument** changes nothing either (identical contrasts to one decimal:
+`SamplePlayerGain` 37.5 against 71.0/16.7 at note 60, 9.4 against 16.7/4.1 at note 72).
+
+So the note reaches neither `onNoteOn` state, nor the render arguments, nor the sample record's fields. Their
+output is **note-invariant** in this harness, which puts them beyond what a harness-side guess can fix: judging
+them needs a read of `SamplePlayerGain::render` itself. They stay out of the tally, and the shipped-code
+figures stay at 11 of 13 at note 60 and 9 of 13 at every tested note.
