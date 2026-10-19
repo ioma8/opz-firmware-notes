@@ -1156,3 +1156,13 @@ So **which loop runs is decided by the sample length in `w14`/`w11` and the divi
 engine's own state** - the harness supplies one static record and therefore lands in the short path on every
 block. Settling this needs a decompile of `render` that maps `w11`, `w14` and `w16` back to record and state
 fields; it is no longer a black-box question.
+
+**The zero step is not any host field either.** Sweeping `record+0x08` (frame count) over 8192, 4096, 1024, 256,
+64 and 32, and the render increment over 0.25x, 1x and 4x, changes nothing: **every one of the nine runs touches
+exactly 4 distinct sample frames (4077-4080) with 256 reads**. The step that should advance the position inside
+the loop - `w13` at `0x11f754`, `w11 / w23` where `w11 = ((w14 << 10) - 0x1000) - w10` - is zero for reasons in
+state fields the harness has not identified.
+
+Excluded so far, each by measurement: the record's frame count, the record's pitch, the record's rate, the
+render increment, the note argument, `onNoteOn`'s note, `params[0..2]`, the sample content, and `state+0x10`.
+What remains is a decompile of `render`'s loop setup that resolves `w11`, `w14` and `w23` back to state fields.
