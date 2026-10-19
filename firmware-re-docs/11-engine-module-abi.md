@@ -363,6 +363,17 @@ PASS  decays to silence        tail 1.05e-06
 PASS  deterministic            identical buffers
 ```
 
+Three findings from building it are worth keeping, because all three would have cost hours on hardware. The
+third was found only later, by comparing the emitted engine against this model:
+
+**`strike()` scaled its seeds twice and saturated every mode.** `Marimba.coefficients` stores `md.gain`
+already in Q31, and `strike()` multiplied it by `ONE` again, so `y1` came out astronomically large and
+`saturate` clamped every mode to ±full scale. Pitch and decay still measured correctly, because those come
+from the coefficients and radii — so the self-test passed — while the only thing the saturation destroyed was
+the per-mode balance and the strike comb, i.e. the timbre. It went unnoticed until the engine's own partial
+levels were compared with the model's and disagreed by 20 dB on the tuned 4x overtone. With the double scaling
+removed, `opzverify.py`'s "timbre matches the reference model" gate holds the two within 1.2 dB per partial.
+
 Two findings from building it are worth keeping, because both would have cost hours on hardware:
 
 **Direct form II does not fit this core's arithmetic.** The textbook two-pole recursion needs
@@ -810,6 +821,16 @@ fundamental      0-43 ms  39.1 dB   ->  150-193 ms   21.3 dB
 Both facts are now gates rather than comments: `toolkit/opzverify.py` asserts that the tuned 4x overtone
 stands at least 20 dB above the free-free 2.756x one, and that the 9.24x overtone falls more than 20 dB in
 150 ms. The first would fail on the old ratios, the second on the old single-radius table.
+
+**The table above was measured with the wrong excitation law, and the numbers in it are superseded.** The
+engine's seeds were `0.125 * cos(pi(m+1)*0.22) * 0.42**m`, which puts the tuned 4x partial 24.5 dB under the
+fundamental — audible as a click, not as wood. The model intends `0.5 * (0.42**m)**0.5/(1+0.3m) * cos(...)`,
+which lands it 16.4 dB under. The engine now uses the model's law (and the model's strike point, 0.30, which
+its own measurements validated) and agrees with it within 1.2 dB on every partial; current numbers from the
+engine's own output are f0 0 dB, 3.93x -16.4 dB, 2.756x -51.9 dB, 9.24x -15.2 dB, 16x -25.4 dB, and the
+9.24x overtone falls 60.9 dB in the first 150 ms. Three gates hold it: "timbre matches the reference model"
+(within 3 dB per partial), "tuned 4x partial is audible" (under 20 dB down) and "no glockenspiel partial"
+(4x at least 20 dB above 2.756x).
 
 One test needed repairing at the same time: `opzmarimba`'s "inharmonicity changes the spectrum but not the
 pitch" check compared two renders and passed **vacuously**, because woody tuning ignores `inharmonicity`

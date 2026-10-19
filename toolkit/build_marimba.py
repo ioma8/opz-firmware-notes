@@ -21,6 +21,10 @@ Design, and why each choice was forced:
   a computation - and no clamping is needed for the legal 0..127 range.
 * **Only verified instruction forms.** opzasm raises `Unsupported` rather than guessing, so a mistake
   fails the build instead of producing a module that loads and misbehaves.
+* **The excitation law is the reference model's, not a guess.** Seeds are
+  `0.5 * (0.42**m)**0.5 / (1+0.3m) * cos(pi(m+1)*0.30)` — the same tilt `opzmarimba.Marimba.strike` uses,
+  which is what puts the tuned 4x partial where the ear reads "wood". The first build used `0.42**m` with a
+  0.22 strike point, which left it 24.5 dB down instead of 16.4 dB and made the engine a sine with a click.
 * **Volatile registers only, plus the verified push/pop pair** for the registers render() must borrow.
 * **A voice comes alive from render's own arguments**, never from `onNoteOn`: pitch is argument 2, and
   the amp object's state word (argument 6, +0x10) says whether the OS still wants this voice. The strike
@@ -37,7 +41,9 @@ Known limitations, stated rather than hidden:
     with post-increment loads because the encoder has no displacement load) and the mapping is accurate
     - buckets land within 1% of their target T60 - but which knob the OS binds to params[1] is still an
     assumption;
-  - the strike position is fixed at 0.22 (baked into the seed table), not a live macro;
+  - the strike position (0.30) and brightness (0.5) are baked into the seed table, not live macros: the
+    fourth and fifth entries of params[] are amp arguments on this ABI (doc `11` §11.9), so they cannot
+    drive them;
   - pitch comes from render's argument 2 (Q16 Hz) and the row is the NEAREST semitone, found with a
     seven-step binary search over the build-time frequency table. The OS derives that argument from its
     own semitone table, so for every real note the match is exact; during a pitch glide the row quantises
@@ -73,6 +79,7 @@ import opzmarimba as S
 MOD_BASE   = 0x81BE7400  # memoryslot 63
 CODE_BASE  = MOD_BASE + 0x38
 CODE_RESERVE = 0x1000                    # code area kept fixed so the data address never moves
+SLOT_SPAN  = 0x1400 * 3                  # slots 63-65: the three the module is linked into
 DATA_BASE  = CODE_BASE + CODE_RESERVE
 FS        = S.FS
 
@@ -84,7 +91,8 @@ D_FREQ   = DATA_BASE + 0x1880       # 128 notes' frequencies in Q16 Hz, the pitc
 T60_LONG = 8.0                      # the table's own damping; the macro shortens from here
 PARAM_DECAY = 1                     # params[1]: read by every ported engine, unlike params[2..5]
 N_MODES = 6
-STRIKE_POS = 0.22                   # a marimba bar is struck near one end, not at 0.3
+STRIKE_POS = 0.30                   # the strike point the reference model's measurements validated
+BRIGHTNESS = 0.5                    # fixed: params[2..5] are amp arguments, so brightness is not live
 
 
 class Code:
@@ -123,6 +131,23 @@ class Code:
                 enc = A.brcc(here, self.labels[label], cond)
             self.buf[off:off + 2] = enc
         return bytes(self.buf)
+
+
+def strike_seeds(position=STRIKE_POS, brightness=BRIGHTNESS):
+    """Per-mode excitation, the same law as opzmarimba.Marimba.strike.
+
+    This is what decides whether the engine sounds like wood or like a sine. The first build used
+    `0.125 * cos(...) * 0.42**m`, and `0.42**m` is far too steep a tilt: with the model's own partial
+    ratios it left the tuned 4x partial 24 dB under the fundamental, where the reference puts it 4 dB
+    under - i.e. audible exactly where the ear reads "wood". Measured against `opzmarimba.render`, the
+    old law was 18-21 dB down on modes 1, 2 and 3. The exponent is applied to the *gain*, so the tilt is
+    sqrt(0.42) per mode, plus the model's 1/(1+0.3m) roll-off.
+    """
+    seeds = []
+    for m in range(N_MODES):
+        gain = (0.42 ** m) ** (1.0 - brightness) / (1.0 + 0.3 * m)
+        seeds.append(0.5 * gain * math.cos(math.pi * (m + 1) * position))
+    return seeds
 
 
 def coefficient_table():
@@ -422,10 +447,8 @@ def build():
     assert len(hdr) == 56, len(hdr)
 
     data = bytearray(0x60)
-    for m in range(N_MODES):
-        gain = 0.42 ** m            # a marimba's fundamental dominates; 0.55^m was too bright
-        seed = S.to_q31(0.125 * math.cos(math.pi * (m + 1) * STRIKE_POS) * gain)
-        data[0x10 + 4 * m:0x14 + 4 * m] = (seed & 0xFFFFFFFF).to_bytes(4, "little")
+    for m, seed in enumerate(strike_seeds()):
+        data[0x10 + 4 * m:0x14 + 4 * m] = (S.to_q31(seed) & 0xFFFFFFFF).to_bytes(4, "little")
     for cc, ss in coefficient_table():
         data += (cc & 0xFFFFFFFF).to_bytes(4, "little")
         data += (ss & 0xFFFFFFFF).to_bytes(4, "little")
@@ -439,6 +462,9 @@ def build():
         data += int(round(440.0 * 2 ** ((note - 69) / 12.0) * 65536)).to_bytes(4, "little")
 
     payload = len(hdr) + len(code) + len(data)
+    # Nothing else checks this: a table that grew past the slot would overwrite reverb's module at
+    # 0x81beb000 instead of failing the build.
+    assert payload <= SLOT_SPAN, f"module is {payload} B, past its {SLOT_SPAN} B slot span"
     segs = [
         (0x5000, 0x11A00000, 0, payload, b""),
         (0x0000, MOD_BASE,   len(hdr),  0, bytes(hdr)),

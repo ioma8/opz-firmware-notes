@@ -115,10 +115,17 @@ class Marimba:
             md.gain = to_q31((base ** m) ** (1.0 - brightness) * (1.0 / (1.0 + 0.3 * m)))
 
     def strike(self, strength=1.0, position=0.3):
-        """Excite the bank: an impulse whose per-mode sign is set by where the body was hit."""
+        """Excite the bank: an impulse whose per-mode sign is set by where the body was hit.
+
+        `md.gain` is already Q31 (to_q31 in `coefficients`), so it must NOT be multiplied by ONE again:
+        the old line did that and every mode started at +-full scale, saturated. Pitch and decay
+        measurements still passed because those come from the coefficients and radii, so the only thing
+        the saturation destroyed - the per-mode balance and the strike comb, i.e. the timbre - went
+        unnoticed until this was compared against the emitted engine.
+        """
         for m, md in enumerate(self.modes):
             comb = math.cos(math.pi * (m + 1) * position)
-            md.y1 = sat32(int(strength * md.gain * comb * ONE * 0.5))
+            md.y1 = sat32(int(strength * md.gain * comb * 0.5))
             md.y2 = 0
 
     def block(self, out):

@@ -15,7 +15,7 @@ Numbers come from executing the emitted module, not from a model of it.
 Usage:
     python3 opzverify.py [engine] [--every N]
 """
-import pathlib, sys
+import math, pathlib, sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import opzengine as E
@@ -99,6 +99,27 @@ def main(argv):
     late = S.energy_at(buf, f0 * 9.24, skip=int(0.15 * S.FS), window=2048)
     drop = 10 * __import__('math').log10(max(early, 1e-30) / max(late, 1e-30))
     check("upper modes die first", drop > 20, f"9.24x overtone falls {drop:.1f} dB in 150 ms")
+
+    # ---- timbre. The reference model is the statement of what this engine is supposed to sound like,
+    # and the two numbers that make it a marimba rather than a sine or a glockenspiel are the tuned 4x
+    # partial (audible) and the free-free 2.756x partial (absent).
+    m, ex, ctx, prm, amp, out = setup(raw, bucket=4, note=69)
+    eng = capture(m, ex, ctx, prm, amp, out, int(S.FS * 0.6 / S.BLOCK), hz=440.0)
+    ref = S.render(freq=440.0, decay=1.6, brightness=0.5, seconds=0.6)
+    e0 = S.energy_at(eng, 440.0, window=4096)
+    r0 = S.energy_at(ref, 440.0, window=4096)
+    worst = 0.0
+    for ratio in (3.93, 9.24, 16.0, 24.0, 34.0):
+        de = 10 * math.log10(max(S.energy_at(eng, 440 * ratio, window=4096), 1e-30) / max(e0, 1e-30))
+        dr = 10 * math.log10(max(S.energy_at(ref, 440 * ratio, window=4096), 1e-30) / max(r0, 1e-30))
+        worst = max(worst, abs(de - dr))
+    check("timbre matches the reference model", worst < 3.0, f"worst partial {worst:.1f} dB off")
+    e4 = S.energy_at(eng, 440 * 3.93, window=4096)
+    eglock = S.energy_at(eng, 440 * 2.756, window=4096)
+    check("tuned 4x partial is audible", e4 > 10 ** (-20 / 10) * e0,
+          f"{10 * math.log10(max(e4, 1e-30) / max(e0, 1e-30)):.1f} dB under the fundamental")
+    check("no glockenspiel partial", e4 > 100 * eglock,
+          f"4x is {10 * math.log10(max(e4, 1e-30) / max(eglock, 1e-30)):.1f} dB above 2.756x")
 
     # ---- decay macro extremes and the null-params guard
     for bucket, want in ((0, 0.1), (7, 8.0)):
