@@ -594,3 +594,27 @@ So the silent Blackfin engines never reach their DSP at all. Two corrections wor
 Also worth not repeating: filling the OS region these engines read (`0x81c41d00`+) with anything from 1
 to `0x7fffffff` does not change the step count, and `opzsim` resolves signed and unsigned forms of the
 same address identically, so this is not a memory-addressing artefact.
+
+### The Blackfin gate, and what remains behind it (2026-10-19)
+
+`opzsim`'s `m.step(halfword, pc)` reports instruction boundaries, which recovers a usable disassembly
+trace without Ghidra (whose address resolution is currently failing on these projects). That gave
+`cluster`'s prologue and its exit:
+
+```
+0x81c00628  (4B)   ...  0x81c0064a (4B)  R3: 0x7fffffff -> 0
+0x81c0064c  0x0c03        0x81c0064e  0x81c00650  -> jump to epilogue 0x81c00bd2
+```
+
+**Forcing `R3` nonzero at `0x81c0064c` takes the render from 21 steps to 13,560** - the engine stops
+returning through the epilogue and executes its whole DSP. That is the gate, and it is a single flag.
+
+Behind the gate the engine writes **128 samples into `out`, all zero**, from **`A0 = A1 = 0`**, while
+its loop registers hold real values (`R4=0xfffffef4`, `R5=0x14`, `R6=0x30e60`). Excluded as the cause:
+the sine-table pointer word `0x0800bb44`, a filled 8192-word quarter-sine at `0x0800bb48`, a 0x400-word
+table past the module end at `0x81c01214`, every ADSR field (level, multiply, phase 2/5, tail), and the
+ARM parameter presets. So `cluster`'s remaining silence is a zero coefficient inside its own MAC path,
+the same shape as `TapeTwo`'s on ARM - not a host word.
+
+Any future port therefore starts from a foothold: one known gate address, a known instruction-boundary
+method, and a mapped zero-read list.
