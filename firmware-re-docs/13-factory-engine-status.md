@@ -570,3 +570,27 @@ in another entry point, not in the `renderFX` that the shared effect harness dri
 
 `opzfamilycheck` passing everything says nothing about the factory engines: those modules are built here and are known good. The factory tally therefore depends on which build you run, and the honest statement is
 **13 of 13 instruments + 7 of 8 effects through the vendor library, but only 2 of 13 through the Blackfin emulator.**
+
+### Where the Blackfin engines actually stop (2026-10-19)
+
+Tracing `cluster.engine` under `opzsim` — whose instrumentation is accurate, unlike the Unicorn wide-read
+hook used earlier — shows the render runs only ~25 instructions and then jumps to a shared epilogue:
+
+| observation | value |
+|---|---|
+| instructions executed per render | cluster 21, electric 21, organ 19, ep 47 |
+| writes into the output buffer | **zero**, in every case |
+| cluster entry → last real instruction | `0x81c00628` → `0x81c00650` |
+| then jumps to | `0x81c00bd2`–`0x81c00bda`, which zeroes R3-R7 and returns |
+
+So the silent Blackfin engines never reach their DSP at all. Two corrections worth keeping:
+
+* `0x81c0064a` is **not** the gate. Injecting distinctive values into R0-R7 before it shows it zeroes
+  R3, R4, R5, R6 and R7 — a register-cleanup epilogue.
+* The gate is therefore the **branch around `0x81c00650`**. Reading it needs a Blackfin disassembly of
+  `0x81c00628`-`0x81c00650`; halfword classification alone is not enough, and `0x0c03` there looks like
+  `CC = R3 == 0` while actually being the second half of a 32-bit `Dsp32Alu` word (`0xa10b 0x0c03`).
+
+Also worth not repeating: filling the OS region these engines read (`0x81c41d00`+) with anything from 1
+to `0x7fffffff` does not change the step count, and `opzsim` resolves signed and unsigned forms of the
+same address identically, so this is not a memory-addressing artefact.
