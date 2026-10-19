@@ -1198,3 +1198,13 @@ neighbouring field is a slice pitch on the order of `0x2000`, with `params[0]` c
 
 This is the concrete next step: feed the record and `params[0]` the values the port documents, rather than
 searching further by hand.
+
+**Feeding the documented values is not enough.** Setting the record's slice pitch to `0x2000` and `params[0]` to
+`0x3F800000` (pitch index 32, unity), and trying `params[0]=0` and detail `0x1000` as well, leaves
+`state+0x08` at **zero** in every combination, while the output peak does move
+(698,757,355 with `rec+0x0c=0x2000` versus 174,689,337 with `0x1000`).
+
+So the record is read, but the step limit is not being computed from it by the path the harness calls. The port
+tells us what the field means and which inputs feed it; it does not explain why this engine leaves it zero
+under `onNoteOn(60, 100, state, params)`. The next place to look is the `init` variant (5 is what the harness
+passes) and where the octave word `s68` comes from.
