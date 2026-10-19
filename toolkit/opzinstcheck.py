@@ -120,7 +120,7 @@ from opzso import OpzSo, phase_increment  # noqa: E402  (needs CLONE on sys.path
 PHASE_SCALE = {"Chord": 2.0, "Fm003b": 2.0}
 
 
-def play(so, syms, cls, blocks):
+def play(so, syms, cls, blocks, note=60):
     state, temp = so.alloc(0x1000), so.alloc(0x1000)
     params, adsr = so.alloc(0x100), so.alloc(0x40)
     out = so.alloc(FRAMES * 2 * 4)
@@ -130,15 +130,15 @@ def play(so, syms, cls, blocks):
     so.write_u32(adsr + 0x10, 3)                 # the state index Digital's host arms
     so.call(find(syms, cls, "initModule"), [0, so.interface, so.flags])
     so.call(find(syms, cls, "4init"), [state, 5, 0, 0, temp])
-    note = find(syms, cls, "8onNoteOn")
-    if note:
-        so.call(note, [60, 100, state, params])
+    on_note = find(syms, cls, "8onNoteOn")
+    if on_note:
+        so.call(on_note, [note, 100, state, params])
     total = peak = 0
     mono, inter = [], []
     for _ in range(blocks):
         so.write(out, b"\0" * (FRAMES * 8))
         so.call(find(syms, cls, "6render"),
-                [out, int(phase_increment(60) * PHASE_SCALE.get(cls, 1.0)), 0, state, params, adsr])
+                [out, int(phase_increment(note) * PHASE_SCALE.get(cls, 1.0)), 0, state, params, adsr])
         v = so.read_i32_array(out, FRAMES * 2)
         total += sum(1 for x in v if x)
         peak = max(peak, max((abs(x) for x in v), default=0))
@@ -176,6 +176,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--blocks", type=int, default=40)
     ap.add_argument("--only", nargs="*", default=None)
+    ap.add_argument("--note", type=int, default=60, help="MIDI note to play and judge (default 60)")
     ap.add_argument("--note-check", action="store_true",
                     help="also ask whether the tone stands above its 0.75x and 1.5x neighbours, the same "
                          "test opzfactorycheck applies to the Blackfin engines (needs ~140 blocks)")
@@ -185,7 +186,7 @@ def main(argv=None):
     names = a.only or INSTRUMENTS
     if a.note_check:
         a.blocks = max(a.blocks, 140)          # 8192 samples per channel, the window contrast() needs
-    want = 440.0 * 2 ** ((60 - 69) / 12.0)
+    want = 440.0 * 2 ** ((a.note - 69) / 12.0)
     tracks = 0
     working = 0
     for cls in names:
@@ -203,13 +204,13 @@ def main(argv=None):
         so.flags = so.alloc(8)
         supply(so, cls)
         try:
-            nz, peak, mono, inter = play(so, syms, cls, a.blocks)
+            nz, peak, mono, inter = play(so, syms, cls, a.blocks, a.note)
         except Exception as e:
             print(f"  {cls:18s} {type(e).__name__}")
             continue
         ok = nz > 0
         working += ok
-        want = 440.0 * 2 ** ((60 - 69) / 12.0)
+        want = 440.0 * 2 ** ((a.note - 69) / 12.0)
         hz = pitch(mono)
         n = round(hz / want) if hz else 0
         cents = 1200 * math.log2(hz / (want * n)) if hz and n else float("nan")

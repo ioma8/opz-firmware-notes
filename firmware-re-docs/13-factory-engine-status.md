@@ -933,3 +933,34 @@ least as well at half the true fundamental unless subharmonics are explicitly pe
 (a subharmonic-aware score, or autocorrelation/YIN on the whitened signal), the contrast test remains the only
 usable metric - which is why the four remaining instruments stay **unjudged** rather than being scored by a
 tracker with a known octave error.
+
+### The note test is note-dependent, so run three, 2026-10-19
+
+`opzinstcheck --note N` now sets both the note-on and the phase increment, so the same 140-block neighbour
+test can be run at more than one pitch. Across notes 57, 60 and 72 the answer changes, and a single note
+overstated the result:
+
+| engine | 57 | 60 | 72 |
+|---|---|---|---|
+| Chord | 60992 | 34504 | 517 | 
+| EP | 6.66 | 7.90 | 2.58 |
+| Electric | 25.04 | 25.05 | 4.23 |
+| Fm003b | 7910 | 6133 | 170 |
+| MiniStringShort | 272.99 | 33.41 | 4.29 |
+| Saw013a | 49.81 | 26.57 | 2.13 |
+| Digital | 14.67 | 11.71 | **1.37 (fails)** |
+| Organ | **109.98** | 0.17 | 0.52 |
+| SynthSampler | **87.30 (fails to 381.63)** | 153.60 | 6.85 |
+| AnalogA | 1.49 | 0.66 | 0.67 |
+| Cluster | 38.89 | 27.49 | 6.87 |
+| SamplePlayerGain | 39.33 | 27.81 | 6.95 |
+| Volt | 17.79 | 16.32 | **1.08 (fails)** |
+
+So **six engines play the requested note at all three tested pitches** (Chord, EP, Electric, Fm003b,
+MiniStringShort, Saw013a); Digital and Volt pass at two, Organ and SynthSampler at one, and AnalogA, Cluster
+and SamplePlayerGain at none - Cluster and SamplePlayerGain always lose to their own 0.75x neighbour, the
+fixed-sample signature.
+
+This also corrects the previous entry: Digital failing at note 72 is engine behaviour (its wavetable band
+structure), not a defect in the test. The honest headline is **6 of 13 at every tested note, 9 of 13 at note
+60**, not "9 of 13 plays the note".
