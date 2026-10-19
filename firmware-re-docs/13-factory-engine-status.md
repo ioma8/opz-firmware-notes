@@ -1166,3 +1166,12 @@ state fields the harness has not identified.
 Excluded so far, each by measurement: the record's frame count, the record's pitch, the record's rate, the
 render increment, the note argument, `onNoteOn`'s note, `params[0..2]`, the sample content, and `state+0x10`.
 What remains is a decompile of `render`'s loop setup that resolves `w11`, `w14` and `w23` back to state fields.
+
+**Register picture at the step, and why it is not enough.** Dumping `w0`-`w28` at `0x11f754` gives
+`w0=1, w2=0x7f7e807d, w8=0, w10=0x404000, w11=0, w12=0, w13=0, w14=0x1a0d, w16=1, w23=0x40`. The step is
+`w13 = w8 * w1` and both `w8` and `w11` are zero at that entry - `w8` is the per-frame counter and climbs to
+`0x40` across the block, so the first iteration genuinely contributes no advance.
+
+What remains unresolved is how that loop relates to the four 16-bit taps: 256 reads at four fixed frames means
+64 iterations over one position, and this register picture does not say which of the two loops produced them.
+Settling it requires decompiling the whole 4,056-byte `render`, not another register dump.
