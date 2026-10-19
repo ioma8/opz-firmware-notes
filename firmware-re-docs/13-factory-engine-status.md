@@ -283,7 +283,14 @@ Called that way — `initModule`, `init`, then `renderFX(params, 64, state, in, 
 |---|---|
 | `Crush` | **125 of 128 nonzero**, peak 46,551 |
 | `Dist` | 7 of 128 nonzero, peak 2,453 |
-| `Chorus` | silent |
+| `Reverb` | **844 of 1024 over eight blocks**, peak 258,813 |
+| `Dist` | 7 of 1024, peak 2,276 |
+| `Chorus`, `Chorus2`, `Delay` | silent |
+| `FdnReverb` | silent even with the `clock` import stubbed |
+| `TapeTwo` | unhandled CPU exception |
+
+So **two of the eight factory effects now demonstrably process audio** with the vendor signature - `Crush` and `Reverb`
+- against zero before it was read from the symbol names.
 
 So two of the eight factory effects genuinely process audio in the vendor library. Every attempt in this repository
 used a five-word stack with the buffers last, which is simply the wrong convention; the vendor's is **params and
