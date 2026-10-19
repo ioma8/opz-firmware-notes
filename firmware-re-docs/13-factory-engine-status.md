@@ -1102,3 +1102,20 @@ unchanged after the block in every case** - the engine never writes it back.
 So the playback position is a **host-supplied field the OS advances per block**. Our harness leaves it static,
 which is why the same four taps replay forever: the engine is not frozen, the harness is. The fix is to advance
 `state+0x10` by the playback rate each block - the concrete next step for these two engines.
+
+**The position field works; the per-frame loop does not.** Acting on the disassembly, `opzinstcheck` now advances
+`state+0x10` itself (`SAMPLE_POS_BASE`), and the measurement says the field is honoured - but only above 8192:
+
+| `state+0x10` | sample frames read |
+|---|---|
+| 4115, 4200, 5000, 6208 | none, output silent |
+| 8192 | 4077-4080 |
+| 8256, 8320, 8384, 8448, 8512 | 4141, 4205, 4269, 4333, 4397 (window moves 64 frames per block) |
+
+So the sampler **does** walk the sample when the host supplies the position: peaks of 1.77G, 61M, 1.65G, 520M,
+425M and 511M across six blocks where previously every block was identical. What it does not do is stream:
+the output is **one interpolated value per block**, so its spectrum is dominated by the block rate and it still
+loses the note test (2,027,291,146 peak, contrast 7.59 against 8.26).
+
+The next target is therefore the loop bound inside that mix loop (`w11`/`w13`/`w23` at `0x11f748`-`0x11f758`),
+not the position field.

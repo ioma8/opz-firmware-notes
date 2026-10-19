@@ -131,6 +131,26 @@ from opzso import OpzSo, phase_increment  # noqa: E402  (needs CLONE on sys.path
 PHASE_SCALE = {"EP": 0.5442, "Electric": 0.5442}
 
 
+# SamplePlayerGain does not advance its own read position: the mix loop loads it from state+0x10
+# (0x11f778 "ldr w11, [x20, #0x10]"), adds it to the sample base from state+0x18 and interpolates four
+# taps, and never writes the field back. The OS advances it per block; this harness must, or the same four
+# taps replay forever. The field is only honoured above 8192: at 4115 or 5000 the loop performs no sample
+# reads at all, while 8192 reads frames 4077-4080 and every +64 moves the window on by 64 frames. The walk is
+# therefore measured from that base, at one frame per frame times the note ratio, because the supplied sample
+# is recorded at note 60.
+SAMPLE_POS_BASE = {"SamplePlayerGain": 8192}
+SAMPLE_FRAMES = 8192
+
+
+def advance_sampler(so, cls, state, block, note):
+    base = SAMPLE_POS_BASE.get(cls)
+    if base is None:
+        return
+    rate = 2 ** ((note - 60) / 12.0)
+    pos = int(base + (block * FRAMES * rate) % SAMPLE_FRAMES)
+    so.write_u32(state + 0x10, pos & 0xFFFFFFFF)
+
+
 def increment_for(note, fs=48000.0):
     freq = 440.0 * 2 ** ((note - 69) / 12.0)
     return int(round(freq / fs * (1 << 32))) & 0xFFFFFFFF
@@ -151,7 +171,10 @@ def play(so, syms, cls, blocks, note=60):
         so.call(on_note, [note, 100, state, params])
     total = peak = 0
     mono, inter = [], []
+    block_index = 0
     for _ in range(blocks):
+        advance_sampler(so, cls, state, block_index, note)
+        block_index += 1
         so.write(out, b"\0" * (FRAMES * 8))
         so.call(find(syms, cls, "6render"),
                 [out, int(increment_for(note) * PHASE_SCALE.get(cls, 1.0)), 0, state, params, adsr])
