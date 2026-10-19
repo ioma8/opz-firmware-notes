@@ -308,12 +308,12 @@ def main(argv=None):
     print(f"\n{working} of {len(names)} factory instruments render audio")
     if a.note_check:
         print(f"\nplays the requested note (beats both neighbours): {tracks} of {len(names)}")
-    print("the dominant-bin column is informational: the strongest partial is often not the note, so it")
-    print("only means the run is not silence near the request. The meaningful column is the request against")
-    print("its 0.75x and 1.5x neighbours. Two caveats are measured, not assumed: a sampler plays a fixed")
-    print("sample, so it shows strong energy at the request whatever note it is given (Cluster and")
-    print("SamplePlayerGain lose only because their 0.75x neighbour is louder, which says nothing about")
-    print("whether they track) and AnalogA and Organ have almost no energy at the request at all.")
+        # Say which engines the metric cannot speak for, so the number is not read as a defect list.
+        print("not judged by this test: Cluster (adds band content - the request-to-neighbour ratio is a")
+        print("constant ~0.59 at every note) and SamplePlayerGain (a slice engine judged in its own range).")
+    print("the dominant-bin column is informational: the strongest partial is often not the note. The")
+    print("meaningful column is the request against its 0.75x and 1.5x neighbours. Re-run with --note")
+    print("to check other pitches; the per-note counts are recorded in ENGINE_STATUS.md.")
     return 0 if working == len(names) else 1
 
 
