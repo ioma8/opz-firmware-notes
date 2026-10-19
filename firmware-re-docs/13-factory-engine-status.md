@@ -643,3 +643,25 @@ So **4 of 13** Blackfin engines produce audio, not 2. `cluster`, `organ`, `elect
 `ministringshort` and `saw013a` raise. Note this is a *nonzero output* count:
 `opzfactorycheck` asks the stricter question of whether the requested note is produced, and still
 reports 2 of 13 because `ep` and `volt` do not track the requested pitch.
+
+### Why the Blackfin engines still stop: the OS services are not loaded (2026-10-19)
+
+The host table that `opzhost` installs names thirteen firmware addresses:
+
+```
+[0] 0x801098ce  [1] 0x80109978  [2] 0x81128264  [3] 0x0800bb44  [4] 0x11b019e8
+[5] 0x815c8070  [6] 0x815c7e70  [7] 0x800314c0  [8] 0x80031688  [9] 0x80100e64
+[10] 0x800fbc78 [11] 0x8012cc80 [12] 0x8012cd48
+```
+
+After `apply_to_interpreter`, **only `0x0800bb44` exists as a word, and it holds 0**; every other entry is
+absent from the machine. So each call an engine makes to the OS is intercepted as "outside its window",
+returns 0, and the engine continues with a null where a pointer should be. That one structural fact
+explains this session's remaining firmware failures:
+
+* the two samplers raise because they ask the OS for a sample and receive null;
+* `analoga`, `fm003b`, `ministringshort` and `saw013a` run 18,000-34,000 steps and then leave their window.
+
+The firmware image is present in the repository but is **not loaded into the engine machines**. The next
+step is therefore a genuine integration rather than a probe: map `opz.ldr` into the same `Machine` so
+those host addresses execute instead of returning zero.
