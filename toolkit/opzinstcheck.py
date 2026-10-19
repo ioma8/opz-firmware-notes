@@ -65,10 +65,11 @@ def find(syms, cls, frag):
 
 def supply(so, cls=""):
     """Host data every instrument gets: gains, gain tables and a wavetable."""
-    for g in GAINS + tuple(ENGINE_GLOBALS.get(cls, ())):
-        so.write_u32(g, 0x7FFFFFFF)
     for a in range(*HOST_DATA, 2):
         so.write(a, struct.pack("<h", 0x7FFF))
+    # after the fill, so the i16 writes do not clobber the u32 globals inside it
+    for g in GAINS + tuple(ENGINE_GLOBALS.get(cls, ())):
+        so.write_u32(g, 0x7FFFFFFF)
     wav = so.alloc(8192 * 4)
     so.write_u32_array(wav, [int(math.sin(2 * math.pi * i / 8192) * 0x7FFFFFFF) & 0xFFFFFFFF
                              for i in range(8192)])

@@ -434,3 +434,34 @@ plus AnalogA nonzero at peak 533 - technically live but inaudible, so it should 
 half-done rather than working. Still silent: **Fm003b** and **Saw013a**. Both reach the host through
 a vtable indirection (`vtable[0x38]` callback, `vtable[0x28]` table) instead of the flat interface
 the other eleven use, and building that indirection has not yet made either sound.
+
+### Verifier output, 2026-10-19 (the current record)
+
+```
+python3 toolkit/opzinstcheck.py --blocks 20
+  AnalogA            2556/2560 nonzero, peak 533          <- renders but inaudible
+  Chord              2558/2560 nonzero, peak 768872591
+  Cluster            2558/2560 nonzero, peak 848755646
+  Digital            2558/2560 nonzero, peak 424056965
+  EP                 2558/2560 nonzero, peak 531507774
+  Electric           2558/2560 nonzero, peak 674760214
+  Fm003b                0/2560 nonzero, peak 0   SILENT
+  MiniStringShort    2560/2560 nonzero, peak 838415524
+  Organ              2558/2560 nonzero, peak 345724693
+  SamplePlayerGain   2560/2560 nonzero, peak  28114945
+  Saw013a               0/2560 nonzero, peak 0   SILENT
+  SynthSampler       2558/2560 nonzero, peak 748155463
+  Volt               2560/2560 nonzero, peak 848755646
+11 of 13 factory instruments render audio
+```
+
+Peaks are Q31 against 2^31. Nine instruments are at real audio level (0.16-0.40 full scale);
+`SamplePlayerGain` is quiet at 0.013 and **`AnalogA` at 533 is inaudible**, so it should be counted
+as rendering-but-not-playing rather than working.
+
+With the effects side (`opzfxcheck --blocks 60`, 7 of 8) the total is **18 of 21 engines rendering**,
+or 17 if AnalogA is scored as not playing. The three left: **TapeTwo**, **Fm003b**, **Saw013a**.
+
+For `Saw013a` the block is not this harness: `opz-clone`'s purpose-built `Saw013aHost`, driven with
+its own fixture parameters and increment `0x309977`, also returns 0 of 128 nonzero samples, so the
+vendor binary's live render needs something the existing fixtures do not encode.
