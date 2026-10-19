@@ -29,8 +29,9 @@ what is verified, what is not, and why.
 
 `SamplePlayerGain` is no longer in the "frozen" category: driven with the host the sibling port's golden
 fixtures document (2304-frame pack, 24 slices of 96, `slice = note − 36`, descriptor
-`{data, 2304, 0x2000, 0x40000000}`), it writes **512 of 512** nonzero samples at notes 36 and 43 and is silent
-from note 60 by design. It is a slice/drum engine, so a 140-block pitched test is the wrong instrument for it.
+`{data, 2304, 0x2000, 0x40000000}`) it writes **17920 of 17920** nonzero samples at note 43 and is silent at
+note 60 **by design** (slice 24 clamps to 23, whose window runs past the pack). It is a slice/drum engine, so a
+pitched test is the wrong instrument for it; `opzinstcheck` judges it at 43 via `DEFAULT_NOTE`.
 
 ## The two honest options
 

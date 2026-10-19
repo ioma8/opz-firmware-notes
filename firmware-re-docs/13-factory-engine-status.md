@@ -1318,3 +1318,12 @@ way to zero an effect's output. Tested on `TapeTwo` and on three effects that de
 Identical in every case, so the argument is not read on these paths. That closes the last caller-side
 explanation for `TapeTwo` - readiness answer, host `sampleLine` transfer, scratch pointer, dispatch variant and
 all eight exports are each excluded - and leaves the tape-buffer mix inside `renderFX` as the only site.
+
+**The host advance was masking, not fixing.** Removing the `state+0x10` walk the previous round added - the
+sibling port documents `0x10` as the slice *length* and `0x0c` as the read position - makes note 60 silent
+(0 of 2560) exactly as the fixtures describe for slice 24 clamped to 23. Judged at note 43 (slice 7) the engine
+writes **17920 of 17920** nonzero samples with a request contrast of 208.72 against neighbours 372.20/92.56,
+i.e. it loses only to its own 0.75x neighbour - the shape a slice engine takes under a pitched test.
+
+`opzinstcheck` now carries `DEFAULT_NOTE = {"SamplePlayerGain": 43}` so a working engine is not reported as
+silent for being asked outside its range. Tallies: 13 of 13 emit audio, 11 of 13 play the requested note.
