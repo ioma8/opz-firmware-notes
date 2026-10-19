@@ -12,6 +12,7 @@ labelled in the output so an opened gate is never mistaken for a playing engine.
 
 Usage:
     python3 toolkit/opzfactoryaudible.py
+    python3 toolkit/opzfactoryaudible.py --wavs /tmp/opz-engines   # listen to the run
 """
 import pathlib, sys
 
@@ -28,6 +29,10 @@ PREREQ = {
 
 def main():
     params = [0] * 8
+    wavs = None
+    if "--wavs" in sys.argv:
+        wavs = pathlib.Path(sys.argv[sys.argv.index("--wavs") + 1])
+        wavs.mkdir(parents=True, exist_ok=True)
     rows, audible = [], 0
     for path in sorted(T.find_engines()):
         p = pathlib.Path(path)
@@ -38,11 +43,15 @@ def main():
             continue
         why, pokes, fills = PREREQ.get(p.name, ("-", [], []))
         try:
-            samples, meta = T.render_clip(info, 69, 0.02, params, pokes=pokes, fills=fills)
+            # a wav is meant to be listened to, so it gets a whole second instead of the 20 ms verdict clip
+            samples, meta = T.render_clip(info, 69, 1.0 if wavs else 0.02, params,
+                                          pokes=pokes, fills=fills)
         except Exception as e:
             rows.append((p.name, info["kind"], "ERROR", f"{type(e).__name__}: {str(e)[:40]}", "-", why))
             continue
         nz = sum(1 for v in samples if v)
+        if wavs:
+            T.write_wav(samples, wavs / f"device-{p.stem}.wav")
         # "writes any audio" needs a floor, or a single stray integer counts as playing. 1% of samples
         # nonzero and a peak of at least 1e-4 of full scale (-80 dB) reproduces the tally recorded in
         # firmware-re-docs/13-factory-engine-status.md; organ's transient is 27 samples at 1/2^31 and fails

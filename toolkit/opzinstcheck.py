@@ -13,7 +13,7 @@ nothing, and every engine then renders zeros.
 usage: opzinstcheck.py [--blocks N] [--only NAME ...]
 exits nonzero unless every instrument renders audio.
 """
-import argparse, json, math, struct, sys
+import argparse, json, math, struct, sys, wave
 from pathlib import Path
 from unicorn import UC_PROT_ALL
 from unicorn.arm64_const import UC_ARM64_REG_X0
@@ -220,6 +220,17 @@ def play(so, syms, cls, blocks, note=60, vendor_host=False):
     return total, peak, mono, inter
 
 
+def save_wav(path, inter, fs=48000):
+    """Write the interleaved int32 render as 16-bit stereo so it can be listened to."""
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(fs)
+        w.writeframes(b"".join(int(max(-1.0, min(1.0, v / 2 ** 31)) * 32767)
+                               .to_bytes(2, "little", signed=True) for v in inter))
+    return path
+
+
 def pitch(samples, fs=48000.0, lo=80.0, hi=3000.0):
     """Dominant frequency by DFT scan, then a fine pass around the best bin.
 
@@ -255,6 +266,8 @@ def main(argv=None):
     ap.add_argument("--vendor-host", action="store_true",
                     help="use the sibling port's documented params/ADSR (makes SamplePlayerGain sound, "
                          "costs EP its note-72 pass)")
+    ap.add_argument("--wavs", metavar="DIR", default=None,
+                    help="write one 48 kHz stereo wav per engine so the run can be listened to")
     ap.add_argument("--note-check", action="store_true",
                     help="also ask whether the tone stands above its 0.75x and 1.5x neighbours, the same "
                          "test opzfactorycheck applies to the Blackfin engines (needs ~140 blocks)")
@@ -289,6 +302,10 @@ def main(argv=None):
             continue
         ok = nz > 0
         working += ok
+        if a.wavs:
+            d = Path(a.wavs)
+            d.mkdir(parents=True, exist_ok=True)
+            save_wav(d / f"arm64-{cls}-note{note}.wav", inter)
         hz = pitch(mono)
         n = round(hz / want) if hz else 0
         cents = 1200 * math.log2(hz / (want * n)) if hz and n else float("nan")
