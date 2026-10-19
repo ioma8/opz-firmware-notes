@@ -752,3 +752,14 @@ The reads that differ between a loud block and a silent one are dominated by sta
 `0x81feffd0-0x81feffdc`, and the gate input is `R2 = [FP+0x40]`, an unwritten frame slot. So organ's
 amplitude and phase come from whatever the previous caller left on the stack - in the real firmware, the
 OS tick - which puts even this last non-faulting engine behind the same ROM-blocked path as the samplers.
+
+### The ROM region is confirmed, and it is unpublished, 2026-10-19
+
+The ADSP-BF70x Hardware Reference settles what `0x04020a70` is. Its Table 11-1, "L2 Memory Address
+Mapping", reads `0x04000000 0x407FFFFF L2 Bank 0 ROM (512 KB)`, which matches the address the OS tick calls
+and the fact that neither LDR image maps that region. The same manual names ROM routines such as
+`adi_rom_Boot()` and `adi_rom_MemCopy()` but publishes **no address-indexed table** of ROM entries, so the
+target of the OS's 1,195 calls into 51 entries cannot be named or emulated from documentation.
+
+That closes the Blackfin tick path as a documented dead end: the seven remaining engines need either the
+tick (six of them) or the tick's stack residue (organ), and the tick executes unpublished mask ROM.
