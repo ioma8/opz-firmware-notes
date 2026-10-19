@@ -290,6 +290,10 @@ SELFTEST = [
     ("R4 = R6 << 16", lambda: shl("R4", "R6", 16), bytes.fromhex("82ce8688"), "chord render 0x81be268a"),
     ("R3 = R3 >>> 6", lambda: shr("R3", "R3", 6), bytes.fromhex("82ced307"), "volt render 0x81bf01e8"),
     ("R3 = R6 >>> 0x1f", lambda: shr("R3", "R6", 31), bytes.fromhex("82ce0e07"), "volt render 0x81bf028c"),
+    # CC = R2 < R3 unsigned is the most common compare in the factory set: 0x099a occurs in chord, cluster,
+    # delay, digital, electric, fdnreverb, fm003b, ministringshort, saw013a, synctapetwo and volt, and the
+    # opc-3 family appears 68 times across 15 modules, so the encoding is taken from real code.
+    ("CC = R2 < R3", lambda: comp_lt("R2", "R3"), bytes.fromhex("9a09"), "digital render 0x81be66b4"),
 ]
 
 

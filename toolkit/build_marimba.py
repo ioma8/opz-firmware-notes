@@ -46,7 +46,17 @@ Known limitations, stated rather than hidden:
   - `mul32` emits the (T) extraction, and that extraction is `>> 32` rather than the `>> 31` of a Q31
     fractional multiply (SLEIGH's `rounding(..., 4)` clears four bytes). Every multiply therefore
     returns half scale and each mode output is doubled with one add, mirroring `frac_q31()` in
-    opzmarimba.py, which implements the same arithmetic and passes its measurement checks.
+    opzmarimba.py, which implements the same arithmetic and passes its measurement checks;
+  - the engine has no level control beyond the amp gate. Host entry 7 is the OS parameter-smoothing
+    service that fills the amp object's current value (doc `11` §11.9), and `chord` calls it every block;
+    this engine does not, so velocity, track volume and the envelope's own level are not applied here.
+    Calling into the OS is exactly what a harness cannot verify, so the gap is stated rather than guessed
+    - and `params[11]`, which the sibling port treats as level, is deliberately not multiplied in, because
+    a wrong guess there would silence the engine;
+  - the per-block decay factor is one module word (`D_G`), written and read inside a single render call.
+    That is safe only because the OS ticks voices sequentially; a re-entrant or threaded caller would see
+    another voice's gain. Moving it into the context costs sixteen pointer increments per block, which is
+    why it is documented instead of paid for.
 """
 import math, pathlib, sys
 
@@ -209,7 +219,20 @@ def build():
     for _ in range(PARAM_DECAY):
         c.emit(A.ldst("P0", "R2"))
     c.emit(A.ldst("P0", "R2"))
-    c.emit(A.shr("R2", "R2", 28))            # top three bits select the bucket
+    # The knob's unit is not settled in the sources: the plug presets store eighteen values in 0..255, the
+    # sibling port's parameter map records a byte baseline of 128, and its fixtures pass Q31 words. Reading
+    # only the top bits is right for Q31 and permanently bucket 0 for a byte, i.e. a dead decay knob. So a
+    # word below 256 is treated as a byte knob and normalised, and a Q31 word takes the old path unchanged.
+    c.ins("ldimm32", "R4", 256)
+    c.emit(A.comp_lt("R2", "R4"))            # CC = value < 256, unsigned
+    c.branch("p_q31", cond=False)            # 256 and above: Q31, leave it alone
+    c.emit(A.shr("R2", "R2", 5))             # byte knob 0..255 -> bucket 0..7, exact
+    c.jump("p_bucket")
+    c.label("p_q31")
+    c.emit(A.shr("R2", "R2", 28))            # top four bits...
+    c.ins("ldimm32", "R4", 7)
+    c.emit(A.logic32("R2", "R2", "R4", "&")) # ...masked to three, or a negative word indexes past the table
+    c.label("p_bucket")
     c.emit(A.shl("R3", "R2", 2))             # *4, the word stride of the gain table
     c.ins("ldimm32", "R4", D_GAINS)
     c.emit(A.addsub32("R4", "R4", "R3", "+"))

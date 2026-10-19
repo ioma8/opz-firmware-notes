@@ -119,6 +119,16 @@ def main(argv):
         ok = t60 is not None and abs(t60 - want) / want < 0.2
         check(f"decay macro rides params[{idx}]", ok, f"T60 {t60:.2f} s, expected {want} s")
 
+    # ---- the knob's unit: a byte-valued knob must move the tail, and a full-scale Q31 word must not run
+    # off the end of the eight-entry gain table
+    for label, word, want in (("byte 224", 224, 8.0), ("byte 32", 32, 0.2), ("Q31 full scale", 0xFFFFFFFF, 8.0)):
+        m, ex, ctx, prm, amp, out = setup(raw, bucket=0, note=69)
+        m.st32(prm + 4 * 1, word)
+        blocks = int(S.FS * want * 1.6 / S.BLOCK)
+        t60 = S.measure_decay(capture(m, ex, ctx, prm, amp, out, blocks))
+        ok = t60 is not None and abs(t60 - want) / want < 0.2
+        check(f"decay knob as {label}", ok, f"T60 {t60:.2f} s, expected {want} s")
+
     m, ex, ctx, prm, amp, out = setup(raw, note=69)
     for j in range(2 * S.BLOCK):
         m.st32(out + 4 * j, 0)

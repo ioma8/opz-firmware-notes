@@ -496,9 +496,25 @@ The engine now does the same. Contention is resolved in favour of the arguments:
 **no `onNoteOn` is called at all**, and they are then ticked alternately — the test reads 219.9 Hz and
 880.1 Hz from the same two records in the same run.
 
-**The decay macro is read from `params[1]`, and `params[2]` was wrong.**Code and claim were re-measured together: `opzsim.py selftest` passes 27 checks including "amp state 0 ->
-silence" and "two voices play two pitches at once", and `opzverify.py marimba.engine` passes 14, including
-the two decay-index checks and 13 notes at a worst error of 0.05%.
+**The decay macro is read from `params[1]`, and `params[2]` was wrong.** The first build used `params[2]`
+on the reasoning that the third knob is the obvious place for decay. §11.9 rules that out: `chord` passes
+`params[2]`, `params[3]`, `params[4]` and `params[5]` to the OS parameter-smoothing service
+(`host_table[7]`), so those four are the amp/envelope arguments, not engine knobs, while the sibling port's
+parameter map records `params[0]` and `params[1]` as the two entries every ported engine reads. The
+mechanism is unchanged — argument 5 is a *stack* argument, reached with post-increment loads because the
+encoder has no displacement load — and the mapping is accurate, with buckets landing within 1 % of their
+target T60.
+
+The knob's *unit* is not settled either: the plug presets store eighteen values in 0..255, the sibling
+port's parameter map records a byte baseline of 128, and its fixtures pass Q31 words. Reading only the top
+bits is right for Q31 and permanently bucket 0 — a dead knob — for a byte. The engine therefore normalises a
+word below 256 as a byte knob (bucket = value >> 5) and leaves a Q31 word on the old path, and masks the Q31
+bucket to three bits, because `>> 28` of a negative word otherwise indexes past the eight-entry gain table.
+
+Three things are now pinned by tests rather than by argument: the index (`decay macro rides params[1]` /
+`params[2]`), the unit (`decay knob as byte 224` / `byte 32` / `Q31 full scale`), and the polyphony path
+(`two voices play two pitches at once`, with `onNoteOn` never called). `opzsim.py selftest` passes 22
+checks, `opzverify.py marimba.engine` passes 17, including 13 notes at a worst error of 0.05%.
 
 The coefficient table itself carries **no** damping: `r = 1.0`, so the rotation is exactly norm-preserving and
 the entire tail comes from a per-block gain. That separation is what makes the macro map to an absolute T60
